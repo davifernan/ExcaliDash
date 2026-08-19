@@ -17,6 +17,22 @@ services:
       # Recommended to set explicitly for portability and multi-instance setups.
       - JWT_SECRET=${JWT_SECRET}
       - CSRF_SECRET=${CSRF_SECRET}
+      # --- Passwort-Reset per Mail -------------------------------------
+      - ENABLE_PASSWORD_RESET=${ENABLE_PASSWORD_RESET:-false}
+      - MAIL_TRANSPORT=${MAIL_TRANSPORT:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      - MAIL_REPLY_TO=${MAIL_REPLY_TO:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      # --- Versionshistorie --------------------------------------------
+      - ENABLE_SNAPSHOT_COMPRESSION=${ENABLE_SNAPSHOT_COMPRESSION:-true}
+      - ENABLE_SNAPSHOT_VACUUM=${ENABLE_SNAPSHOT_VACUUM:-true}
+      # --- Sitzungsdauer -----------------------------------------------
+      - JWT_REFRESH_EXPIRES_IN_REMEMBERED=${JWT_REFRESH_EXPIRES_IN_REMEMBERED:-30d}
       # # Local OIDC settings for dev compose.
       # - OIDC_PROVIDER_NAME=Keycloak
       # # Browser-facing issuer URL.

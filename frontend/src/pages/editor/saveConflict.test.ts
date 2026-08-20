@@ -59,3 +59,35 @@ describe("the payload a retry is built from", () => {
     expect(Object.keys(mergedFiles).sort()).toEqual(["imgA", "imgB"]);
   });
 });
+
+describe("what someone is doing right now", () => {
+  const held = (id: string) => new Set([id]);
+
+  it("keeps the element being dragged, even when the stored version is newer", () => {
+    const merged = reconcileElements(
+      [el("mine", 2, { x: 500 })],
+      [el("mine", 9, { x: 0 })],
+      { protect: held("mine") },
+    );
+    expect(merged.find((e) => e.id === "mine")?.x).toBe(500);
+  });
+
+  it("still takes everything else the other writer saved", () => {
+    const merged = reconcileElements(
+      [el("dragging", 2, { x: 500 })],
+      [el("dragging", 9, { x: 0 }), el("theirs", 1)],
+      { protect: held("dragging") },
+    );
+    expect(merged.map((e) => e.id).sort()).toEqual(["dragging", "theirs"]);
+    expect(merged.find((e) => e.id === "dragging")?.x).toBe(500);
+  });
+
+  it("protects nothing when no gesture is in progress", () => {
+    const merged = reconcileElements(
+      [el("idle", 2, { x: 500 })],
+      [el("idle", 9, { x: 0 })],
+      { protect: new Set<string>() },
+    );
+    expect(merged.find((e) => e.id === "idle")?.x).toBe(0);
+  });
+});

@@ -9,6 +9,7 @@ import { reconcileElements } from "../../utils/sync";
 import {
   CAPTURE_UPDATE_NEVER,
   getFilesDelta,
+  heldElementIds,
   getPersistedAppState,
   hasRenderableElements,
 } from "./shared";
@@ -199,6 +200,15 @@ export const useEditorPersistence = ({
             const merged = reconcileElements(
               elementsToSave,
               Array.isArray(latest?.elements) ? latest.elements : [],
+              {
+                // The merged scene is applied to the open editor below, so
+                // whatever is being typed, dragged or drawn right now must
+                // survive it. Without this a conflict resolved mid-gesture
+                // pulls the element out of the person's hand.
+                protect: heldElementIds(
+                  refs.excalidrawAPI.current?.getAppState?.() ?? null,
+                ),
+              },
             );
             const mergedFiles = filesToSave
               ? { ...(latest?.files || {}), ...filesToSave }

@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+# Pushing three commits in a row used to start three full runs side by side,
+# each taking several minutes. Only the newest state is worth testing, and the
+# image publish is chained to this run, so superseding an in-flight run also
+# stops an image nobody would deploy from being built.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-tests:
     name: Backend Tests

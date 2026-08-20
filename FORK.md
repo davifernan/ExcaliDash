@@ -15,15 +15,49 @@ self-hostable combination of all of them.
 
 ## Hosting it
 
+On a server, pull the images rather than building there. Every push to `main`
+that passes the tests publishes `linux/amd64` images to GHCR, so the machine
+running ExcaliDash needs no checkout, no toolchain and no build memory:
+
+```bash
+curl -O https://raw.githubusercontent.com/davifernan/ExcaliDash/main/docker-compose.prod.yml
+cp backend/.env.example .env      # set JWT_SECRET and CSRF_SECRET
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Updating later is the same two commands. The images are public, so no registry
+login is needed.
+
+Note that `docker-compose.prod.yml` points at **this fork's** images
+(`ghcr.io/davifernan/excalidash-*`). Upstream's images carry none of the
+features below, so pointing it elsewhere quietly downgrades the instance.
+
+To build from source instead — for development, or to run a change that is not
+on `main` yet:
+
 ```bash
 git clone https://github.com/davifernan/ExcaliDash.git
 cd ExcaliDash
-cp backend/.env.example .env      # set JWT_SECRET and CSRF_SECRET
+cp backend/.env.example .env
 docker compose up -d --build
 ```
 
 The frontend is then on `http://localhost:6767`. Every setting below is optional and
 read from `.env`; the defaults keep the upstream behaviour.
+
+### Which build am I running?
+
+Settings → Advanced shows the version and, underneath it, the build. A published
+image says `production · <commit>`; that commit is also a tag, so a specific
+build can be pinned by replacing `:latest` with `:sha-<commit>` in
+`docker-compose.prod.yml`.
+
+A build made from source shows `LOCAL DEVELOPMENT BUILD` in red. That is a
+label, not a different kind of build — the Docker build is a production build
+either way (minified frontend served by nginx, backend installed without dev
+dependencies, `NODE_ENV=production`). The marker only says that the image did
+not come from the pipeline and therefore cannot be traced back to a commit.
 
 ### Sending password reset emails
 

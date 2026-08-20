@@ -101,7 +101,14 @@ describe("document routes", () => {
         mimeType: "image/svg+xml",
         contentEncoding: null,
       }),
-      describeUpload: async () => ({ pageCount: 7 }),
+      describeUpload: async (asset: any) => {
+        // Guards the wiring, not just the shape: this needs the bytes to look
+        // at, and the created row does not carry them by itself.
+        if (!asset?.blob?.storageKey) {
+          throw new Error("describeUpload was given no blob to read");
+        }
+        return { pageCount: 7 };
+      },
     });
   });
 

@@ -157,7 +157,9 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
 
         let pageCount: number | null = null;
         try {
-          ({ pageCount } = await deps.describeUpload(created.asset));
+          // The created row does not carry its blob, and describeUpload needs
+          // to find the bytes on disk.
+          ({ pageCount } = await deps.describeUpload({ ...created.asset, blob: created.blob }));
           if (pageCount !== null) {
             await deps.prisma.asset.update({
               where: { id: created.asset.id },

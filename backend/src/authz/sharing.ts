@@ -8,6 +8,11 @@ export type DrawingAccess = "none" | DrawingPermission | "owner";
 export type DrawingPrincipal = {
   kind: "user";
   userId: string;
+  /**
+   * Only the auth-disabled bootstrap identity may represent an inactive row.
+   * Real JWT/API-key principals must be checked again on every access lookup.
+   */
+  allowInactive?: boolean;
   apiKey?: {
     id: string;
     scopes: readonly string[];
@@ -137,6 +142,15 @@ export const getDrawingAccess = async (params: {
 
   // User-based access (owner or explicit ACL).
   if (params.principal?.kind === "user") {
+    if (!params.principal.allowInactive) {
+      const account = await params.prisma.user.findUnique({
+        where: { id: params.principal.userId },
+        select: { isActive: true },
+      });
+      // An authenticated inactive account must not retain access through a
+      // public-link fallback on an already established connection.
+      if (!account?.isActive) return "none";
+    }
     const drawing = await params.prisma.drawing.findUnique({
       where: { id: params.drawingId },
       select: { userId: true },

@@ -32,6 +32,9 @@ describe("file routes", () => {
             userId: "owner-user",
           }),
       },
+    // The access lookup re-reads the account on every call now, so a
+    // fixture without it makes every route answer 500.
+    user: { findUnique: vi.fn().mockResolvedValue({ isActive: true }) },
       drawingPermission: {
         findUnique: vi.fn().mockResolvedValue(null),
       },

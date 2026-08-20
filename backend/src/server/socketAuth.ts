@@ -23,7 +23,13 @@ export const createSocketAuthenticator = ({
     token?: string,
   ): Promise<DrawingPrincipal | null> => {
     const authEnabled = await authModeService.getAuthEnabled();
-    if (!authEnabled) return { kind: "user", userId: BOOTSTRAP_USER_ID };
+    if (!authEnabled) {
+      return {
+        kind: "user",
+        userId: BOOTSTRAP_USER_ID,
+        allowInactive: true,
+      };
+    }
     if (!token) return null;
 
     if (isApiKeyToken(token)) {

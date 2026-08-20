@@ -76,6 +76,9 @@ function buildApp() {
       findFirst: vi.fn(),
       count: vi.fn(),
     },
+    // The access lookup re-reads the account on every call now, so a
+    // fixture without it makes every route answer 500.
+    user: { findUnique: vi.fn().mockResolvedValue({ isActive: true }) },
     drawingPermission: { findMany: vi.fn().mockResolvedValue([]) },
     drawingLinkShare: { findMany: vi.fn().mockResolvedValue([]) },
     collection: { findFirst: vi.fn() },

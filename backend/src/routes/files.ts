@@ -70,7 +70,11 @@ export const registerFileRoutes = (
       // miss so we don't leak existence of a (drawing, fileId) pair.
       const access = await getDrawingAccess({
         prisma,
-        principal: req.user?.id ? { kind: "user", userId: req.user.id } : null,
+        principal:
+          req.user?.authCredentialType === "bootstrap" && req.user.id
+            ? { kind: "user", userId: req.user.id, allowInactive: true }
+            : req.principal ??
+              (req.user?.id ? { kind: "user", userId: req.user.id } : null),
         drawingId,
       });
       if (!canViewDrawing(access)) {

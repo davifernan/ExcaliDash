@@ -148,6 +148,7 @@ export const createSocketFollowManager = ({
   ) => {
     let followQueue = Promise.resolve();
     let pendingFollowCommands = 0;
+    let followCancellationRevision = 0;
     const MAX_PENDING_FOLLOW_COMMANDS = 8;
     socket.on("follow-user", (data: unknown, ack?: (value: unknown) => void) => {
       const drawingId =
@@ -162,6 +163,17 @@ export const createSocketFollowManager = ({
         reject("invalid-request", "Invalid follow command");
         return;
       }
+      const payload = data as Record<string, unknown>;
+      if (payload.action === "UNFOLLOW") {
+        // Recovery must not wait behind slow access checks. Advancing the
+        // revision also prevents any already-running FOLLOW from recreating
+        // the edge after this immediate cleanup.
+        followCancellationRevision += 1;
+        clearFollower(socket.id, "unfollowed", false);
+        emitFollowStatus(socket, drawingId);
+        ack?.({ ok: true });
+        return;
+      }
       if (!allowFollow()) {
         reject("rate-limited", "Follow command rate limit exceeded");
         return;
@@ -171,17 +183,12 @@ export const createSocketFollowManager = ({
         return;
       }
       pendingFollowCommands += 1;
+      const cancellationRevision = followCancellationRevision;
       const run = async () => {
-        const payload = data as Record<string, unknown>;
         const followerAccess = await requireAccess(socket, drawingId);
         if (!followerAccess) return;
+        if (cancellationRevision !== followCancellationRevision) return;
         cacheFollowerAccess(socket.id, drawingId, followerAccess);
-        if (payload.action === "UNFOLLOW") {
-          clearFollower(socket.id, "unfollowed", false);
-          emitFollowStatus(socket, drawingId);
-          ack?.({ ok: true });
-          return;
-        }
         const targetId =
           typeof payload.targetPresenceId === "string" &&
           payload.targetPresenceId.length <= 200
@@ -207,6 +214,7 @@ export const createSocketFollowManager = ({
           return;
         }
         const targetAccess = await getAccess(targetId, drawingId);
+        if (cancellationRevision !== followCancellationRevision) return;
         if (
           connectedSockets.get(socket.id) !== socket ||
           drawingBySocket.get(socket.id) !== drawingId

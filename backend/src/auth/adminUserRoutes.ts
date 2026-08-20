@@ -8,7 +8,10 @@ import { adminCreateUserSchema, adminRoleUpdateSchema, adminUpdateUserSchema } f
 import crypto from "crypto";
 import { hashTokenForStorage } from "./tokenSecurity";
 import { buildUserInviteEmail } from "../mail/templates/userInvite";
-import { disconnectApiKeySockets } from "../server/socketRevocation";
+import {
+  disconnectApiKeySockets,
+  recheckActiveUserSockets,
+} from "../server/socketRevocation";
 
 export const INVITE_VALID_DAYS = 7;
 export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
@@ -459,6 +462,12 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             updatedAt: true,
           },
         });
+        if (current.isActive && !updated.isActive) {
+          // The row update is the revocation point. Do not acknowledge it
+          // until every local live-collaboration session has re-evaluated the
+          // now-inactive account and left its drawing room.
+          await recheckActiveUserSockets(updated.id);
+        }
         if (config.enableAuditLogging) {
           await logAuditEvent({
             userId: req.user.id,

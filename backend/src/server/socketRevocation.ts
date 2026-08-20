@@ -2,8 +2,10 @@ import type { Socket } from "socket.io";
 import type { DrawingPrincipal } from "../authz/sharing";
 
 type ApiKeySocketRevoker = (apiKeyId: string) => Promise<void>;
+type UserSocketRechecker = (userId: string) => Promise<void>;
 
 let revokeSockets: ApiKeySocketRevoker = async () => undefined;
+let recheckUserSockets: UserSocketRechecker = async () => undefined;
 
 // Auth routes are registered before the Socket.IO handlers in the application
 // module, so they call this late-bound process-local bridge at request time.
@@ -15,6 +17,15 @@ export const registerApiKeySocketRevoker = (
 
 export const disconnectApiKeySockets = (apiKeyId: string): Promise<void> =>
   revokeSockets(apiKeyId);
+
+export const registerUserSocketRechecker = (
+  rechecker: UserSocketRechecker,
+): void => {
+  recheckUserSockets = rechecker;
+};
+
+export const recheckActiveUserSockets = (userId: string): Promise<void> =>
+  recheckUserSockets(userId);
 
 export const createApiKeySocketRevoker = ({
   connectedSockets,

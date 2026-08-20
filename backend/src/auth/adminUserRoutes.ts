@@ -12,6 +12,9 @@ import {
   disconnectApiKeySockets,
   recheckActiveUserSockets,
 } from "../server/socketRevocation";
+import { COMPANY_ARCHIVE_USER_EMAIL } from "./userOffboarding";
+import { revokeUserCredentials } from "./userCredentialRevocation";
+import { registerAdminUserOffboardingRoutes } from "./adminUserOffboardingRoutes";
 
 export const INVITE_VALID_DAYS = 7;
 export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
@@ -172,6 +175,7 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
       if (!(await ensureAuthEnabled(res))) return;
       if (!requireAdmin(req, res)) return;
       const users = await prisma.user.findMany({
+        where: { email: { not: COMPANY_ARCHIVE_USER_EMAIL } },
         orderBy: [{ createdAt: "asc" }],
         select: {
           id: true,
@@ -447,7 +451,7 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
           data.mustResetPassword = parsed.data.mustResetPassword;
         if (typeof parsed.data.isActive !== "undefined")
           data.isActive = parsed.data.isActive;
-        const updated = await prisma.user.update({
+        const updateUser = (tx: Pick<typeof prisma, "user">) => tx.user.update({
           where: { id: userId },
           data,
           select: {
@@ -462,11 +466,32 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             updatedAt: true,
           },
         });
+        let revokedApiKeyIds: string[] = [];
+        const canRevokeStoredCredentials =
+          typeof prisma.$transaction === "function" &&
+          Boolean(prisma.refreshToken) &&
+          Boolean(prisma.apiKey);
+        const updated =
+          current.isActive &&
+          nextActive === false &&
+          canRevokeStoredCredentials
+          ? await prisma.$transaction(async (tx) => {
+              const saved = await updateUser(tx);
+              revokedApiKeyIds = await revokeUserCredentials(
+                tx,
+                userId,
+                new Date(),
+              );
+              return saved;
+            })
+          : await updateUser(prisma);
         if (current.isActive && !updated.isActive) {
-          // The row update is the revocation point. Do not acknowledge it
-          // until every local live-collaboration session has re-evaluated the
-          // now-inactive account and left its drawing room.
-          await recheckActiveUserSockets(updated.id);
+          // The transaction is the revocation point. Do not acknowledge it
+          // until every local user/API-key socket has been disconnected.
+          await Promise.all([
+            recheckActiveUserSockets(updated.id),
+            ...revokedApiKeyIds.map(disconnectApiKeySockets),
+          ]);
         }
         if (config.enableAuditLogging) {
           await logAuditEvent({
@@ -501,6 +526,8 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
       }
     },
   );
+
+  registerAdminUserOffboardingRoutes(deps);
   registerAdminUserPasswordRoutes(deps);
 
 };

@@ -74,4 +74,30 @@ describe("dashboard drawing action failures", () => {
     expect(result.current.actions.viewerActionError).toContain("Incident notes");
     expect(result.current.actions.viewerActionError).toContain("retry the selected drawings");
   });
+
+  it("prevents duplicate drawing creation while the first request is pending", async () => {
+    let resolveCreate!: (value: { id: string }) => void;
+    vi.mocked(api.createDrawing).mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const { result } = renderActions();
+
+    let firstRequest!: Promise<void>;
+    act(() => {
+      firstRequest = result.current.actions.handleCreateDrawing();
+      void result.current.actions.handleCreateDrawing();
+    });
+
+    expect(api.createDrawing).toHaveBeenCalledTimes(1);
+    expect(result.current.actions.isCreatingDrawing).toBe(true);
+
+    await act(async () => {
+      resolveCreate({ id: "created" });
+      await firstRequest;
+    });
+
+    expect(result.current.actions.isCreatingDrawing).toBe(false);
+  });
 });

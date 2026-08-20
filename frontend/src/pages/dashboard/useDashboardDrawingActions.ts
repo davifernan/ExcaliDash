@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import * as api from "../../api";
 import type { Collection, DrawingSummary } from "../../types";
+import { toast } from "sonner";
 
 type UseDashboardDrawingActionsParams = {
   drawings: DrawingSummary[];
@@ -66,6 +67,8 @@ export const useDashboardDrawingActions = ({
     null,
   );
   const [potentialDragId, setPotentialDragId] = useState<string | null>(null);
+  const [isCreatingDrawing, setIsCreatingDrawing] = useState(false);
+  const isCreatingDrawingRef = useRef(false);
 
   const isTrashView = selectedCollectionId === "trash";
   const isSharedView = selectedCollectionId === "shared";
@@ -80,11 +83,16 @@ export const useDashboardDrawingActions = ({
     showTemporaryViewerError(message, setViewerActionError);
 
   const handleCreateDrawing = async () => {
+    if (isCreatingDrawingRef.current) return;
     if (isTrashView || isSharedView) return;
     if (isSharedCollection && currentCollection?.sharedRole !== "edit") {
       handleViewerActionError("Viewers can't create new drawings");
       return;
     }
+    isCreatingDrawingRef.current = true;
+    setIsCreatingDrawing(true);
+    const toastId = "create-drawing";
+    toast.loading("Creating drawing...", { id: toastId });
     try {
       const targetCollectionId =
         selectedCollectionId === undefined ? null : selectedCollectionId;
@@ -92,12 +100,17 @@ export const useDashboardDrawingActions = ({
         "Untitled Drawing",
         targetCollectionId,
       );
+      toast.success("Drawing created. Opening editor...", { id: toastId });
       navigate(`/editor/${id}`);
     } catch (err) {
       console.error(err);
-      handleViewerActionError(
-        "Couldn’t create a drawing. Check your connection and try again.",
-      );
+      const message =
+        "Couldn't create a drawing. The server did not complete the request. Check your connection and try again.";
+      handleViewerActionError(message);
+      toast.error(message, { id: toastId });
+    } finally {
+      isCreatingDrawingRef.current = false;
+      setIsCreatingDrawing(false);
     }
   };
 
@@ -401,6 +414,7 @@ export const useDashboardDrawingActions = ({
     showBulkDeleteConfirm,
     showImportError,
     viewerActionError,
+    isCreatingDrawing,
     isTrashView,
     isSharedView,
     currentCollection,

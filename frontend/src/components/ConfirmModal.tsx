@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle, X } from 'lucide-react';
 
@@ -13,6 +13,8 @@ interface ConfirmModalProps {
   isDangerous?: boolean;
   showCancel?: boolean;
   variant?: 'warning' | 'success';
+  isPending?: boolean;
+  pendingText?: string;
 }
 
 export const ConfirmModal: React.FC<ConfirmModalProps> = ({
@@ -25,8 +27,46 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onCancel,
   isDangerous = true,
   showCancel = true,
-  variant = 'warning'
+  variant = 'warning',
+  isPending = false,
+  pendingText = "Working...",
 }) => {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCancelRef = useRef(onCancel);
+  const isPendingRef = useRef(isPending);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  useEffect(() => {
+    isPendingRef.current = isPending;
+  }, [isPending]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const focusTarget = showCancel ? cancelRef.current : confirmRef.current;
+    focusTarget?.focus();
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isPendingRef.current) {
+        event.preventDefault();
+        onCancelRef.current();
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      previousFocusRef.current?.focus();
+    };
+  }, [isOpen, showCancel]);
+
   if (!isOpen) return null;
 
   const isSuccess = variant === 'success';
@@ -39,12 +79,37 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm"
-        onClick={onCancel}
+        onClick={() => !isPending && onCancel()}
       />
 
-      <div className="relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-2xl border-2 border-black dark:border-neutral-700 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.08)] p-6 animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+          );
+          if (!focusable?.length) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+        className="relative w-full max-w-md bg-white dark:bg-neutral-900 rounded-2xl border-2 border-black dark:border-neutral-700 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.08)] p-6 animate-in fade-in zoom-in-95 duration-200"
+      >
         <button
           onClick={onCancel}
+          disabled={isPending}
+          aria-label="Close dialog"
           className="absolute right-4 top-4 text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
         >
           <X size={20} />
@@ -56,8 +121,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">{title}</h3>
-            <div className="text-sm font-medium text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            <h3 id={titleId} className="text-xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">{title}</h3>
+            <div id={descriptionId} className="text-sm font-medium text-neutral-500 dark:text-neutral-400 leading-relaxed">
               {message}
             </div>
           </div>
@@ -65,7 +130,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <div className="flex gap-3 w-full mt-2">
             {showCancel && (
               <button
+                ref={cancelRef}
                 onClick={onCancel}
+                disabled={isPending}
                 className="flex-1 px-4 py-2.5 bg-emerald-50 dark:bg-neutral-800 text-emerald-700 dark:text-emerald-200 font-bold rounded-xl border-2 border-emerald-200 dark:border-neutral-700 hover:bg-emerald-100 dark:hover:bg-neutral-700 hover:border-emerald-300 dark:hover:border-neutral-600 hover:-translate-y-0.5 transition-all duration-200"
               >
                 {cancelText}
@@ -73,13 +140,15 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             )}
 
             <button
+              ref={confirmRef}
               onClick={onConfirm}
+              disabled={isPending}
               className={`flex-1 px-4 py-2.5 font-bold rounded-xl border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-200 ${isDangerous
                 ? 'bg-rose-600 text-white'
                 : 'bg-indigo-600 text-white'
                 }`}
             >
-              {confirmText}
+              {isPending ? pendingText : confirmText}
             </button>
           </div>
         </div>

@@ -25,9 +25,9 @@ interface SidebarProps {
   collections: Collection[];
   selectedCollectionId: string | null | undefined;
   onSelectCollection: (id: string | null | undefined) => void;
-  onCreateCollection: (name: string) => void;
-  onEditCollection: (id: string, name: string) => void;
-  onDeleteCollection: (id: string) => void;
+  onCreateCollection: (name: string) => void | Promise<void>;
+  onEditCollection: (id: string, name: string) => void | Promise<void>;
+  onDeleteCollection: (id: string) => void | Promise<void>;
   onDrop?: (e: React.DragEvent, collectionId: string | null) => void;
 }
 
@@ -53,24 +53,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [collectionToShare, setCollectionToShare] = useState<string | null>(
     null,
   );
+  const [pendingAction, setPendingAction] = useState<
+    "create" | "rename" | "delete" | null
+  >(null);
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newCollectionName.trim()) {
-      onCreateCollection(newCollectionName);
+    const name = newCollectionName.trim();
+    if (name && !pendingAction) {
+      setPendingAction("create");
+      try {
+        await onCreateCollection(name);
       setNewCollectionName("");
       setIsCreating(false);
+      } catch {
+        // The action reports the actionable error; keep the entered name for retry.
+      } finally {
+        setPendingAction(null);
+      }
     }
   };
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingId && editName.trim()) {
-      onEditCollection(editingId, editName);
-      setEditingId(null);
+    const name = editName.trim();
+    if (editingId && name && !pendingAction) {
+      setPendingAction("rename");
+      try {
+        await onEditCollection(editingId, name);
+        setEditingId(null);
+      } catch {
+        // Keep the editor and proposed name open for a deliberate retry.
+      } finally {
+        setPendingAction(null);
+      }
     }
   };
   const handleItemContextMenu = (e: React.MouseEvent, id: string) => {
@@ -157,6 +176,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   setIsCreating(true);
                 }}
+                disabled={pendingAction !== null}
+                aria-label="New collection"
                 className="p-1 text-slate-400 dark:text-neutral-500 hover:text-indigo-600 dark:hover:text-neutral-200 hover:bg-indigo-50 dark:hover:bg-neutral-800 rounded-md transition-all opacity-0 group-hover/header:opacity-100"
                 title="New Collection"
               >
@@ -175,9 +196,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   value={newCollectionName}
                   onChange={(e) => setNewCollectionName(e.target.value)}
                   placeholder="New Collection..."
+                  disabled={pendingAction === "create"}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-neutral-800 border-2 border-black dark:border-neutral-700 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)] outline-none placeholder:text-slate-400 dark:placeholder:text-neutral-500 font-bold text-slate-900 dark:text-white"
                   onBlur={() => !newCollectionName && setIsCreating(false)}
                 />
+                {pendingAction === "create" && (
+                  <span aria-live="polite" className="mt-2 block text-xs font-bold text-indigo-600 dark:text-indigo-300">
+                    Creating collection...
+                  </span>
+                )}
               </form>
             )}
             {collections
@@ -205,7 +232,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   editValue={editName}
                   onEditChange={setEditName}
                   onEditSubmit={handleEditSubmit}
-                  onEditBlur={() => setEditingId(null)}
+                  onEditBlur={() => {
+                    if (pendingAction !== "rename") setEditingId(null);
+                  }}
+                  isEditPending={pendingAction === "rename"}
                   onDrop={onDrop}
                   extraAction={
                     <div className="flex items-center gap-1">
@@ -265,10 +295,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         title="Delete Collection"
         message="Are you sure you want to delete this collection? All drawings inside will be moved to Unorganized."
         confirmText="Delete Collection"
-        onConfirm={() => {
-          if (collectionToDelete) {
-            onDeleteCollection(collectionToDelete);
+        pendingText="Deleting collection..."
+        isPending={pendingAction === "delete"}
+        onConfirm={async () => {
+          if (!collectionToDelete || pendingAction) return;
+          setPendingAction("delete");
+          try {
+            await onDeleteCollection(collectionToDelete);
             setCollectionToDelete(null);
+          } catch {
+            // Keep the confirmation open so the user can retry.
+          } finally {
+            setPendingAction(null);
           }
         }}
         onCancel={() => setCollectionToDelete(null)}

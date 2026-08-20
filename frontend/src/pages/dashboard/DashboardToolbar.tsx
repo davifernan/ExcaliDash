@@ -85,6 +85,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   onCreateDrawing,
   onViewerActionError,
 }) => {
+  const [isCreatingDrawing, setIsCreatingDrawing] = React.useState(false);
   const canModifySelection =
     !isSharedView &&
     (!isSharedCollection || currentCollection?.sharedRole === "edit");
@@ -179,6 +180,11 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                 ? "Sort Ascending"
                 : "Sort Descending"
             }
+            aria-label={
+              sortConfig.direction === "asc"
+                ? "Sort ascending"
+                : "Sort descending"
+            }
           >
             {sortConfig.direction === "asc" ? (
               <ArrowUp size={18} />
@@ -200,6 +206,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                 : "bg-slate-100 dark:bg-neutral-900 border-slate-300 dark:border-neutral-800 text-slate-300 dark:text-neutral-700 cursor-not-allowed",
             )}
             title={allSelected ? "Deselect All" : "Select All"}
+            aria-label={allSelected ? "Deselect all drawings" : "Select all drawings"}
           >
             {allSelected ? <CheckSquare size={20} /> : <Square size={20} />}
           </button>
@@ -213,6 +220,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                 : "bg-slate-100 dark:bg-neutral-900 border-slate-300 dark:border-neutral-800 text-slate-300 dark:text-neutral-700 cursor-not-allowed",
             )}
             title={isTrashView ? "Delete Permanently" : "Move to Trash"}
+            aria-label={isTrashView ? "Delete selected drawings permanently" : "Move selected drawings to Trash"}
           >
             <Trash2 size={20} />
           </button>
@@ -226,6 +234,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                 : "bg-slate-100 dark:bg-neutral-900 border-slate-300 dark:border-neutral-800 text-slate-300 dark:text-neutral-700 cursor-not-allowed",
             )}
             title="Duplicate Selected"
+            aria-label="Duplicate selected drawings"
           >
             <Copy size={20} />
           </button>
@@ -242,6 +251,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                   : "bg-slate-100 dark:bg-neutral-900 border-slate-300 dark:border-neutral-800 text-slate-300 dark:text-neutral-700 cursor-not-allowed",
               )}
               title="Move Selected"
+              aria-label="Move selected drawings"
             >
               <div className="relative">
                 <Folder size={20} />
@@ -318,16 +328,25 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
           <Upload size={18} strokeWidth={2.5} /> Import
         </button>
         <button
-          onClick={onCreateDrawing}
-          disabled={isTrashView || isSharedView}
+          onClick={async () => {
+            if (isCreatingDrawing) return;
+            setIsCreatingDrawing(true);
+            try {
+              await onCreateDrawing();
+            } finally {
+              setIsCreatingDrawing(false);
+            }
+          }}
+          disabled={isTrashView || isSharedView || isCreatingDrawing}
           className={clsx(
             "h-[42px] w-full sm:w-auto flex items-center justify-center gap-2 px-6 rounded-xl border-2 border-black dark:border-neutral-700 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)] transition-all font-bold text-sm whitespace-nowrap",
-            isTrashView || isSharedView
+            isTrashView || isSharedView || isCreatingDrawing
               ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border-slate-300 dark:border-slate-700 shadow-none cursor-not-allowed"
               : "bg-indigo-600 dark:bg-neutral-800 text-white hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] hover:-translate-y-1 active:translate-y-0 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:active:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]",
           )}
         >
-          <Plus size={18} strokeWidth={2.5} /> New Drawing
+          <Plus size={18} strokeWidth={2.5} />
+          {isCreatingDrawing ? "Creating..." : "New Drawing"}
         </button>
       </div>
     </div>

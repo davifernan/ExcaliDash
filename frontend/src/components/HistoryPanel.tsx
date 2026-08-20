@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, RotateCcw, Eye, Clock } from "lucide-react";
 import * as api from "../api";
 import clsx from "clsx";
+import { toast } from "sonner";
 
 type Props = {
   drawingId: string;
@@ -35,20 +36,28 @@ export const HistoryPanel: React.FC<Props> = ({
   const [snapshots, setSnapshots] = useState<api.DrawingSnapshotSummary[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<api.DrawingSnapshotFull | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<{
+    snapshotId: string;
+    message: string;
+  } | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await api.getDrawingHistory(drawingId, { limit: 100 });
       setSnapshots(data.snapshots);
       setTotalCount(data.totalCount);
     } catch {
-      // ignore
+      setLoadError(
+        "Version history couldn't be loaded. The server may be restarting or your connection may be offline. Check your connection and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -60,6 +69,7 @@ export const HistoryPanel: React.FC<Props> = ({
       setPreviewId(null);
       setPreviewData(null);
       setConfirmRestore(null);
+      setRestoreError(null);
     } else {
       // Panel closed — restore current canvas
       if (previewId) onPreview(null);
@@ -90,9 +100,11 @@ export const HistoryPanel: React.FC<Props> = ({
   const handleRestore = async (snapshotId: string) => {
     if (confirmRestore !== snapshotId) {
       setConfirmRestore(snapshotId);
+      setRestoreError(null);
       return;
     }
-    setRestoring(true);
+    setRestoring(snapshotId);
+    setRestoreError(null);
     try {
       // Fetch full snapshot if not already loaded
       let data = previewData;
@@ -101,11 +113,16 @@ export const HistoryPanel: React.FC<Props> = ({
       }
       await api.restoreDrawingSnapshot(drawingId, snapshotId);
       onRestore(data);
+      toast.success(`Version ${data.version} restored successfully.`);
       onClose();
     } catch {
-      // ignore
+      const version = snapshots.find((snapshot) => snapshot.id === snapshotId)?.version;
+      setRestoreError({
+        snapshotId,
+        message: `Couldn't restore version ${version ?? ""}. The server did not complete the request. Check your connection and try again.`,
+      });
     } finally {
-      setRestoring(false);
+      setRestoring(null);
       setConfirmRestore(null);
     }
   };
@@ -135,6 +152,7 @@ export const HistoryPanel: React.FC<Props> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close version history"
             className="p-1 rounded-lg text-neutral-400 hover:text-neutral-950 dark:hover:text-white transition-colors"
           >
             <X size={18} />
@@ -143,9 +161,22 @@ export const HistoryPanel: React.FC<Props> = ({
 
         {/* Snapshot list */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {loading ? (
+          {loading && snapshots.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-neutral-400">
               <span className="text-sm font-bold">Loading history...</span>
+            </div>
+          ) : loadError && snapshots.length === 0 ? (
+            <div role="alert" className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+              <span className="text-sm font-bold text-rose-700 dark:text-rose-300">
+                {loadError}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadHistory()}
+                className="px-4 py-2 text-sm font-bold rounded-lg border-2 border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+              >
+                Try again
+              </button>
             </div>
           ) : snapshots.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-neutral-400 gap-2">
@@ -157,6 +188,14 @@ export const HistoryPanel: React.FC<Props> = ({
             </div>
           ) : (
             <div className="space-y-3">
+              {loadError && (
+                <div role="alert" className="rounded-lg border-2 border-amber-500 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs font-bold text-amber-900 dark:text-amber-100">
+                  {loadError} Existing versions are still shown below.
+                  <button type="button" onClick={() => void loadHistory()} className="ml-2 underline">
+                    Try again
+                  </button>
+                </div>
+              )}
               {snapshots.map((snap) => (
                 <div
                   key={snap.id}
@@ -182,6 +221,7 @@ export const HistoryPanel: React.FC<Props> = ({
                     <div className="flex gap-2">
                       <button
                         onClick={() => handlePreview(snap.id)}
+                        disabled={previewLoading && previewId === snap.id}
                         className={clsx(
                           "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border-2 transition-all duration-200 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none",
                           previewId === snap.id
@@ -194,7 +234,12 @@ export const HistoryPanel: React.FC<Props> = ({
                       </button>
                       <button
                         onClick={() => handleRestore(snap.id)}
-                        disabled={restoring}
+                        disabled={restoring !== null}
+                        aria-label={
+                          confirmRestore === snap.id
+                            ? `Confirm restore version ${snap.version}`
+                            : `Restore version ${snap.version}`
+                        }
                         className={clsx(
                           "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:translate-x-[1px] active:translate-y-[1px] active:shadow-none",
                           confirmRestore === snap.id
@@ -203,14 +248,20 @@ export const HistoryPanel: React.FC<Props> = ({
                         )}
                       >
                         <RotateCcw size={12} strokeWidth={2.5} />
-                        {confirmRestore === snap.id
-                          ? "Confirm?"
-                          : restoring
+                        {restoring === snap.id
                           ? "Restoring..."
+                          : confirmRestore === snap.id
+                          ? "Confirm restore"
                           : "Restore"}
                       </button>
                     </div>
                   </div>
+
+                  {restoreError?.snapshotId === snap.id && (
+                    <div role="alert" className="border-t-2 border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs font-bold text-rose-700 dark:text-rose-300">
+                      {restoreError.message}
+                    </div>
+                  )}
 
                   {/* Preview info pane */}
                   {previewId === snap.id && (

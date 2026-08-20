@@ -238,4 +238,67 @@ describe("useDashboardData", () => {
       "shared-a",
     ]);
   });
+
+  it("reports drawing load failures without discarding previously loaded drawings", async () => {
+    getDrawingsMock
+      .mockResolvedValueOnce({
+        drawings: [makeDrawing("kept")],
+        totalCount: 1,
+        limit: 24,
+        offset: 0,
+      })
+      .mockRejectedValueOnce(new Error("backend unavailable"));
+    getCollectionsMock.mockResolvedValue([]);
+
+    const { result } = renderHook(() =>
+      useDashboardData({
+        debouncedSearch: "",
+        selectedCollectionId: undefined,
+        sortField: "updatedAt",
+        sortDirection: "desc",
+        pageSize: 24,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.refreshData();
+    });
+
+    expect(result.current.drawings.map((drawing) => drawing.id)).toEqual(["kept"]);
+    expect(result.current.drawingsError).toMatch(/couldn't load drawings/i);
+  });
+
+  it("reports collection and pagination failures separately", async () => {
+    getDrawingsMock
+      .mockResolvedValueOnce({
+        drawings: [makeDrawing("first")],
+        totalCount: 2,
+        limit: 24,
+        offset: 0,
+      })
+      .mockRejectedValueOnce(new Error("next page failed"));
+    getCollectionsMock.mockRejectedValue(new Error("collections failed"));
+
+    const { result } = renderHook(() =>
+      useDashboardData({
+        debouncedSearch: "",
+        selectedCollectionId: undefined,
+        sortField: "updatedAt",
+        sortDirection: "desc",
+        pageSize: 24,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.collectionsError).toMatch(/couldn't load collections/i);
+
+    await act(async () => {
+      await result.current.fetchMore();
+    });
+
+    expect(result.current.loadMoreError).toMatch(/couldn't load more drawings/i);
+    expect(result.current.drawings.map((drawing) => drawing.id)).toEqual(["first"]);
+  });
 });

@@ -3,6 +3,10 @@ import * as api from "../../api";
 import type { DrawingSortField, SortDirection } from "../../api";
 import type { Collection, DrawingSummary } from "../../types";
 import { isLatestRequest, mergeUniqueDrawings } from "./pagination";
+import {
+  resetDashboardDataStatus,
+  setDashboardDataStatus,
+} from "./dashboardDataStatus";
 
 type SelectedCollectionId = string | null | undefined;
 
@@ -28,6 +32,9 @@ export const useDashboardData = ({
   const [totalCount, setTotalCount] = useState(0);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [drawingsError, setDrawingsError] = useState<string | null>(null);
+  const [collectionsError, setCollectionsError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const listRequestVersionRef = useRef(0);
   const nextOffsetRef = useRef(0);
 
@@ -36,6 +43,9 @@ export const useDashboardData = ({
   const refreshData = useCallback(async () => {
     const requestVersion = ++listRequestVersionRef.current;
     setIsLoading(true);
+    setDrawingsError(null);
+    setCollectionsError(null);
+    setLoadMoreError(null);
     try {
       const isSharedView = selectedCollectionId === "shared";
       const drawingsPromise = isSharedView
@@ -68,15 +78,27 @@ export const useDashboardData = ({
         onRefreshSuccess?.();
       } else {
         console.error("Failed to fetch drawings:", drawingsResult.reason);
+        setDrawingsError(
+          "We couldn't load drawings. The server may be restarting or your connection may be offline. Check your connection and try again.",
+        );
       }
 
       if (collectionsResult.status === "fulfilled") {
         setCollections(collectionsResult.value);
       } else {
         console.error("Failed to fetch collections:", collectionsResult.reason);
+        setCollectionsError(
+          "We couldn't load collections. The server may be restarting or your connection may be offline. Check your connection and try again.",
+        );
       }
     } catch (err) {
       console.error("Failed to fetch data:", err);
+      setDrawingsError(
+        "We couldn't load drawings. The server may be restarting or your connection may be offline. Check your connection and try again.",
+      );
+      setCollectionsError(
+        "We couldn't load collections. The server may be restarting or your connection may be offline. Check your connection and try again.",
+      );
     } finally {
       if (isLatestRequest(requestVersion, listRequestVersionRef.current)) {
         setIsLoading(false);
@@ -95,6 +117,7 @@ export const useDashboardData = ({
     if (isFetchingMore || !hasMore || isLoading) return;
     const requestVersion = listRequestVersionRef.current;
     setIsFetchingMore(true);
+    setLoadMoreError(null);
     try {
       const isSharedView = selectedCollectionId === "shared";
       const drawingsRes = await (isSharedView
@@ -119,6 +142,11 @@ export const useDashboardData = ({
       nextOffsetRef.current += drawingsRes.drawings.length;
     } catch (err) {
       console.error("Failed to fetch more data:", err);
+      if (isLatestRequest(requestVersion, listRequestVersionRef.current)) {
+        setLoadMoreError(
+          "We couldn't load more drawings. The server may be restarting or your connection may be offline. Try again to continue the list.",
+        );
+      }
     } finally {
       setIsFetchingMore(false);
     }
@@ -137,6 +165,25 @@ export const useDashboardData = ({
     refreshData();
   }, [refreshData]);
 
+  useEffect(() => {
+    setDashboardDataStatus({
+      drawingsError,
+      collectionsError,
+      loadMoreError,
+      retryDrawings: () => void refreshData(),
+      retryCollections: () => void refreshData(),
+      retryMore: () => void fetchMore(),
+    });
+  }, [
+    drawingsError,
+    collectionsError,
+    loadMoreError,
+    refreshData,
+    fetchMore,
+  ]);
+
+  useEffect(() => resetDashboardDataStatus, []);
+
   return {
     drawings,
     setDrawings,
@@ -146,6 +193,9 @@ export const useDashboardData = ({
     setTotalCount,
     isFetchingMore,
     isLoading,
+    drawingsError,
+    collectionsError,
+    loadMoreError,
     hasMore,
     refreshData,
     fetchMore,

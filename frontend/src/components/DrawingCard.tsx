@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { PenTool, Check, Clock } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { PenTool, Check, Clock, MoreVertical } from "lucide-react";
 import type { DrawingSummary, Collection } from "../types";
 import { formatDistanceToNow } from "date-fns";
 import clsx from "clsx";
@@ -57,6 +57,7 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
   const [showStorageModal, setShowStorageModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const actionsButtonRef = useRef<HTMLButtonElement>(null);
   const { previewSvg, hasEmbeddedImages, buildExportDrawing } =
     useDrawingPreview(drawing, onPreviewGenerated);
 
@@ -109,6 +110,17 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
     setShowMoveSubmenu(false);
   };
 
+  const handleActionsClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContextMenu({
+      x: Math.max(8, Math.min(rect.right - 176, window.innerWidth - 184)),
+      y: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 280)),
+    });
+    setShowMoveSubmenu(false);
+  };
+
   return (
     <>
       <div
@@ -140,7 +152,7 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
         )}
       >
         <div
-          className="absolute top-2.5 right-2.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          className="absolute top-2.5 left-2.5 z-20 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity duration-200"
           style={{ opacity: isSelected ? 1 : undefined }}
         >
           <button
@@ -162,13 +174,29 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
           </button>
         </div>
 
-        <div
+        <button
+          ref={actionsButtonRef}
+          type="button"
+          onClick={handleActionsClick}
+          aria-label={`Actions for ${drawing.name}`}
+          aria-haspopup="menu"
+          aria-expanded={contextMenu !== null}
+          className="absolute top-2.5 right-2.5 z-20 flex h-9 w-9 items-center justify-center rounded-lg border-2 border-black dark:border-neutral-600 bg-white dark:bg-neutral-800 text-slate-700 dark:text-neutral-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus:opacity-100 transition-opacity"
+        >
+          <MoreVertical size={18} aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          aria-label={`Open ${drawing.name}`}
+          disabled={isTrash}
           onClick={(e) => !isTrash && onClick(drawing.id, e)}
           className={clsx(
             "aspect-[16/10] bg-slate-50 dark:bg-neutral-800/30 relative overflow-hidden flex items-center justify-center border-b-2 border-black dark:border-neutral-700 rounded-t-xl transition-colors",
             !isTrash &&
               "cursor-pointer group-hover:bg-neutral-100/10 dark:group-hover:bg-neutral-850",
             isTrash && "cursor-default",
+            "w-full text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/60 focus-visible:ring-inset disabled:opacity-100",
           )}
         >
           <div className="absolute inset-0 opacity-[0.25] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] [background-size:24px_24px]"></div>
@@ -190,7 +218,7 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
               />
             </div>
           )}
-        </div>
+        </button>
 
         <div className="p-4 sm:p-5 bg-white dark:bg-neutral-900 rounded-b-2xl relative z-10 flex-1 flex flex-col justify-between">
           <div>
@@ -268,7 +296,10 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
           exportError={exportError}
           showMoveSubmenu={showMoveSubmenu}
           onShowMoveSubmenu={setShowMoveSubmenu}
-          onClose={() => setContextMenu(null)}
+          onClose={() => {
+            setContextMenu(null);
+            actionsButtonRef.current?.focus();
+          }}
           onRename={() => {
             setIsRenaming(true);
             setContextMenu(null);

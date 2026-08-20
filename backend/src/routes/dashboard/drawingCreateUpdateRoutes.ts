@@ -16,6 +16,7 @@ import {
   syncDrawingAssets,
 } from "../../assets/assetService";
 import type { DrawingRouteContext } from "./drawingRouteContext";
+import { pruneDrawingSnapshots } from "../../snapshots/snapshotRetention";
 
 export const registerDrawingCreateUpdateRoutes = (
   app: express.Express,
@@ -269,6 +270,8 @@ export const registerDrawingCreateUpdateRoutes = (
             if (payload.elements !== undefined) {
               await syncDrawingAssets(tx, id, referencedAssetIds(payload.elements));
             }
+
+            await pruneDrawingSnapshots(tx, id, config.snapshotMaxCountPerDrawing);
 
             return tx.drawing.findFirst({ where: { id } });
           });

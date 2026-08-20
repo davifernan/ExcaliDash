@@ -30,6 +30,7 @@ import {
   SOCKET_QUEUE_LIMITS,
   type PresenceUser,
 } from "./socketProtocol";
+import { ActiveAccountCache } from "./activeAccountCache";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -54,6 +55,13 @@ export const registerSocketHandlers = ({
   const drawingBySocket = new Map<string, string>();
   const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
   let followManager: ReturnType<typeof createSocketFollowManager>;
+  const activeAccounts = new ActiveAccountCache(async (userId) => {
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true },
+    });
+    return Boolean(account?.isActive);
+  });
 
   io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
@@ -84,6 +92,7 @@ export const registerSocketHandlers = ({
       prisma,
       principal: principals.get(socketId) || null,
       drawingId,
+      isUserActive: (userId) => activeAccounts.get(userId),
     });
 
   const apiKeyHasScope = (socketId: string, scope: string) => {
@@ -365,6 +374,7 @@ export const registerSocketHandlers = ({
     recheckSockets,
     disconnectInactiveUserSockets: credentialGuard.disconnectInactiveUserSockets,
     disconnectApiKey,
+    invalidateUserStatus: (userId) => activeAccounts.invalidate(userId),
   });
 
   registerApiKeySocketRevoker(disconnectApiKey);

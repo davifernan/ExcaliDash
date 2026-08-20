@@ -13,12 +13,14 @@ export const createCollaborationAccessController = ({
   recheckSockets,
   disconnectInactiveUserSockets,
   disconnectApiKey,
+  invalidateUserStatus,
 }: {
   prisma: PrismaClient;
   principals: Map<string, DrawingPrincipal>;
   recheckSockets: (matches: (socketId: string, drawingId: string) => boolean) => Promise<void>;
   disconnectInactiveUserSockets: (userId: string) => Promise<void>;
   disconnectApiKey: (apiKeyId: string) => Promise<void>;
+  invalidateUserStatus?: (userId: string) => void;
 }): CollaborationAccessController => ({
   recheckDrawingAccess: (drawingId, affectedUserId) =>
     recheckSockets(
@@ -27,6 +29,7 @@ export const createCollaborationAccessController = ({
         (!affectedUserId || principals.get(socketId)?.userId === affectedUserId),
     ),
   recheckUserAccess: async (affectedUserId) => {
+    invalidateUserStatus?.(affectedUserId);
     const account = await prisma.user.findUnique({
       where: { id: affectedUserId },
       select: { isActive: true },

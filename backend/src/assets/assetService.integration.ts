@@ -132,6 +132,17 @@ describe("document bookkeeping", () => {
     expect(await usedBytesFor(prisma, userId)).toBe(80);
   });
 
+  it("admits concurrent uploads against one serialized owner quota", async () => {
+    const results = await Promise.allSettled([
+      upload("a".repeat(60), { deps: { maxPerUserBytes: 100 } }),
+      upload("b".repeat(60), { deps: { maxPerUserBytes: 100 } }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(await usedBytesFor(prisma, userId)).toBeLessThanOrEqual(100);
+  });
+
   describe("reconciling a board with what it draws", () => {
     it("turns a referenced document active", async () => {
       const { asset } = await upload("doc");

@@ -138,6 +138,15 @@ describe("streaming .excalidash import", () => {
     expect(harness.imported[0].name).toBe("Old backup");
   });
 
+  it("rejects scene JSON before parsing when the import working-set limit is exceeded", async () => {
+    const harness = await makeHarness({ MAX_IMPORT_SCENE_MEMORY_BYTES: 32 });
+    const response = await harness.invoke(await v1Archive());
+
+    expect(response.statusCode).toBe(413);
+    expect(response.body.message).toContain("safe in-memory import limit");
+    expect(harness.imported).toHaveLength(0);
+  });
+
   it("rejects an archive entry that escapes the archive root", async () => {
     const zip = new JSZip();
     const safeName = "safe/safe/namexx";

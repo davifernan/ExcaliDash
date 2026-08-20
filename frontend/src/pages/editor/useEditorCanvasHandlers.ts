@@ -22,6 +22,7 @@ type CanvasHandlerRefs = {
   initialSceneElements: MutableRefObject<readonly any[]>;
   isBootstrappingScene: MutableRefObject<boolean>;
   isSyncing: MutableRefObject<boolean>;
+  isHistoryPreviewing: MutableRefObject<boolean>;
   isUnmounting: MutableRefObject<boolean>;
   lastLocalChangeAt: MutableRefObject<number>;
   latestAppState: MutableRefObject<any>;
@@ -72,6 +73,7 @@ export const useEditorCanvasHandlers = ({
     initialSceneElements: initialSceneElementsRef,
     isBootstrappingScene: isBootstrappingSceneRef,
     isSyncing: isSyncingRef,
+    isHistoryPreviewing: isHistoryPreviewingRef,
     isUnmounting: isUnmountingRef,
     lastLocalChangeAt: lastLocalChangeAtRef,
     latestAppState: latestAppStateRef,
@@ -85,6 +87,10 @@ export const useEditorCanvasHandlers = ({
       if (!canEdit) return;
       if (isUnmountingRef.current) return;
       if (isSyncingRef.current) return;
+      // History preview is a read-only projection over the live canvas. Its
+      // updateScene call still fires Excalidraw's onChange callback, so this
+      // explicit gate must stay active for the whole preview session.
+      if (isHistoryPreviewingRef.current) return;
       latestAppStateRef.current = appState;
       const currentFiles = files || excalidrawAPIRef.current?.getFiles() || {};
       if (Object.keys(currentFiles).length > 0) {
@@ -129,6 +135,7 @@ export const useEditorCanvasHandlers = ({
       initialSceneElementsRef,
       isBootstrappingSceneRef,
       isSyncingRef,
+      isHistoryPreviewingRef,
       isUnmountingRef,
       latestAppStateRef,
       latestElementsRef,

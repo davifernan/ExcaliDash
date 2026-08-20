@@ -1,7 +1,7 @@
 import { createReadStream, promises as fs } from "node:fs";
+import { Readable } from "node:stream";
 import { createBrotliDecompress } from "node:zlib";
 import archiver from "archiver";
-import { Prisma } from "../../generated/client";
 import { resolveStoragePath } from "../../assets/assetStorage";
 import { decodeSnapshotField } from "../../snapshots/snapshotCodec";
 import {
@@ -34,7 +34,14 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
       const exportedAt = new Date().toISOString();
       const drawings = await prisma.drawing.findMany({
         where: { userId: req.user.id },
-        include: { collection: true },
+        select: {
+          id: true,
+          name: true,
+          collectionId: true,
+          version: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
       const userCollections = await prisma.collection.findMany({ where: { userId: req.user.id } });
       const drawingAssetRows = await prisma.drawingAsset.findMany({
@@ -43,7 +50,13 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
       });
       const snapshots = await prisma.drawingSnapshot.findMany({
         where: { drawing: { userId: req.user.id } },
-        include: { assets: { include: { asset: { include: { blob: true } } } } },
+        select: {
+          id: true,
+          drawingId: true,
+          version: true,
+          createdAt: true,
+          assets: { select: { assetId: true, asset: { include: { blob: true } } } },
+        },
       });
 
       const hasInternalTrashCollection = userCollections.some(
@@ -78,8 +91,7 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
         folderByCollectionId.set(collection.id, folder);
       }
 
-      type DrawingWithCollection = Prisma.DrawingGetPayload<{ include: { collection: true } }>;
-      const drawingsManifest = drawings.map((drawing: DrawingWithCollection) => {
+      const drawingsManifest = drawings.map((drawing) => {
         const folder = drawing.collectionId
           ? folderByCollectionId.get(drawing.collectionId) || unorganizedFolder
           : unorganizedFolder;
@@ -160,8 +172,13 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
         })),
         snapshots: snapshotManifest,
       };
+      const pdfBlobIds = new Set(
+        [...assetsById.values()]
+          .filter((asset) => asset.mimeType === "application/pdf")
+          .map((asset) => asset.blobId),
+      );
 
-      const serializeDrawing = (drawing: DrawingWithCollection) =>
+      const serializeDrawing = (drawing: any) =>
         JSON.stringify(
           {
             type: "excalidraw" as const,
@@ -196,28 +213,41 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
         return res.status(413).json({ error: "Backup manifest is too large" });
       }
       let exportedBytes = Buffer.byteLength(manifestJson);
-      const drawingJsonById = new Map<string, string>();
       for (const drawing of drawings) {
-        const json = serializeDrawing(drawing);
+        const scene = await prisma.drawing.findUnique({
+          where: { id: drawing.id },
+          select: { id: true, collectionId: true, elements: true, appState: true, files: true },
+        });
+        if (!scene) throw new Error(`Drawing disappeared during export: ${drawing.id}`);
+        const json = serializeDrawing(scene);
         const bytes = Buffer.byteLength(json);
         if (bytes > deps.MAX_IMPORT_ENTRY_BYTES || bytes > deps.MAX_IMPORT_DRAWING_BYTES) {
           return res.status(413).json({ error: "Drawing is too large", message: drawing.name });
         }
-        drawingJsonById.set(drawing.id, json);
         exportedBytes += bytes;
       }
-      const snapshotJsonById = new Map<string, string>();
       for (const snapshot of snapshots as any[]) {
-        const json = serializeSnapshot(snapshot);
+        const scene = await prisma.drawingSnapshot.findUnique({
+          where: { id: snapshot.id },
+          select: { id: true, version: true, elements: true, appState: true, files: true },
+        });
+        if (!scene) throw new Error(`Snapshot disappeared during export: ${snapshot.id}`);
+        const json = serializeSnapshot(scene);
         const bytes = Buffer.byteLength(json);
         if (bytes > deps.MAX_IMPORT_ENTRY_BYTES) {
           return res.status(413).json({ error: "Snapshot is too large", message: snapshot.id });
         }
-        snapshotJsonById.set(snapshot.id, json);
         exportedBytes += bytes;
       }
 
-      const blobSourceById = new Map<string, string>();
+      const sceneMemoryLimit = deps.MAX_IMPORT_SCENE_MEMORY_BYTES ?? 64 * 1024 * 1024;
+      if (exportedBytes > sceneMemoryLimit) {
+        return res.status(413).json({
+          error: "Backup is too large",
+          message: "Drawing and snapshot data exceed the safe export working-set limit",
+        });
+      }
+
       for (const blob of blobsById.values()) {
         if (blob.sizeBytes > deps.MAX_IMPORT_ENTRY_BYTES) {
           return res.status(413).json({ error: "Document is too large", message: blob.id });
@@ -226,7 +256,6 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
         const stat = await fs.lstat(sourcePath);
         if (!stat.isFile() || stat.isSymbolicLink())
           throw new Error(`Document original is missing: ${blob.id}`);
-        blobSourceById.set(blob.id, sourcePath);
         exportedBytes += blob.sizeBytes;
       }
       if (exportedBytes > deps.MAX_IMPORT_TOTAL_EXTRACTED_BYTES) {
@@ -262,21 +291,54 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
         const meta = drawingsManifestById.get(drawing.id);
         if (!meta) continue;
         assertSafeArchivePath(meta.filePath);
-        archive.append(drawingJsonById.get(drawing.id)!, { name: meta.filePath });
+        archive.append(
+          Readable.from(
+            (async function* () {
+              const scene = await prisma.drawing.findUnique({
+                where: { id: drawing.id },
+                select: {
+                  id: true,
+                  collectionId: true,
+                  elements: true,
+                  appState: true,
+                  files: true,
+                },
+              });
+              if (!scene) throw new Error(`Drawing disappeared during export: ${drawing.id}`);
+              yield serializeDrawing(scene);
+            })(),
+          ),
+          { name: meta.filePath },
+        );
       }
       for (const meta of snapshotManifest) {
         assertSafeArchivePath(meta.filePath);
-        archive.append(snapshotJsonById.get(meta.id)!, { name: meta.filePath });
+        archive.append(
+          Readable.from(
+            (async function* () {
+              const scene = await prisma.drawingSnapshot.findUnique({
+                where: { id: meta.id },
+                select: { id: true, version: true, elements: true, appState: true, files: true },
+              });
+              if (!scene) throw new Error(`Snapshot disappeared during export: ${meta.id}`);
+              yield serializeSnapshot(scene);
+            })(),
+          ),
+          { name: meta.filePath },
+        );
       }
       for (const meta of blobManifest) {
         assertSafeArchivePath(meta.filePath);
         const blob = blobsById.get(meta.id)!;
-        let source: NodeJS.ReadableStream = createReadStream(blobSourceById.get(meta.id)!);
-        if (blob.contentEncoding === "br") source = source.pipe(createBrotliDecompress());
-        const isPdf = [...assetsById.values()].some(
-          (asset) => asset.blobId === blob.id && asset.mimeType === "application/pdf",
+        const sourcePath = resolveStoragePath(deps.assetStorageDir, blob.storageKey);
+        const source = Readable.from(
+          (async function* () {
+            let original: NodeJS.ReadableStream = createReadStream(sourcePath);
+            if (blob.contentEncoding === "br") original = original.pipe(createBrotliDecompress());
+            for await (const chunk of original) yield chunk;
+          })(),
         );
-        archive.append(source as any, { name: meta.filePath, store: isPdf });
+        archive.append(source, { name: meta.filePath, store: pdfBlobIds.has(blob.id) });
       }
 
       archive.append(

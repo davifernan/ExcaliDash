@@ -27,6 +27,7 @@ import { mkdtemp, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { BoundedTaskQueue, QueueCapacityError } from "../utils/boundedTaskQueue";
 
 const run = promisify(execFile);
 
@@ -52,7 +53,17 @@ export type ShrinkOptions = {
   /** Files below this are left alone: the saving would not be worth the risk. */
   minBytes: number;
   timeoutMs?: number;
+  concurrency?: number;
+  maxWaiting?: number;
+  /** Test seam for the Ghostscript child process. */
+  runCommand?: (
+    file: string,
+    args: string[],
+    options: { timeout: number; maxBuffer: number },
+  ) => Promise<unknown>;
 };
+
+const shrinkQueue = new BoundedTaskQueue();
 
 /** Whether it is worth even trying, without touching the file. */
 export function shouldTryShrink(sizeBytes: number, options: ShrinkOptions): boolean {
@@ -76,10 +87,32 @@ export async function shrinkPdf(path: string, options: ShrinkOptions): Promise<S
     return { applied: false, originalBytes: before, finalBytes: before, reason: "too-small" };
   }
 
+  try {
+    return await shrinkQueue.run(
+      {
+        concurrency: options.concurrency ?? Number(process.env.ASSET_PDF_SHRINK_CONCURRENCY ?? "1"),
+        maxWaiting: options.maxWaiting ?? Number(process.env.ASSET_PDF_SHRINK_QUEUE_LIMIT ?? "2"),
+      },
+      () => rebuildPdf(path, before, options),
+    );
+  } catch (error) {
+    if (error instanceof QueueCapacityError) {
+      // Admission pressure should not make an otherwise valid upload unusable.
+      return { applied: false, originalBytes: before, finalBytes: before, reason: "failed" };
+    }
+    throw error;
+  }
+}
+
+async function rebuildPdf(
+  path: string,
+  before: number,
+  options: ShrinkOptions,
+): Promise<ShrinkResult> {
   const dir = await mkdtemp(join(tmpdir(), "pdfshrink-"));
   const rebuilt = join(dir, "out.pdf");
   try {
-    await run(
+    await (options.runCommand ?? run)(
       "gs",
       [
         "-sDEVICE=pdfwrite",

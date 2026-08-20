@@ -1,6 +1,12 @@
 import express from "express";
 import { canEditDrawing, canViewDrawing, getDrawingAccess } from "../../authz/sharing";
 import { decodeSnapshotField, encodeSnapshotField } from "../../snapshots/snapshotCodec";
+import {
+  captureSnapshotAssets,
+  referencedAssetIds,
+  syncDrawingAssets,
+} from "../../assets/assetService";
+import { pruneDrawingSnapshots } from "../../snapshots/snapshotRetention";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
 export const registerDrawingHistoryRoutes = (
@@ -16,6 +22,7 @@ export const registerDrawingHistoryRoutes = (
     invalidateDrawingsCache,
     getRequestPrincipal,
     respondWithAuthErrorIfPresent,
+    io,
   } = context;
   // ============================================================
   // Drawing Version History
@@ -113,31 +120,64 @@ export const registerDrawingHistoryRoutes = (
       if (!drawing) return res.status(404).json({ error: "Drawing not found" });
       if (!snapshot) return res.status(404).json({ error: "Snapshot not found" });
 
-      // Snapshot current state before restoring (so restore is reversible)
-      const compress = config.enableSnapshotCompression;
-      await prisma.drawingSnapshot.create({
-        data: {
-          drawingId: id,
-          version: drawing.version,
-          elements: encodeSnapshotField(drawing.elements, compress),
-          appState: encodeSnapshotField(drawing.appState, compress),
-          files: encodeSnapshotField(drawing.files, compress),
-        },
-      });
+      const restoredElements = decodeSnapshotField(snapshot.elements);
+      const restoredAppState = decodeSnapshotField(snapshot.appState);
+      const restoredFiles = decodeSnapshotField(snapshot.files);
+      const wantedAssetIds = referencedAssetIds(parseJsonField(restoredElements, []));
 
-      // Apply snapshot
-      const updated = await prisma.drawing.update({
-        where: { id },
-        data: {
-          // Drawing rows are always plain JSON — decode before restoring.
-          elements: decodeSnapshotField(snapshot.elements),
-          appState: decodeSnapshotField(snapshot.appState),
-          files: decodeSnapshotField(snapshot.files),
-          version: { increment: 1 },
-        },
+      const updated = await prisma.$transaction(async (tx) => {
+        const current = await tx.drawing.findUnique({ where: { id } });
+        if (!current) throw new Error("Drawing disappeared during restore");
+        // Snapshot current state before restoring (so restore is reversible),
+        // including the documents that make that state usable.
+        const backup = await tx.drawingSnapshot.create({
+          data: {
+            drawingId: id,
+            version: current.version,
+            elements: encodeSnapshotField(current.elements, config.enableSnapshotCompression),
+            appState: encodeSnapshotField(current.appState, config.enableSnapshotCompression),
+            files: encodeSnapshotField(current.files, config.enableSnapshotCompression),
+          },
+        });
+        await captureSnapshotAssets(tx, backup.id, id);
+
+        // A document removed from the current board remains reachable through
+        // the historical snapshot. Reattach those links before the ordinary
+        // reconciliation validates the restored element ids.
+        const archivedAssets = await tx.drawingSnapshotAsset.findMany({
+          where: { snapshotId },
+          select: { assetId: true },
+        });
+        const archivedAssetIds = new Set(archivedAssets.map((row: any) => row.assetId));
+        const missing = wantedAssetIds.filter((assetId) => !archivedAssetIds.has(assetId));
+        if (missing.length > 0) {
+          throw new Error("Snapshot document references are incomplete");
+        }
+        for (const assetId of wantedAssetIds) {
+          await tx.drawingAsset.upsert({
+            where: { drawingId_assetId: { drawingId: id, assetId } },
+            create: { drawingId: id, assetId, state: "ACTIVE", expiresAt: null },
+            update: { state: "ACTIVE", expiresAt: null },
+          });
+        }
+        await syncDrawingAssets(tx, id, wantedAssetIds);
+
+        const restored = await tx.drawing.update({
+          where: { id },
+          data: {
+            // Drawing rows are always plain JSON — decode before restoring.
+            elements: restoredElements,
+            appState: restoredAppState,
+            files: restoredFiles,
+            version: { increment: 1 },
+          },
+        });
+        await pruneDrawingSnapshots(tx, id, config.snapshotMaxCountPerDrawing);
+        return restored;
       });
 
       invalidateDrawingsCache();
+      io.to(`drawing_${id}`).emit("drawing-server-update", { drawingId: id });
 
       return res.json({
         ...updated,

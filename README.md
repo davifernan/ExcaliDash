@@ -39,7 +39,7 @@ A self-hosted dashboard and organizer for [Excalidraw](https://github.com/excali
 <details>
 <summary>Version history and restore</summary>
 
-Automatically retain recent drawing snapshots, preview past versions from the editor, and restore a previous state when needed.
+Automatically retain recent drawing snapshots, preview past versions without saving the preview, and restore a previous state across every open editor. History is bounded by both age and a configurable per-drawing snapshot count.
 
 </details>
 

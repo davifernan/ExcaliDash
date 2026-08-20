@@ -16,6 +16,7 @@ type EditorDialogsProps = {
   isHistoryOpen: boolean;
   isShareOpen: boolean;
   previewBackupRef: React.MutableRefObject<PreviewBackup | null>;
+  isHistoryPreviewingRef: React.MutableRefObject<boolean>;
   onCloseHistory: () => void;
   onCloseShare: () => void;
 };
@@ -27,6 +28,7 @@ export const EditorDialogs: React.FC<EditorDialogsProps> = ({
   isHistoryOpen,
   isShareOpen,
   previewBackupRef,
+  isHistoryPreviewingRef,
   onCloseHistory,
   onCloseShare,
 }) => {
@@ -48,6 +50,7 @@ export const EditorDialogs: React.FC<EditorDialogsProps> = ({
           const excalidrawAPI = excalidrawAPIRef.current;
           if (!excalidrawAPI) return;
           if (snapshot) {
+            isHistoryPreviewingRef.current = true;
             if (!previewBackupRef.current) {
               previewBackupRef.current = {
                 elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
@@ -81,8 +84,15 @@ export const EditorDialogs: React.FC<EditorDialogsProps> = ({
             }
             previewBackupRef.current = null;
           }
+          // updateScene notifies onChange as part of the scene update. Release
+          // the guard on the next task so the restoration callback cannot be
+          // mistaken for a user edit either.
+          window.setTimeout(() => {
+            isHistoryPreviewingRef.current = false;
+          }, 0);
         }}
         onRestore={() => {
+          isHistoryPreviewingRef.current = false;
           previewBackupRef.current = null;
           window.location.reload();
         }}

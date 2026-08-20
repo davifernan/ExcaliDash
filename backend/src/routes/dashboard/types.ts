@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { Prisma, PrismaClient } from "../../generated/client";
 import type { CollaborationAccessController } from "../../server/collaborationAccess";
+import type { Server as SocketIoServer } from "socket.io";
 
 export type SortField = "name" | "createdAt" | "updatedAt";
 export type SortDirection = "asc" | "desc";
@@ -46,6 +47,7 @@ export type DashboardRouteDeps = {
   ensureTrashCollection: EnsureTrashCollection;
   invalidateDrawingsCache: () => void;
   collaborationAccess: CollaborationAccessController;
+  io: SocketIoServer;
   buildDrawingsCacheKey: BuildDrawingsCacheKey;
   getCachedDrawingsBody: (key: string) => Buffer | null;
   cacheDrawingsResponse: (key: string, payload: unknown) => Buffer;
@@ -54,6 +56,7 @@ export type DashboardRouteDeps = {
     nodeEnv: string;
     enableAuditLogging: boolean;
     enableSnapshotCompression: boolean;
+    snapshotMaxCountPerDrawing: number;
   };
   logAuditEvent: LogAuditEvent;
   processFilesForS3: (

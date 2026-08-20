@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { execFile } from "node:child_process";
 import { copyFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,6 +48,43 @@ describe("describing the result", () => {
         reason: "not-smaller",
       }),
     ).toBeNull();
+  });
+});
+
+describe("Ghostscript admission", () => {
+  it("runs one process and bounds the shared wait queue", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "shrinkqueue-"));
+    try {
+      const paths = [1, 2, 3].map((number) => join(dir, `${number}.pdf`));
+      await Promise.all(paths.map((path) => writeFile(path, `%PDF-${"x".repeat(100)}`)));
+      let active = 0;
+      let maximum = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const runCommand = vi.fn(async (_file: string, args: string[]) => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        if (runCommand.mock.calls.length === 1) await gate;
+        const output = args.find((arg) => arg.startsWith("-sOutputFile="))!.slice(13);
+        await writeFile(output, "%PDF-small");
+        active -= 1;
+      });
+      const options = opts({ concurrency: 1, maxWaiting: 1, runCommand });
+
+      const first = shrinkPdf(paths[0], options);
+      await vi.waitFor(() => expect(active).toBe(1));
+      const second = shrinkPdf(paths[1], options);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const third = await shrinkPdf(paths[2], options);
+      expect(third.reason).toBe("failed");
+      release();
+      await Promise.all([first, second]);
+
+      expect(runCommand).toHaveBeenCalledTimes(2);
+      expect(maximum).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

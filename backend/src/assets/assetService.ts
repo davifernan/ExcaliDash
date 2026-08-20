@@ -48,6 +48,29 @@ type Deps = {
   now?: () => number;
 };
 
+const ownerUploadTails = new Map<string, Promise<void>>();
+
+/**
+ * Serialize quota admission per owner. The critical section includes the
+ * usage read, stream write and asset rows, so a second upload observes the
+ * first one rather than the same stale byte count.
+ */
+async function withOwnerUploadAdmission<T>(ownerUserId: string, work: () => Promise<T>) {
+  const previous = ownerUploadTails.get(ownerUserId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  ownerUploadTails.set(ownerUserId, current);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (ownerUploadTails.get(ownerUserId) === current) ownerUploadTails.delete(ownerUserId);
+  }
+}
+
 /**
  * How many bytes of disk this owner's documents occupy.
  *
@@ -84,6 +107,10 @@ export type CreateAssetInput = {
  * reach.
  */
 export async function createAsset(deps: Deps, input: CreateAssetInput) {
+  return withOwnerUploadAdmission(input.ownerUserId, () => createAssetAdmitted(deps, input));
+}
+
+async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
   const now = deps.now?.() ?? Date.now();
 
   const used = await usedBytesFor(deps.prisma, input.ownerUserId);

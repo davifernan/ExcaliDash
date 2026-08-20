@@ -53,22 +53,46 @@ export function useStickyNotes({
   const [armed, setArmed] = useState(false);
   const [color, setColor] = useState<StickyColor>(DEFAULT_STICKY_COLOR);
 
+  const setTool = (tool: any) => excalidrawAPI.current?.setActiveTool?.(tool);
+  const armTool = () => setTool({ type: "custom", customType: STICKY_TOOL });
+  const dropTool = () => setTool({ type: "selection" });
+
+  /**
+   * Watching for the tool being taken out of our hand.
+   *
+   * Arming is ours to record, but putting the tool down is not: Escape, another
+   * tool, the toolbar all go through Excalidraw and never tell us. Without this
+   * the button stayed lit and the ghost note kept following the pointer after
+   * the tool was long gone.
+   *
+   * The subscription only exists while armed, which is also what keeps it
+   * honest: on mount the editor has not handed over its API yet, and an effect
+   * that ran once then would find nothing to subscribe to and never try again.
+   */
+  useEffect(() => {
+    const api = excalidrawAPI.current;
+    if (!armed || !api?.onChange) return;
+
+    return api.onChange(() => {
+      const tool = excalidrawAPI.current?.getAppState?.()?.activeTool;
+      if (tool?.type !== "custom" || tool.customType !== STICKY_TOOL) setArmed(false);
+    });
+  }, [armed, excalidrawAPI]);
+
   const disarm = () => {
     setArmed(false);
-    excalidrawAPI.current?.setActiveTool?.({ type: "selection" });
+    dropTool();
   };
 
   const arm = () => {
     if (!canEdit) return;
     if (armed) {
-      disarm();
-      return;
+      setArmed(false);
+      dropTool();
+    } else {
+      setArmed(true);
+      armTool();
     }
-    setArmed(true);
-    excalidrawAPI.current?.setActiveTool?.({
-      type: "custom",
-      customType: STICKY_TOOL,
-    });
   };
 
   // Subscribed only while the tool is armed.
@@ -90,7 +114,6 @@ export function useStickyNotes({
 
       // Back to selection straight away: one click, one note. Staying armed
       // would drop another note on every later click on the board.
-      setArmed(false);
       api.setActiveTool?.({ type: "selection" });
 
       const { x, y } = pointerDownState.origin;
@@ -106,9 +129,7 @@ export function useStickyNotes({
     });
   }, [armed, canEdit, color, containerRef, excalidrawAPI, onTypingUnavailable]);
 
-  // The tool answers to a key like every other tool does. It lives here rather
-  // than with the other shortcuts because toggling needs to know whether the
-  // tool is already in hand, and that is this hook's state.
+  // The tool answers to a key like every other tool does.
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !canEdit) return;
@@ -122,32 +143,16 @@ export function useStickyNotes({
       event.preventDefault();
       if (armed) {
         setArmed(false);
-        excalidrawAPI.current?.setActiveTool?.({ type: "selection" });
+        dropTool();
       } else {
         setArmed(true);
-        excalidrawAPI.current?.setActiveTool?.({
-          type: "custom",
-          customType: STICKY_TOOL,
-        });
+        armTool();
       }
     };
 
     container.addEventListener("keydown", onKeyDown);
     return () => container.removeEventListener("keydown", onKeyDown);
   }, [armed, canEdit, containerRef, excalidrawAPI]);
-
-  // Leaving the tool armed with no way out would trap somebody who changed
-  // their mind, and Escape is where everyone reaches first.
-  useEffect(() => {
-    if (!armed) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setArmed(false);
-      excalidrawAPI.current?.setActiveTool?.({ type: "selection" });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [armed, excalidrawAPI]);
 
   return { armed, color, arm, disarm, setColor };
 }

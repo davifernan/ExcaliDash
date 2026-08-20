@@ -9,6 +9,7 @@ import React, { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { StickyHandles } from "./StickyHandles";
 import { StickyPalette } from "./StickyPalette";
+import { StickyPreview } from "./StickyPreview";
 import { StickyToolbarButton } from "./StickyToolbarButton";
 import { useStickyKeys } from "./useStickyKeys";
 import { useStickyNotes } from "./useStickyNotes";
@@ -62,6 +63,13 @@ export function useStickyNotesFeature({
     <>
       <StickyToolbarButton containerRef={containerRef} armed={armed} color={color} onArm={arm} />
       {armed && <StickyPalette toolbar={toolbar} color={color} onPick={setColor} />}
+      {armed && (
+        <StickyPreview
+          excalidrawAPI={excalidrawAPI}
+          containerRef={containerRef}
+          color={color}
+        />
+      )}
       <StickyHandles excalidrawAPI={excalidrawAPI} containerRef={containerRef} canEdit={canEdit} />
     </>
   ) : null;

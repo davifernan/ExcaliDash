@@ -2,51 +2,48 @@ import { describe, expect, it, vi } from "vitest";
 import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
 
 describe("socket room lifecycle", () => {
-  it("rejoins and restores follow state for every new socket id", () => {
+  it("retries a lost join acknowledgement and restores the current follow target", () => {
+    vi.useFakeTimers();
     const handlers = new Map<string, () => void>();
+    const acknowledgements: Array<(value: any) => void> = [];
     const socket: any = {
       id: "socket-1",
       connected: true,
       on: vi.fn((event: string, handler: () => void) => handlers.set(event, handler)),
       off: vi.fn(),
       emit: vi.fn((event: string, _payload: unknown, ack?: (value: any) => void) => {
-        if (event === "join-room") {
-          ack?.({ presence: { presenceId: socket.id } });
-        }
+        if (event === "join-room" && ack) acknowledgements.push(ack);
       }),
     };
     const resetConnectionState = vi.fn();
     const onJoined = vi.fn();
+    let followTarget = "target-before-timeout";
     const cleanup = bindSocketRoomLifecycle({
       socket,
       drawingId: "drawing-1",
       user: { name: "User" } as any,
       resetConnectionState,
       onJoined,
-      getFollowTargetPresenceId: () => "target-socket",
+      getFollowTargetPresenceId: () => followTarget,
     });
 
-    expect(socket.emit).toHaveBeenCalledWith(
-      "join-room",
-      { drawingId: "drawing-1", user: { name: "User" } },
-      expect.any(Function),
-    );
-    expect(onJoined).toHaveBeenLastCalledWith({ presenceId: "socket-1" });
+    expect(acknowledgements).toHaveLength(1);
+    followTarget = "target-after-timeout";
+    vi.advanceTimersByTime(2_250);
+    expect(acknowledgements).toHaveLength(2);
+    acknowledgements[1]({ ok: true, presence: { presenceId: "socket-1" } });
+
+    expect(onJoined).toHaveBeenCalledWith({ presenceId: "socket-1" });
     expect(socket.emit).toHaveBeenCalledWith("follow-user", {
       drawingId: "drawing-1",
-      targetPresenceId: "target-socket",
+      targetPresenceId: "target-after-timeout",
       action: "FOLLOW",
     });
-
-    handlers.get("disconnect")?.();
-    socket.id = "socket-2";
-    handlers.get("connect")?.();
-
-    expect(onJoined).toHaveBeenLastCalledWith({ presenceId: "socket-2" });
     expect(socket.emit.mock.calls.filter(([event]: [string]) => event === "join-room"))
       .toHaveLength(2);
-    expect(resetConnectionState).toHaveBeenCalledTimes(3);
+    expect(resetConnectionState).toHaveBeenCalledOnce();
     cleanup();
+    vi.useRealTimers();
   });
 
   it("ignores a stale join acknowledgement from an old connection", () => {
@@ -62,7 +59,7 @@ describe("socket room lifecycle", () => {
       }),
     };
     const onJoined = vi.fn();
-    bindSocketRoomLifecycle({
+    const cleanup = bindSocketRoomLifecycle({
       socket,
       drawingId: "drawing-1",
       user: {} as any,
@@ -79,5 +76,6 @@ describe("socket room lifecycle", () => {
 
     expect(onJoined).toHaveBeenCalledOnce();
     expect(onJoined).toHaveBeenCalledWith({ presenceId: "socket-new" });
+    cleanup();
   });
 });

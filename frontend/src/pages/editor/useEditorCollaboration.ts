@@ -4,7 +4,7 @@ import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 import type { UserIdentity } from "../../utils/identity";
 import { buildRemoteSceneUpdate, heldElementIds } from "./shared";
-import { bindFollowMode, type Follower } from "./followMode";
+import { bindFollowMode, getFollowInterruptionMessage, type Follower } from "./followMode";
 import { bindCanvasWheelZoom } from "./wheelZoom";
 import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
 
@@ -170,6 +170,7 @@ export const useEditorCollaboration = ({
       api: excalidrawAPI.current,
       container: editorContainerRef.current,
       onFollowersChange: setFollowers,
+      onFollowInterrupted: (reason) => toast.info(getFollowInterruptionMessage(reason)),
     });
     const resetConnectionState = () => {
       unbindFollowMode.resetConnectionState();
@@ -376,7 +377,6 @@ export const useEditorCollaboration = ({
     recordElementVersion,
     onAccessDenied,
   ]);
-
   const onPointerUpdate = useCallback(
     (payload: any) => {
       const now = Date.now();

@@ -53,11 +53,11 @@ export function useStickyKeys({ excalidrawAPI, containerRef, canEdit }: Options)
     if (!canEdit) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const api = excalidrawAPI.current;
       const wantsSideways = event.key === "Tab" && !event.ctrlKey && !event.metaKey;
       const wantsBelow = event.key === "Enter" && (event.ctrlKey || event.metaKey);
       if (!wantsSideways && !wantsBelow) return;
 
-      const api = excalidrawAPI.current;
       const note = selectedNote(api);
       if (!note) return;
 

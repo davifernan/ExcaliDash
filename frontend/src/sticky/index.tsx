@@ -1,16 +1,19 @@
 /**
  * The sticky note feature, as one thing the editor can switch on.
  *
- * The editor page is already long and its job is wiring, not notes. It gets a
- * render function for the button and a change handler for the upkeep, and needs
+ * The editor page is already long and its job is wiring, not notes. It gets one
+ * node to render inside the canvas container and one change handler, and needs
  * to know nothing else about how a note is put together.
  */
 import React, { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { StickyTool } from "./StickyTool";
+import { StickyHandles } from "./StickyHandles";
+import { StickyPalette } from "./StickyPalette";
+import { StickyToolbarButton } from "./StickyToolbarButton";
 import { useStickyKeys } from "./useStickyKeys";
 import { useStickyNotes } from "./useStickyNotes";
 import { useStickyUpkeep } from "./useStickyUpkeep";
+import { useToolbarElement } from "./useToolbarElement";
 
 type Options = {
   excalidrawAPI: { current: any };
@@ -49,18 +52,7 @@ export function useStickyNotesFeature({
 
   useStickyKeys({ excalidrawAPI, containerRef, canEdit });
   const { onSceneChange } = useStickyUpkeep({ excalidrawAPI, canEdit });
-
-  const renderTopRightUI = useCallback(
-    (_isMobile: boolean, appState: any) => {
-      // Excalidraw asks for this slot in view mode too, where there is nothing
-      // to add a note to.
-      if (!canEdit || appState?.viewModeEnabled) return null;
-      return (
-        <StickyTool armed={armed} color={color} onArm={arm} onPickColor={setColor} />
-      );
-    },
-    [arm, armed, canEdit, color, setColor],
-  );
+  const toolbar = useToolbarElement(containerRef);
 
   const handleCanvasChange = useCallback(
     (elements: readonly any[], appState: any, files?: Record<string, any>) => {
@@ -70,5 +62,22 @@ export function useStickyNotesFeature({
     [onCanvasChange, onSceneChange],
   );
 
-  return { renderTopRightUI, onCanvasChange: handleCanvasChange };
+  const stickyOverlay = canEdit ? (
+    <>
+      <StickyToolbarButton
+        containerRef={containerRef}
+        armed={armed}
+        color={color}
+        onArm={arm}
+      />
+      {armed && <StickyPalette toolbar={toolbar} color={color} onPick={setColor} />}
+      <StickyHandles
+        excalidrawAPI={excalidrawAPI}
+        containerRef={containerRef}
+        canEdit={canEdit}
+      />
+    </>
+  ) : null;
+
+  return { stickyOverlay, onCanvasChange: handleCanvasChange };
 }

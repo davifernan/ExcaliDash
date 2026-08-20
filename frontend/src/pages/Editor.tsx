@@ -303,7 +303,7 @@ export const Editor: React.FC = () => {
       resolveSafeSnapshot,
       broadcastChanges,
     });
-  const { renderTopRightUI, onCanvasChange: handleChangeWithNotes } =
+  const { stickyOverlay, onCanvasChange: handleChangeWithNotes } =
     useStickyNotesFeature({
       excalidrawAPI,
       containerRef: editorContainerRef,
@@ -371,7 +371,7 @@ export const Editor: React.FC = () => {
         theme={theme}
         onBackClick={handleBackClick}
         onCanvasChange={handleChangeWithNotes}
-        renderTopRightUI={renderTopRightUI}
+        stickyOverlay={stickyOverlay}
         onCanvasDropCapture={handleCanvasDropCapture}
         onExportClick={handleExportClick}
         onLibraryChange={handleLibraryChange}

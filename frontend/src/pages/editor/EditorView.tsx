@@ -42,7 +42,7 @@ type EditorViewProps = {
   theme: string;
   onBackClick: () => void;
   onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
-  renderTopRightUI?: (isMobile: boolean, appState: any) => React.ReactNode;
+  stickyOverlay?: React.ReactNode;
   onCanvasDropCapture: (event: React.DragEvent<HTMLDivElement>) => void;
   onExportClick: () => void;
   onLibraryChange: (items: readonly any[]) => void;
@@ -106,7 +106,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onBackClick,
   onCanvasChange,
   onCanvasDropCapture,
-  renderTopRightUI,
+  stickyOverlay,
   onExportClick,
   onLibraryChange,
   onNavigateHome,
@@ -257,6 +257,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           </button>
         </div>
       ) : initialData ? (
+        <>
         <Excalidraw
           key={id}
           theme={theme === "dark" ? "dark" : "light"}
@@ -267,7 +268,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
           onLibraryChange={onLibraryChange}
           excalidrawAPI={onSetExcalidrawAPI}
           UIOptions={UIOptions}
-          renderTopRightUI={renderTopRightUI as any}
           viewModeEnabled={!canEdit}
           validateEmbeddable={isPdfWidgetLink}
           renderEmbeddable={(element, appState) => {
@@ -293,6 +293,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
             </MainMenu.ItemCustom>
           </MainMenu>
         </Excalidraw>
+        {stickyOverlay}
+        </>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
           <span className="text-sm font-medium">

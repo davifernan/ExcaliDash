@@ -1,3 +1,9 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
@@ -12,6 +18,7 @@ services:
     networks:
       - oidc-shared-net
     restart: unless-stopped
+    logging: *default-logging
 
   backend-basic:
     build:
@@ -31,6 +38,7 @@ services:
     networks:
       - basic-net
     restart: unless-stopped
+    logging: *default-logging
 
   frontend-basic:
     build:
@@ -45,6 +53,7 @@ services:
     networks:
       - basic-net
     restart: unless-stopped
+    logging: *default-logging
 
   backend-oidc:
     build:
@@ -73,6 +82,7 @@ services:
       - oidc-net
       - oidc-shared-net
     restart: unless-stopped
+    logging: *default-logging
 
   frontend-oidc:
     build:
@@ -87,6 +97,7 @@ services:
     networks:
       - oidc-net
     restart: unless-stopped
+    logging: *default-logging
 
   backend-hybrid:
     build:
@@ -115,6 +126,7 @@ services:
       - hybrid-net
       - oidc-shared-net
     restart: unless-stopped
+    logging: *default-logging
 
   frontend-hybrid:
     build:
@@ -129,6 +141,7 @@ services:
     networks:
       - hybrid-net
     restart: unless-stopped
+    logging: *default-logging
 
 networks:
   basic-net:

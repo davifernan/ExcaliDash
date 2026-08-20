@@ -8,11 +8,17 @@
 #   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
 #
-# Pin a specific build by replacing :latest with :sha-<commit>, which is what
-# the Settings page shows under the version number.
+# Set EXCALIDASH_IMAGE_TAG to a release or sha-<commit> tag. Compose refuses to
+# start without it so an upgrade cannot silently move both images to `latest`.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
-    image: ghcr.io/davifernan/excalidash-backend:latest
+    image: ghcr.io/davifernan/excalidash-backend:${EXCALIDASH_IMAGE_TAG:?set EXCALIDASH_IMAGE_TAG to a release or sha tag}
     container_name: excalidash-backend
     environment:
       - DATABASE_PROVIDER=sqlite
@@ -48,6 +54,13 @@ services:
       # --- Keeping the database from growing without bound -------------
       - ENABLE_SNAPSHOT_COMPRESSION=${ENABLE_SNAPSHOT_COMPRESSION:-true}
       - ENABLE_SNAPSHOT_VACUUM=${ENABLE_SNAPSHOT_VACUUM:-true}
+      # --- Daily full server backup with hard disk bounds --------------
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 0 3 * * *}
+      - BACKUP_DIR=/app/backups
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-14}
+      - BACKUP_MAX_COUNT=${BACKUP_MAX_COUNT:-7}
+      - BACKUP_MAX_TOTAL_MB=${BACKUP_MAX_TOTAL_MB:-30720}
+      - BACKUP_MIN_FREE_DISK_PERCENT=${BACKUP_MIN_FREE_DISK_PERCENT:-20}
       # Optional OIDC settings (required for AUTH_MODE=hybrid or oidc_enforced)
       # - OIDC_PROVIDER_NAME=Authentik
       # - OIDC_ISSUER_URL=https://auth.example.com/application/o/excalidash/
@@ -56,9 +69,12 @@ services:
       # - OIDC_REDIRECT_URI=https://excalidash.example.com/api/auth/oidc/callback
     volumes:
       - backend-data:/app/prisma
+      # Keep this bind-mounted directory in the off-site backup/snapshot job.
+      - ${BACKUP_HOST_DIR:-./backups}:/app/backups
     networks:
       - excalidash-network
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       # Use IPv4 loopback explicitly to avoid IPv6 localhost resolution issues.
       test:
@@ -73,7 +89,7 @@ services:
       retries: 3
 
   frontend:
-    image: ghcr.io/davifernan/excalidash-frontend:latest
+    image: ghcr.io/davifernan/excalidash-frontend:${EXCALIDASH_IMAGE_TAG:?set EXCALIDASH_IMAGE_TAG to a release or sha tag}
     container_name: excalidash-frontend
     ports:
       - "6767:80"
@@ -82,6 +98,7 @@ services:
     networks:
       - excalidash-network
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       # Use IPv4 loopback explicitly to avoid IPv6 localhost resolution issues.
       test:

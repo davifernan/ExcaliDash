@@ -1,3 +1,9 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # PostgreSQL database for testing
   postgres:
@@ -16,6 +22,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
   # Backend with PostgreSQL
   backend:
@@ -37,6 +44,7 @@ services:
     volumes:
       - uploads:/app/uploads
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   pgdata:

@@ -4,10 +4,15 @@ import archiver from "archiver";
 import { pipeline } from "node:stream/promises";
 import { resolveStoragePath } from "../assets/assetStorage";
 import type { PrismaClient } from "../generated/client";
+import {
+  type BackupLimitOptions,
+  enforceBackupLimits,
+  prepareBackupSpace,
+} from "./backupLimits";
 
 const Database = require("better-sqlite3") as any;
 
-type BackupSchedulerOptions = {
+type BackupSchedulerOptions = BackupLimitOptions & {
   prisma: PrismaClient;
   databaseUrl?: string;
   schedule: string | null;
@@ -143,12 +148,33 @@ const pruneOldBackups = async (backupDir: string, retentionDays: number): Promis
   );
 };
 
+const backupSecrets = async (databasePath: string) => {
+  const secretNames = [".jwt_secret", ".csrf_secret"];
+  const secrets: Array<{ sourcePath: string; archivePath: string }> = [];
+  for (const name of secretNames) {
+    const sourcePath = path.join(path.dirname(databasePath), name);
+    try {
+      const info = await fs.promises.lstat(sourcePath);
+      if (!info.isFile() || info.isSymbolicLink()) {
+        throw new Error(`Persisted secret is not a regular file: ${sourcePath}`);
+      }
+      secrets.push({ sourcePath, archivePath: `secrets/${name}` });
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  return secrets;
+};
+
 export const createSqliteBackup = async ({
   prisma,
   databaseUrl,
   backupDir,
   assetStorageDir,
   retentionDays,
+  maxCount,
+  maxTotalBytes,
+  minFreeDiskPercent,
 }: Omit<BackupSchedulerOptions, "schedule">): Promise<string | null> => {
   const databasePath = parseDatabasePath(databaseUrl);
   if (!databasePath) {
@@ -162,11 +188,19 @@ export const createSqliteBackup = async ({
   // Prune before allocating another complete copy. Otherwise a full disk can
   // make retention ineffective precisely when it is needed most.
   await pruneOldBackups(backupDir, retentionDays);
+  // Checkpoint before estimating the database copy. Otherwise pages still in
+  // the WAL could make the copy larger than the preflight calculation.
   // queryRaw rather than executeRaw: this PRAGMA answers with a row, and
-  // SQLite refuses a statement that returns results through executeRaw. It
-  // threw on every scheduled run, and the scheduler only logs what a job
-  // throws — so the backup has been failing quietly.
+  // SQLite refuses a statement that returns results through executeRaw.
   await prisma.$queryRawUnsafe("PRAGMA wal_checkpoint(PASSIVE)");
+  const policy = await prepareBackupSpace({
+    backupDir,
+    databasePath,
+    assetStorageDir,
+    maxCount,
+    maxTotalBytes,
+    minFreeDiskPercent,
+  });
 
   const timestamp = timestampForFilename(new Date());
   const target = path.join(backupDir, `excalidash-backup-${timestamp}.zip`);
@@ -213,6 +247,7 @@ export const createSqliteBackup = async ({
         archivePath: `assets/originals/${relative.split(path.sep).join("/")}`,
       });
     }
+    const secrets = await backupSecrets(databasePath);
 
     const archive = archiver("zip", { zlib: { level: 6 } });
     const output = fs.createWriteStream(partialTarget, { mode: 0o600 });
@@ -220,10 +255,11 @@ export const createSqliteBackup = async ({
     archive.append(fs.createReadStream(databaseCopy), { name: "database.sqlite" });
     archive.append(JSON.stringify({
       format: "excalidash-server-backup",
-      formatVersion: 1,
+      formatVersion: 2,
       createdAt: new Date().toISOString(),
       database: "database.sqlite",
       originals: originals.length,
+      secrets: secrets.map((secret) => secret.archivePath),
     }, null, 2), { name: "backup.manifest.json" });
     for (const original of originals) {
       // Stored originals are usually already PDF/Brotli-compressed. Store mode
@@ -233,12 +269,27 @@ export const createSqliteBackup = async ({
         store: true,
       });
     }
+    for (const secret of secrets) {
+      archive.append(fs.createReadStream(secret.sourcePath), {
+        name: secret.archivePath,
+      });
+    }
     await archive.finalize();
     await writing;
     await fs.promises.rename(partialTarget, target);
     await fs.promises.chmod(target, 0o600);
+    const completedSize = (await fs.promises.stat(target)).size;
+    if (completedSize > policy.maxTotalBytes) {
+      await fs.promises.rm(target, { force: true });
+      throw new Error(
+        `[backup] Completed archive exceeded BACKUP_MAX_TOTAL_MB and was removed: ${target}`,
+      );
+    }
     await pruneOldBackups(backupDir, retentionDays);
-    console.log(`[backup] Wrote database and ${originals.length} originals: ${target}`);
+    await enforceBackupLimits(backupDir, policy.maxCount, policy.maxTotalBytes);
+    console.log(
+      `[backup] Wrote database, ${originals.length} originals, and ${secrets.length} secrets: ${target}`,
+    );
     return target;
   } catch (error) {
     await fs.promises.rm(partialTarget, { force: true });

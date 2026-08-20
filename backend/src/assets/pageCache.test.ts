@@ -14,6 +14,7 @@ beforeEach(async () => {
   storageDir = await mkdtemp(join(tmpdir(), "pagecache-"));
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await rm(storageDir, { recursive: true, force: true });
 });
 
@@ -86,6 +87,35 @@ describe("rendering a page once", () => {
     const b = await getPage(deps({ render: svgRender }), asset, 2);
     expect(brotliDecompressSync(a.body).toString()).toContain("page 1");
     expect(brotliDecompressSync(b.body).toString()).toContain("page 2");
+  });
+
+  it("never starts more than the configured number of render jobs", async () => {
+    vi.stubEnv("ASSET_RENDER_CONCURRENCY", "2");
+    let active = 0;
+    let maximum = 0;
+    const slowRender = vi.fn(async (_path: string, page: number) => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return {
+        body: Buffer.from(`<svg width="10" height="10">${page}</svg>`),
+        mimeType: "image/svg+xml" as const,
+      };
+    });
+
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        getPage(
+          deps({ render: slowRender }),
+          { id: `doc-${index}`, blob: { storageKey: `originals/doc-${index}` } },
+          index + 1,
+        ),
+      ),
+    );
+
+    expect(slowRender).toHaveBeenCalledTimes(8);
+    expect(maximum).toBe(2);
   });
 });
 

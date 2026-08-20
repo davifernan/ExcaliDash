@@ -1,5 +1,11 @@
 name: excalidash-lab
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-backend-build: &backend-build
   build:
     context: ./backend
@@ -24,6 +30,7 @@ x-backend-common: &backend-common
     BACKUP_DIR: /app/backups
     BACKUP_RETENTION_DAYS: "2"
   restart: unless-stopped
+  logging: *default-logging
   healthcheck:
     test:
       [
@@ -40,6 +47,7 @@ x-backend-common: &backend-common
 x-frontend-common: &frontend-common
   <<: *frontend-build
   restart: unless-stopped
+  logging: *default-logging
   healthcheck:
     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80"]
     interval: 10s
@@ -65,6 +73,7 @@ services:
     networks:
       - lab-oidc
     restart: unless-stopped
+    logging: *default-logging
 
   seaweedfs:
     image: chrislusf/seaweedfs:3.85
@@ -87,6 +96,7 @@ services:
     networks:
       - lab-storage
     restart: unless-stopped
+    logging: *default-logging
 
   seaweedfs-init:
     image: amazon/aws-cli:2.15.57
@@ -107,6 +117,7 @@ services:
     networks:
       - lab-storage
     restart: "no"
+    logging: *default-logging
 
   backend-basic:
     <<: *backend-common

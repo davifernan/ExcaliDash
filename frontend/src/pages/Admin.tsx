@@ -68,6 +68,11 @@ export const Admin: React.FC = () => {
     email: string;
     tempPassword: string;
   } | null>(null);
+  const [offboardUserId, setOffboardUserId] = useState("");
+  const [offboardDestination, setOffboardDestination] =
+    useState("company-archive");
+  const [offboardConfirmation, setOffboardConfirmation] = useState("");
+  const [offboarding, setOffboarding] = useState(false);
   const accessControl = useAccessControlSettings(isAdmin, setError, setSuccess);
   const loginRateLimit = useLoginRateLimitSettings({
     authEnabled,
@@ -268,6 +273,43 @@ export const Admin: React.FC = () => {
       setError(message);
     }
   };
+  const offboardUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const target = users.find((candidate) => candidate.id === offboardUserId);
+    if (!target || offboardConfirmation !== target.email) {
+      setError("Enter the user's exact email address to confirm deletion.");
+      return;
+    }
+    setOffboarding(true);
+    setError("");
+    setSuccess("");
+    try {
+      const body =
+        offboardDestination === "company-archive"
+          ? { transferTo: "company-archive" }
+          : { transferToUserId: offboardDestination };
+      const response = await api.api.post<{
+        deleted: true;
+        transferredDrawings: number;
+      }>(`/auth/users/${target.id}/offboard`, body);
+      setUsers((current) => current.filter((user) => user.id !== target.id));
+      setOffboardUserId("");
+      setOffboardDestination("company-archive");
+      setOffboardConfirmation("");
+      setSuccess(
+        `Personal data deleted; ${response.data.transferredDrawings} board(s) transferred.`,
+      );
+    } catch (err: unknown) {
+      let message = "Failed to permanently delete user data";
+      if (api.isAxiosError(err)) {
+        message =
+          err.response?.data?.message || err.response?.data?.error || message;
+      }
+      setError(message);
+    } finally {
+      setOffboarding(false);
+    }
+  };
   const startImpersonation = async (target: AdminUser) => {
     setError("");
     setSuccess("");
@@ -417,6 +459,94 @@ export const Admin: React.FC = () => {
         onImpersonate={setImpersonateTarget}
         onResetPassword={generateTempPassword}
       />
+      )}{" "}
+      {adminTab === "users" && (
+        <form
+          onSubmit={offboardUser}
+          className="mt-6 bg-white dark:bg-neutral-900 border-2 border-red-700 dark:border-red-500 rounded-2xl p-5 sm:p-6 shadow-[4px_4px_0px_0px_rgba(185,28,28,1)]"
+        >
+          <h2 className="text-lg font-black text-red-800 dark:text-red-300">
+            Permanent user offboarding
+          </h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            This removes the person's name, email, login identities,
+            credentials, API keys, personal library and related audit data.
+            Boards and documents are transferred to the destination below.
+            This is separate from making an account inactive and cannot be
+            undone.
+          </p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <label className="text-sm font-bold text-slate-800 dark:text-neutral-200">
+              User to delete
+              <select
+                value={offboardUserId}
+                onChange={(event) => {
+                  setOffboardUserId(event.target.value);
+                  setOffboardDestination("company-archive");
+                  setOffboardConfirmation("");
+                }}
+                className="mt-1 w-full px-3 py-2 bg-white dark:bg-neutral-800 border-2 border-slate-300 dark:border-neutral-700 rounded-xl"
+              >
+                <option value="">Choose a user…</option>
+                {users
+                  .filter((user) => user.id !== authUser?.id)
+                  .map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} ({user.email})
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-slate-800 dark:text-neutral-200">
+              Transfer boards to
+              <select
+                value={offboardDestination}
+                onChange={(event) => setOffboardDestination(event.target.value)}
+                disabled={!offboardUserId}
+                className="mt-1 w-full px-3 py-2 bg-white dark:bg-neutral-800 border-2 border-slate-300 dark:border-neutral-700 rounded-xl disabled:opacity-60"
+              >
+                <option value="company-archive">Company archive account</option>
+                {users
+                  .filter(
+                    (user) => user.id !== offboardUserId && user.isActive,
+                  )
+                  .map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} ({user.email})
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-slate-800 dark:text-neutral-200">
+              Confirm with exact email
+              <input
+                value={offboardConfirmation}
+                onChange={(event) =>
+                  setOffboardConfirmation(event.target.value)
+                }
+                disabled={!offboardUserId}
+                autoComplete="off"
+                className="mt-1 w-full px-3 py-2 bg-white dark:bg-neutral-800 border-2 border-slate-300 dark:border-neutral-700 rounded-xl disabled:opacity-60"
+                placeholder={
+                  users.find((user) => user.id === offboardUserId)?.email ||
+                  "user@example.com"
+                }
+              />
+            </label>
+          </div>
+          <button
+            type="submit"
+            disabled={
+              offboarding ||
+              !offboardUserId ||
+              offboardConfirmation !==
+                users.find((user) => user.id === offboardUserId)?.email
+            }
+            className="mt-4 px-4 py-2 rounded-xl border-2 border-red-800 bg-red-700 text-white font-black disabled:opacity-50"
+          >
+            {offboarding ? "Deleting personal data…" : "Delete personal data"}
+          </button>
+        </form>
       )}{" "}
       <UserActionModals
         impersonateTarget={impersonateTarget}

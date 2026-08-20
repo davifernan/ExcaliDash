@@ -8,6 +8,7 @@ import { adminCreateUserSchema, adminRoleUpdateSchema, adminUpdateUserSchema } f
 import crypto from "crypto";
 import { hashTokenForStorage } from "./tokenSecurity";
 import { buildUserInviteEmail } from "../mail/templates/userInvite";
+import { disconnectApiKeySockets } from "../server/socketRevocation";
 
 export const INVITE_VALID_DAYS = 7;
 export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
@@ -142,6 +143,7 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
           data: { revokedAt: new Date() },
         });
       }
+      await disconnectApiKeySockets(existing.id);
       if (config.enableAuditLogging) {
         await logAuditEvent({
           userId: req.user!.id,
@@ -303,7 +305,6 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
                   expiresAt,
                 },
               });
-
               const baseUrl = resolveFrontendBaseUrl();
               const mail = buildUserInviteEmail({
                 inviteUrl: `${baseUrl}/reset-password-confirm?token=${inviteToken}`,
@@ -330,7 +331,6 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             console.error(`[mail] Invitation for ${user.email} was not delivered: ${invitationError}`);
           }
         }
-
         if (config.enableAuditLogging) {
           await logAuditEvent({
             userId: req.user.id,

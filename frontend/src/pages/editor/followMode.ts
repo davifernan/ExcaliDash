@@ -12,6 +12,21 @@ export type Follower = {
   name: string;
 };
 
+export const getFollowInterruptionMessage = (reason: string): string => {
+  switch (reason) {
+    case "disconnected":
+      return "The person you were following disconnected. Follow mode ended.";
+    case "target-unavailable":
+      return "The person you were following is no longer available.";
+    case "access-revoked":
+      return "Follow mode ended because access changed.";
+    case "rate-limited":
+      return "Follow command was rate-limited; the server state was restored.";
+    default:
+      return "Follow mode ended on the server.";
+  }
+};
+
 type ExcalidrawApi = {
   getAppState: () => any;
   updateScene: (scene: { appState: any }) => void;
@@ -68,7 +83,7 @@ const createViewportIndicator = (container: HTMLDivElement | null) => {
   Object.assign(frame.style, {
     position: "absolute",
     pointerEvents: "none",
-    zIndex: "4",
+    zIndex: "1",
     border: "2px solid rgba(79, 70, 229, 0.9)",
     boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.16)",
     boxSizing: "border-box",
@@ -80,7 +95,7 @@ const createViewportIndicator = (container: HTMLDivElement | null) => {
   Object.assign(warning.style, {
     position: "absolute",
     pointerEvents: "none",
-    zIndex: "5",
+    zIndex: "1",
     top: "12px",
     left: "50%",
     transform: "translateX(-50%)",
@@ -137,22 +152,52 @@ export const bindFollowMode = ({
   api,
   container,
   onFollowersChange,
+  onFollowInterrupted,
 }: {
   socket: Socket;
   drawingId: string;
   api: ExcalidrawApi;
   container: HTMLDivElement | null;
   onFollowersChange: (followers: Follower[]) => void;
+  onFollowInterrupted?: (reason: string) => void;
 }) => {
   let followers = new Map<string, Follower>();
   const lastViewportSequence = new Map<string, number>();
   let sendTimer: ReturnType<typeof setTimeout> | null = null;
-  let applyingServerStatus = false;
+  let suppressedServerActions: Array<{
+    action: "FOLLOW" | "UNFOLLOW";
+    targetPresenceId: string | null;
+  }> = [];
+  let suppressionTimer: ReturnType<typeof setTimeout> | null = null;
   let applyingIncomingBounds = false;
   let lastReceivedBounds: FollowSceneBounds | null = null;
   let lastReceivedPresenceId: string | null = null;
   let lastAppliedVisibleBounds: FollowSceneBounds | null = null;
   const viewportIndicator = createViewportIndicator(container);
+
+  const suppressServerFeedback = (
+    previousTargetId: string | null,
+    nextTargetId: string | null,
+  ) => {
+    suppressedServerActions = [];
+    if (previousTargetId && previousTargetId !== nextTargetId) {
+      suppressedServerActions.push({
+        action: "UNFOLLOW",
+        targetPresenceId: previousTargetId,
+      });
+    }
+    if (nextTargetId && previousTargetId !== nextTargetId) {
+      suppressedServerActions.push({
+        action: "FOLLOW",
+        targetPresenceId: nextTargetId,
+      });
+    }
+    if (suppressionTimer !== null) clearTimeout(suppressionTimer);
+    suppressionTimer = setTimeout(() => {
+      suppressedServerActions = [];
+      suppressionTimer = null;
+    }, 250);
+  };
 
   const sendBounds = () => {
     sendTimer = null;
@@ -207,7 +252,21 @@ export const bindFollowMode = ({
   };
 
   const unsubscribeFollow = api.onUserFollow((payload) => {
-    if (applyingServerStatus) return;
+    const targetPresenceId = payload.userToFollow?.socketId || null;
+    const suppressedIndex = suppressedServerActions.findIndex(
+      (action) =>
+        action.action === payload.action &&
+        action.targetPresenceId === targetPresenceId,
+    );
+    if (suppressedIndex >= 0) {
+      suppressedServerActions.splice(suppressedIndex, 1);
+      if (suppressedServerActions.length === 0 && suppressionTimer !== null) {
+        clearTimeout(suppressionTimer);
+        suppressionTimer = null;
+      }
+      return;
+    }
+    lastViewportSequence.clear();
     lastReceivedBounds = null;
     lastReceivedPresenceId = null;
     lastAppliedVisibleBounds = null;
@@ -251,27 +310,28 @@ export const bindFollowMode = ({
         ? payload.followingPresenceId
         : null;
     const appState = api.getAppState();
+    if (typeof payload.reason === "string") {
+      onFollowInterrupted?.(payload.reason);
+    }
     if (appState.userToFollow?.socketId === targetPresenceId) return;
-    applyingServerStatus = true;
-    try {
-      if (!targetPresenceId) {
-        lastReceivedBounds = null;
-        lastReceivedPresenceId = null;
-        lastAppliedVisibleBounds = null;
-        viewportIndicator?.hide();
-        if (appState.userToFollow) {
-          api.updateScene({ appState: { userToFollow: null } });
-        }
-      } else {
-        const collaborator = appState.collaborators?.get?.(targetPresenceId) || {};
-        api.updateScene({
-          appState: {
-            userToFollow: { ...collaborator, socketId: targetPresenceId },
-          },
-        });
+    const previousTargetId = appState.userToFollow?.socketId || null;
+    suppressServerFeedback(previousTargetId, targetPresenceId);
+    lastViewportSequence.clear();
+    if (!targetPresenceId) {
+      lastReceivedBounds = null;
+      lastReceivedPresenceId = null;
+      lastAppliedVisibleBounds = null;
+      viewportIndicator?.hide();
+      if (appState.userToFollow) {
+        api.updateScene({ appState: { userToFollow: null } });
       }
-    } finally {
-      applyingServerStatus = false;
+    } else {
+      const collaborator = appState.collaborators?.get?.(targetPresenceId) || {};
+      api.updateScene({
+        appState: {
+          userToFollow: { ...collaborator, socketId: targetPresenceId },
+        },
+      });
     }
   };
 
@@ -286,6 +346,7 @@ export const bindFollowMode = ({
     const appState = api.getAppState();
     if (appState.userToFollow?.socketId !== payload.presenceId) return;
     if (appState.followedBy?.has?.(payload.presenceId)) return;
+    lastViewportSequence.clear();
     lastViewportSequence.set(payload.presenceId, payload.sequence);
     lastReceivedBounds = bounds;
     lastReceivedPresenceId = payload.presenceId;
@@ -312,6 +373,9 @@ export const bindFollowMode = ({
     lastAppliedVisibleBounds = null;
     viewportIndicator?.hide();
     if (sendTimer !== null) clearTimeout(sendTimer);
+    if (suppressionTimer !== null) clearTimeout(suppressionTimer);
+    suppressedServerActions = [];
+    suppressionTimer = null;
     sendTimer = null;
     onFollowersChange([]);
     api.updateScene({ appState: { followedBy: new Set() } });
@@ -325,6 +389,7 @@ export const bindFollowMode = ({
     socket.off("viewport-bounds", onViewportBounds);
     resizeObserver?.disconnect();
     if (sendTimer !== null) clearTimeout(sendTimer);
+    if (suppressionTimer !== null) clearTimeout(suppressionTimer);
     viewportIndicator?.remove();
     onFollowersChange([]);
   };

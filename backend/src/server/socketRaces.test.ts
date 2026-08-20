@@ -22,6 +22,7 @@ class FakeSocket {
   readonly handshake = { auth: {}, headers: {} };
   readonly rooms = new Set<string>([this.id]);
   private handlers = new Map<string, (...args: any[]) => any>();
+  readonly disconnect = vi.fn();
   constructor(
     readonly id: string,
     private emissions: Emission[],
@@ -177,6 +178,49 @@ describe("socket collaboration races", () => {
     expect(socket.rooms.has(room("drawing-2"))).toBe(true);
   });
 
+  it("cancels an awaited join when leave-room overtakes it", async () => {
+    let release: ((value: { userId: string }) => void) | null = null;
+    drawingLookup = () => new Promise((resolve) => { release = resolve; });
+    const socket = await io.connect("socket-leaving");
+    const pendingJoin = join(socket);
+    await Promise.resolve();
+
+    await socket.trigger("leave-room", { drawingId: "drawing-1" });
+    release?.({ userId: BOOTSTRAP_USER_ID });
+    await pendingJoin;
+
+    expect(socket.rooms.has(room("drawing-1"))).toBe(false);
+    expect(lastEmission("presence-update", room("drawing-1"))).toBeUndefined();
+  });
+
+  it("bounds a flooded join queue while the database is blocked", async () => {
+    let release: ((value: { userId: string }) => void) | null = null;
+    drawingLookup = () => new Promise((resolve) => { release = resolve; });
+    const socket = await io.connect("socket-flood");
+    const acknowledgements: any[] = [];
+    const requests = Array.from({ length: 40 }, (_, index) =>
+      socket.trigger(
+        "join-room",
+        { drawingId: `drawing-${index}`, user: { name: "Flood" } },
+        (value: any) => acknowledgements.push(value),
+      ),
+    );
+    await Promise.resolve();
+
+    expect(accessLookups).toBe(1);
+    expect(
+      acknowledgements.filter((value) => value?.error?.code === "queue-full"),
+    ).toHaveLength(2);
+    expect(
+      acknowledgements.filter((value) => value?.error?.code === "rate-limited"),
+    ).toHaveLength(30);
+
+    release?.({ userId: BOOTSTRAP_USER_ID });
+    drawingLookup = async () => ({ userId: BOOTSTRAP_USER_ID });
+    await Promise.all(requests);
+    expect(accessLookups).toBe(8);
+  });
+
   it("orders a slow FOLLOW before a later UNFOLLOW", async () => {
     const target = await io.connect("socket-target");
     const follower = await io.connect("socket-follower");
@@ -208,6 +252,45 @@ describe("socket collaboration races", () => {
       .toMatchObject({ followingPresenceId: null });
     expect(lastEmission("followed-by-update", "socket-target")?.payload.followers)
       .toEqual([]);
+  });
+
+  it("bounds a flooded follow queue while its first access lookup is blocked", async () => {
+    const target = await io.connect("flood-target");
+    const follower = await io.connect("flood-follower");
+    await join(target);
+    await join(follower);
+    let release: (() => void) | null = null;
+    const normalLookup = drawingLookup;
+    drawingLookup = async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return normalLookup();
+    };
+
+    const commands = Array.from({ length: 30 }, () =>
+      follower.trigger("follow-user", {
+        drawingId: "drawing-1",
+        targetPresenceId: "flood-target",
+        action: "FOLLOW",
+      }),
+    );
+    await Promise.resolve();
+
+    expect(
+      io.emissions.filter(
+        (item) => item.event === "follow-status" && item.payload.reason === "queue-full",
+      ),
+    ).toHaveLength(4);
+    expect(
+      io.emissions.filter(
+        (item) => item.event === "follow-status" && item.payload.reason === "rate-limited",
+      ),
+    ).toHaveLength(18);
+
+    drawingLookup = normalLookup;
+    release?.();
+    await Promise.all(commands);
+    expect(lastEmission("followed-by-update", "flood-target")?.payload.followers)
+      .toEqual([{ presenceId: "flood-follower", name: "Local User" }]);
   });
 
   it("rejects a three-person follow cycle without changing existing edges", async () => {
@@ -254,5 +337,61 @@ describe("socket collaboration races", () => {
     });
     expect(lastEmission("followed-by-update", "target")?.payload.followers)
       .toEqual([{ presenceId: "follower", name: "Local User" }]);
+  });
+
+  it("caches follower access briefly and invalidates it on an explicit recheck", async () => {
+    const target = await io.connect("cache-target");
+    const follower = await io.connect("cache-follower");
+    await join(target);
+    await join(follower);
+    await follower.trigger("follow-user", {
+      drawingId: "drawing-1", targetPresenceId: "cache-target", action: "FOLLOW",
+    });
+    const beforeViewport = accessLookups;
+
+    await target.trigger("viewport-bounds", {
+      drawingId: "drawing-1", sceneBounds: [0, 0, 100, 100],
+    });
+    await target.trigger("viewport-bounds", {
+      drawingId: "drawing-1", sceneBounds: [10, 10, 110, 110],
+    });
+    expect(accessLookups - beforeViewport).toBe(2);
+
+    await controller.recheckUserAccess(BOOTSTRAP_USER_ID);
+    const afterInvalidation = accessLookups;
+    await target.trigger("viewport-bounds", {
+      drawingId: "drawing-1", sceneBounds: [20, 20, 120, 120],
+    });
+    expect(accessLookups - afterInvalidation).toBe(2);
+  });
+
+  it("periodically evicts a passive anonymous socket after its link expires", async () => {
+    const expiringIo = new FakeIo();
+    let linkActive = true;
+    registerSocketHandlers({
+      io: expiringIo as any,
+      prisma: {
+        drawingLinkShare: {
+          findFirst: vi.fn(async () => linkActive ? { permission: "view" } : null),
+        },
+      } as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+      accessRecheckIntervalMs: 5,
+    });
+    const passiveViewer = await expiringIo.connect("anonymous-viewer");
+    await join(passiveViewer);
+    expect(passiveViewer.rooms.has(room("drawing-1"))).toBe(true);
+
+    linkActive = false;
+    await vi.waitFor(
+      () => expect(passiveViewer.rooms.has(room("drawing-1"))).toBe(false),
+      { timeout: 200, interval: 5 },
+    );
+    expect(
+      expiringIo.emissions
+        .filter((item) => item.event === "presence-update")
+        .at(-1)?.payload,
+    ).toEqual([]);
   });
 });

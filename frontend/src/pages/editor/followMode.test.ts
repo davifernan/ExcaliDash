@@ -24,7 +24,6 @@ vi.mock("@excalidraw/excalidraw", () => ({
 
 import {
   bindFollowMode,
-  fitFollowedBounds,
   parseFollowSceneBounds,
 } from "./followMode";
 
@@ -43,33 +42,6 @@ describe("follow viewport bounds", () => {
     expect(parseFollowSceneBounds([0, 0, Number.NaN, 10])).toBeNull();
     expect(parseFollowSceneBounds([0, 0, 0, 10])).toBeNull();
     expect(parseFollowSceneBounds([0, 0, 10])).toBeNull();
-  });
-
-  it("uses Excalidraw's viewport fit for different window dimensions", () => {
-    const updateScene = vi.fn();
-    const api = {
-      getAppState: () => ({
-        width: 800,
-        height: 800,
-        scrollX: 100,
-        scrollY: 100,
-        zoom: { value: 1 },
-      }),
-      updateScene,
-    };
-
-    fitFollowedBounds(api, [0, 0, 400, 200] as any);
-
-    expect(excalidrawMocks.zoomToFitBounds).toHaveBeenCalledWith({
-      appState: api.getAppState(),
-      bounds: [0, 0, 400, 200],
-      fitToViewport: true,
-      viewportZoomFactor: 1,
-    });
-    expect(updateScene).toHaveBeenCalledOnce();
-    expect(updateScene.mock.calls[0][0].appState.zoom.value).toBe(2);
-    expect(updateScene.mock.calls[0][0].appState.scrollX).toBe(0);
-    expect(updateScene.mock.calls[0][0].appState.scrollY).toBe(100);
   });
 
   it("binds the imperative follow API and relays bounds only for followers", () => {
@@ -106,12 +78,14 @@ describe("follow viewport bounds", () => {
       }),
     };
     const onFollowersChange = vi.fn();
+    const onFollowInterrupted = vi.fn();
     const cleanup = bindFollowMode({
       socket: socket as any,
       drawingId: "drawing-1",
       api,
       container: null,
       onFollowersChange,
+      onFollowInterrupted,
     });
 
     followCallback({
@@ -155,12 +129,13 @@ describe("follow viewport bounds", () => {
     expect(api.updateScene).toHaveBeenLastCalledWith({
       appState: { userToFollow: null },
     });
+    expect(onFollowInterrupted).toHaveBeenCalledWith("target-unavailable");
 
     cleanup();
     vi.useRealTimers();
   });
 
-  it("frames the exact target viewport, reapplies it on resize, and marks zoom clamps", () => {
+  it("keeps the indicator below controls, reapplies it on resize, and marks zoom clamps", () => {
     vi.useFakeTimers();
     let resizeCallback = () => undefined;
     const disconnectResize = vi.fn();
@@ -233,9 +208,14 @@ describe("follow viewport bounds", () => {
     const frame = container.querySelector<HTMLElement>(
       '[data-follow-viewport="frame"]',
     );
+    const control = document.createElement("button");
+    control.style.position = "absolute";
+    control.style.zIndex = "2";
+    container.append(control);
     expect(frame?.style.width).toBe("500px");
     expect(frame?.style.height).toBe("500px");
     expect(frame?.style.boxShadow).toContain("9999px");
+    expect(Number(frame?.style.zIndex)).toBeLessThan(Number(control.style.zIndex));
     expect(socket.emit).not.toHaveBeenCalledWith(
       "viewport-bounds",
       expect.anything(),
@@ -267,32 +247,55 @@ describe("follow viewport bounds", () => {
     vi.useRealTimers();
   });
 
-  it("restores the authoritative follow target after a rejected command", () => {
+  it("suppresses asynchronous Excalidraw callbacks from a server correction", async () => {
     const handlers = new Map<string, (payload: any) => void>();
     const state: any = {
-      userToFollow: null,
+      userToFollow: { socketId: "rejected-target" },
       followedBy: new Set(),
       collaborators: new Map([
         ["target-socket", { socketId: "target-socket", username: "Target" }],
       ]),
     };
+    let followCallback: (payload: any) => void = () => undefined;
     const api = {
       getAppState: () => state,
-      updateScene: vi.fn(({ appState }: any) => Object.assign(state, appState)),
-      onUserFollow: () => vi.fn(),
+      updateScene: vi.fn(({ appState }: any) => {
+        const previous = state.userToFollow;
+        queueMicrotask(() => {
+          Object.assign(state, appState);
+          if (previous?.socketId !== appState.userToFollow?.socketId) {
+            if (previous) {
+              followCallback({ action: "UNFOLLOW", userToFollow: previous });
+            }
+            if (appState.userToFollow) {
+              followCallback({
+                action: "FOLLOW",
+                userToFollow: appState.userToFollow,
+              });
+            }
+          }
+        });
+      }),
+      onUserFollow: (callback: (payload: any) => void) => {
+        followCallback = callback;
+        return vi.fn();
+      },
       onScrollChange: () => vi.fn(),
     };
+    const socket = {
+      emit: vi.fn(),
+      on: (event: string, handler: (payload: any) => void) =>
+        handlers.set(event, handler),
+      off: vi.fn(),
+    };
+    const onFollowInterrupted = vi.fn();
     const cleanup = bindFollowMode({
-      socket: {
-        emit: vi.fn(),
-        on: (event: string, handler: (payload: any) => void) =>
-          handlers.set(event, handler),
-        off: vi.fn(),
-      } as any,
+      socket: socket as any,
       drawingId: "drawing-1",
       api,
       container: null,
       onFollowersChange: vi.fn(),
+      onFollowInterrupted,
     });
 
     handlers.get("follow-status")?.({
@@ -300,10 +303,23 @@ describe("follow viewport bounds", () => {
       followingPresenceId: "target-socket",
       reason: "rate-limited",
     });
+    await Promise.resolve();
 
     expect(state.userToFollow).toMatchObject({
       socketId: "target-socket",
       username: "Target",
+    });
+    expect(socket.emit).not.toHaveBeenCalledWith("follow-user", expect.anything());
+    expect(onFollowInterrupted).toHaveBeenCalledWith("rate-limited");
+
+    followCallback({
+      action: "FOLLOW",
+      userToFollow: { socketId: "actual-user-choice" },
+    });
+    expect(socket.emit).toHaveBeenCalledWith("follow-user", {
+      drawingId: "drawing-1",
+      targetPresenceId: "actual-user-choice",
+      action: "FOLLOW",
     });
     cleanup();
   });

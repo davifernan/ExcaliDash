@@ -17,10 +17,12 @@ export const API_KEY_PREFIX = "exd_";
  */
 export const DRAWINGS_HISTORY_SCOPE = "drawings:history";
 export const DRAWINGS_SHARE_SCOPE = "drawings:share";
+export const DRAWINGS_READ_SCOPE = "drawings:read";
+export const DRAWINGS_WRITE_SCOPE = "drawings:write";
 
 export const DEFAULT_API_KEY_SCOPES = [
-  "drawings:read",
-  "drawings:write",
+  DRAWINGS_READ_SCOPE,
+  DRAWINGS_WRITE_SCOPE,
   "collections:read",
   "collections:write",
 ] as const;
@@ -113,7 +115,7 @@ type ApiKeyClient = {
 export const resolveApiKeyUser = async (
   prisma: ApiKeyClient,
   token: string,
-): Promise<{ user: any; scopes: string[] } | null> => {
+): Promise<{ user: any; apiKeyId: string; scopes: string[] } | null> => {
   const keyId = extractApiKeyId(token);
   if (!keyId) return null;
 
@@ -135,5 +137,9 @@ export const resolveApiKeyUser = async (
     console.warn("Failed to update API key lastUsedAt:", error);
   }
 
-  return { user: apiKey.user, scopes: parseApiKeyScopes(apiKey.scopes) };
+  return {
+    user: apiKey.user,
+    apiKeyId: apiKey.id,
+    scopes: parseApiKeyScopes(apiKey.scopes),
+  };
 };

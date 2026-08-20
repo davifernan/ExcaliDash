@@ -4,4 +4,5 @@ export type CollaborationAccessController = {
     affectedUserId?: string,
   ) => Promise<void>;
   recheckUserAccess: (affectedUserId: string) => Promise<void>;
+  disconnectApiKey: (apiKeyId: string) => Promise<void>;
 };

@@ -23,6 +23,7 @@ export const registerDrawingDeleteDuplicateRoutes = (
     parseJsonField,
     cleanupS3FilesForDrawing,
     cloneS3FileReferences,
+    collaborationAccess,
   } = context;
   app.delete(
     "/drawings/:id",
@@ -42,6 +43,7 @@ export const registerDrawingDeleteDuplicateRoutes = (
       if (deleteResult.count === 0) {
         return res.status(404).json({ error: "Drawing not found" });
       }
+      await collaborationAccess.recheckDrawingAccess(id);
       try {
         await cleanupS3FilesForDrawing(id, req.user.id);
       } catch (error) {

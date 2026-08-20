@@ -26,6 +26,45 @@ export const createSocketFollowManager = ({
   const followingBySocket = new Map<string, string>();
   const followersBySocket = new Map<string, Set<string>>();
   const viewportSequenceBySocket = new Map<string, number>();
+  const followerAccessCache = new Map<
+    string,
+    { drawingId: string; access: DrawingAccess; expiresAt: number }
+  >();
+  const FOLLOWER_ACCESS_CACHE_TTL_MS = 1_000;
+
+  // Viewport events are high frequency. Cache only the follower-side read
+  // decision; senders still take the normal fresh requireAccess path, and all
+  // explicit/periodic revocation checks invalidate this cache before checking.
+
+  const cacheFollowerAccess = (
+    socketId: string,
+    drawingId: string,
+    access: DrawingAccess,
+  ) => {
+    followerAccessCache.set(socketId, {
+      drawingId,
+      access,
+      expiresAt: Date.now() + FOLLOWER_ACCESS_CACHE_TTL_MS,
+    });
+  };
+
+  const getFollowerAccess = async (socketId: string, drawingId: string) => {
+    const cached = followerAccessCache.get(socketId);
+    if (
+      cached?.drawingId === drawingId &&
+      cached.expiresAt > Date.now()
+    ) {
+      return cached.access;
+    }
+    const access = await getAccess(socketId, drawingId);
+    cacheFollowerAccess(socketId, drawingId, access);
+    return access;
+  };
+
+  const invalidateAccess = (socketId?: string) => {
+    if (socketId) followerAccessCache.delete(socketId);
+    else followerAccessCache.clear();
+  };
 
   const emitFollowedBy = (targetId: string) => {
     const drawingId = drawingBySocket.get(targetId);
@@ -74,6 +113,7 @@ export const createSocketFollowManager = ({
   const clearSocket = (socketId: string, reason: string) => {
     clearFollower(socketId, reason, false);
     viewportSequenceBySocket.delete(socketId);
+    invalidateAccess(socketId);
     const followers = Array.from(followersBySocket.get(socketId) || []);
     followersBySocket.delete(socketId);
     for (const followerId of followers) {
@@ -107,21 +147,39 @@ export const createSocketFollowManager = ({
     allowViewport: () => boolean,
   ) => {
     let followQueue = Promise.resolve();
-    socket.on("follow-user", (data: unknown) => {
-      const rateLimitAccepted = allowFollow();
+    let pendingFollowCommands = 0;
+    const MAX_PENDING_FOLLOW_COMMANDS = 8;
+    socket.on("follow-user", (data: unknown, ack?: (value: unknown) => void) => {
+      const drawingId =
+        data && typeof data === "object"
+          ? parseDrawingId((data as Record<string, unknown>).drawingId)
+          : null;
+      const reject = (reason: string, message: string) => {
+        if (drawingId) emitFollowStatus(socket, drawingId, reason);
+        ack?.({ ok: false, error: { code: reason, message } });
+      };
+      if (!drawingId) {
+        reject("invalid-request", "Invalid follow command");
+        return;
+      }
+      if (!allowFollow()) {
+        reject("rate-limited", "Follow command rate limit exceeded");
+        return;
+      }
+      if (pendingFollowCommands >= MAX_PENDING_FOLLOW_COMMANDS) {
+        reject("queue-full", "Too many pending follow commands");
+        return;
+      }
+      pendingFollowCommands += 1;
       const run = async () => {
-        if (!data || typeof data !== "object") return;
         const payload = data as Record<string, unknown>;
-        const drawingId = parseDrawingId(payload.drawingId);
-        if (!drawingId) return;
-        if (!rateLimitAccepted) {
-          emitFollowStatus(socket, drawingId, "rate-limited");
-          return;
-        }
-        if (!(await requireAccess(socket, drawingId))) return;
+        const followerAccess = await requireAccess(socket, drawingId);
+        if (!followerAccess) return;
+        cacheFollowerAccess(socket.id, drawingId, followerAccess);
         if (payload.action === "UNFOLLOW") {
           clearFollower(socket.id, "unfollowed", false);
           emitFollowStatus(socket, drawingId);
+          ack?.({ ok: true });
           return;
         }
         const targetId =
@@ -135,6 +193,7 @@ export const createSocketFollowManager = ({
             drawingId,
             targetId === socket.id ? "self-follow" : "invalid-request",
           );
+          ack?.({ ok: false, error: { code: "invalid-request" } });
           return;
         }
         const targetSocket = connectedSockets.get(targetId);
@@ -144,6 +203,7 @@ export const createSocketFollowManager = ({
           !targetSocket.rooms.has(roomName(drawingId))
         ) {
           emitFollowStatus(socket, drawingId, "target-unavailable");
+          ack?.({ ok: false, error: { code: "target-unavailable" } });
           return;
         }
         const targetAccess = await getAccess(targetId, drawingId);
@@ -158,6 +218,7 @@ export const createSocketFollowManager = ({
             await removeFromDrawing(targetSocket, "access-revoked");
           }
           emitFollowStatus(socket, drawingId, "target-unavailable");
+          ack?.({ ok: false, error: { code: "target-unavailable" } });
           return;
         }
         if (
@@ -166,10 +227,12 @@ export const createSocketFollowManager = ({
           !targetSocket.rooms.has(roomName(drawingId))
         ) {
           emitFollowStatus(socket, drawingId, "target-unavailable");
+          ack?.({ ok: false, error: { code: "target-unavailable" } });
           return;
         }
         if (wouldCreateCycle(socket.id, targetId)) {
           emitFollowStatus(socket, drawingId, "cycle-detected");
+          ack?.({ ok: false, error: { code: "cycle-detected" } });
           return;
         }
         clearFollower(socket.id, "target-changed", false);
@@ -179,9 +242,17 @@ export const createSocketFollowManager = ({
         followersBySocket.set(targetId, followers);
         emitFollowedBy(targetId);
         emitFollowStatus(socket, drawingId);
+        ack?.({ ok: true });
       };
       const result = followQueue.then(run, run);
-      followQueue = result.then(() => undefined, () => undefined);
+      followQueue = result.then(
+        () => {
+          pendingFollowCommands -= 1;
+        },
+        () => {
+          pendingFollowCommands -= 1;
+        },
+      );
       return result;
     });
 
@@ -206,7 +277,7 @@ export const createSocketFollowManager = ({
           clearFollower(followerId, "relationship-invalid", false);
           continue;
         }
-        const followerAccess = await getAccess(followerId, drawingId);
+        const followerAccess = await getFollowerAccess(followerId, drawingId);
         if (
           connectedSockets.get(followerId) !== followerSocket ||
           followingBySocket.get(followerId) !== socket.id ||
@@ -230,5 +301,5 @@ export const createSocketFollowManager = ({
     });
   };
 
-  return { clearSocket, registerHandlers };
+  return { clearSocket, invalidateAccess, registerHandlers };
 };

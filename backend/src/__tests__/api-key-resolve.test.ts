@@ -34,6 +34,7 @@ describe("resolveApiKeyUser", () => {
     const result = await resolveApiKeyUser(client, token);
 
     expect(result?.user.id).toBe("user-1");
+    expect(result?.apiKeyId).toBe("key-1");
     expect(result?.scopes).toContain("drawings:write");
   });
 

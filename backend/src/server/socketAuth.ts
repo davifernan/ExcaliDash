@@ -19,15 +19,23 @@ export const createSocketAuthenticator = ({
   jwtSecret,
   principals,
 }: SocketAuthDeps) => {
-  const resolveUserId = async (token?: string): Promise<string | null> => {
+  const resolvePrincipal = async (
+    token?: string,
+  ): Promise<DrawingPrincipal | null> => {
     const authEnabled = await authModeService.getAuthEnabled();
-    if (!authEnabled) return BOOTSTRAP_USER_ID;
+    if (!authEnabled) return { kind: "user", userId: BOOTSTRAP_USER_ID };
     if (!token) return null;
 
     if (isApiKeyToken(token)) {
       try {
         const resolved = await resolveApiKeyUser(prisma, token);
-        return resolved ? resolved.user.id : null;
+        return resolved
+          ? {
+              kind: "user",
+              userId: resolved.user.id,
+              apiKey: { id: resolved.apiKeyId, scopes: resolved.scopes },
+            }
+          : null;
       } catch (error) {
         console.error("Socket API key verification failed:", error);
         return null;
@@ -47,7 +55,7 @@ export const createSocketAuthenticator = ({
         where: { id: decoded.userId },
         select: { id: true, isActive: true },
       });
-      return user?.isActive ? user.id : null;
+      return user?.isActive ? { kind: "user", userId: user.id } : null;
     } catch {
       return null;
     }
@@ -65,9 +73,9 @@ export const createSocketAuthenticator = ({
             ? cookieToken
             : undefined;
       const authEnabled = await authModeService.getAuthEnabled();
-      const userId = await resolveUserId(token);
-      if (userId) {
-        principals.set(socket.id, { kind: "user", userId });
+      const principal = await resolvePrincipal(token);
+      if (principal) {
+        principals.set(socket.id, principal);
         return next();
       }
       // Anonymous share-link sockets are authorized against the drawing on join.

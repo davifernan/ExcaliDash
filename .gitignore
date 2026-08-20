@@ -51,6 +51,9 @@ frontend/public/fonts/
 
 # E2E Testing
 e2e/node_modules/
+# Without the slash as well: a trailing slash only matches a directory, and a
+# local run may link this in from elsewhere rather than installing it.
+e2e/node_modules
 e2e/test-results/
 e2e/test-results-user/
 e2e/playwright-report/

@@ -12,6 +12,8 @@ type CreateUserFormProps = {
   oidcEnabled: boolean;
   role: "ADMIN" | "USER";
   mustReset: boolean;
+  sendInvite: boolean;
+  mailEnabled: boolean;
   active: boolean;
   passwordPolicy: PasswordPolicy;
   onSubmit: (event: React.FormEvent) => void;
@@ -23,6 +25,7 @@ type CreateUserFormProps = {
   onOidcOnlyChange: (value: boolean) => void;
   onRoleChange: (value: "ADMIN" | "USER") => void;
   onMustResetChange: (value: boolean) => void;
+  onSendInviteChange: (value: boolean) => void;
   onActiveChange: (value: boolean) => void;
 };
 
@@ -35,6 +38,8 @@ export const CreateUserForm: React.FC<CreateUserFormProps> = ({
   oidcEnabled,
   role,
   mustReset,
+  sendInvite,
+  mailEnabled,
   active,
   passwordPolicy,
   onSubmit,
@@ -46,6 +51,7 @@ export const CreateUserForm: React.FC<CreateUserFormProps> = ({
   onOidcOnlyChange,
   onRoleChange,
   onMustResetChange,
+  onSendInviteChange,
   onActiveChange,
 }) => (
   <div className="mb-6 bg-white dark:bg-neutral-900 border-2 border-black dark:border-neutral-700 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] p-4 sm:p-6">
@@ -193,6 +199,34 @@ export const CreateUserForm: React.FC<CreateUserFormProps> = ({
           </button>
         </div>
       </div>
+      {!oidcOnly && (
+        <div className="pt-4">
+          <label className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2">
+            Invitation
+          </label>
+          <button
+            type="button"
+            onClick={() => mailEnabled && onSendInviteChange(!sendInvite)}
+            disabled={!mailEnabled}
+            className={`w-full px-4 py-3 rounded-xl border-2 font-bold transition-all text-sm ${
+              sendInvite && mailEnabled
+                ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200"
+                : "border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-slate-600 dark:text-neutral-300"
+            } ${!mailEnabled ? "opacity-60 cursor-not-allowed" : ""}`}
+          >
+            {!mailEnabled
+              ? "Email not configured on this server"
+              : sendInvite
+                ? "Email an invitation to choose a password"
+                : "No email — pass the password on yourself"}
+          </button>
+          {mailEnabled && sendInvite && (
+            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+              The invitation contains a single-use link, never the password.
+            </p>
+          )}
+        </div>
+      )}
       <div className="md:col-span-2 flex items-center justify-end gap-3 pt-2">
         <button
           type="button"

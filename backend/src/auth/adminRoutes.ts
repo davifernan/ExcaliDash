@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import type { Mailer } from "../mail/mailer";
 import { PrismaClient } from "../generated/client";
 import { registerAdminImpersonationRoutes } from "./adminImpersonationRoutes";
 import { registerAdminSettingsRoutes } from "./adminSettingsRoutes";
@@ -61,8 +62,11 @@ export type RegisterAdminRoutesDeps = {
     authMode: "local" | "hybrid" | "oidc_enforced";
     enableAuditLogging: boolean;
     enableRefreshTokenRotation: boolean;
+    frontendUrl?: string;
     oidc: { enabled: boolean; providerName: string; jitProvisioning: boolean };
   };
+  /** Optional: without a configured provider no invitation is sent. */
+  mailer?: Mailer;
   defaultSystemConfigId: string;
   setAuthCookies: (
     req: Request,

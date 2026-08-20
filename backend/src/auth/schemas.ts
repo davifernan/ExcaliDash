@@ -60,6 +60,8 @@ export const adminCreateUserSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
   password: passwordSchema.optional(),
   oidcOnly: z.boolean().optional(),
+  /** Email the new user a link to choose their own password. */
+  sendInvite: z.boolean().optional(),
   name: z.string().trim().min(1).max(100),
   role: z.enum(["ADMIN", "USER"]).optional(),
   mustResetPassword: z.boolean().optional(),

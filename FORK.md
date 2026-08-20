@@ -10,6 +10,7 @@ self-hostable combination of all of them.
 | [#248](https://github.com/ZimengXiong/ExcaliDash/pull/248) | Password reset links are actually delivered, by SMTP or Resend |
 | [#249](https://github.com/ZimengXiong/ExcaliDash/pull/249) | Reveal toggle on password fields, live match feedback, opt-in longer sessions |
 | [#250](https://github.com/ZimengXiong/ExcaliDash/pull/250) | The E2E job stops locking itself out with HTTP 429 |
+| not upstream yet | Admin-created accounts can be invited by email instead of handing a password over by chat |
 
 ## Hosting it
 

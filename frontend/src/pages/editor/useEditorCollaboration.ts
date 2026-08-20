@@ -3,7 +3,7 @@ import type { MutableRefObject, RefObject } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 import type { UserIdentity } from "../../utils/identity";
-import { buildRemoteSceneUpdate } from "./shared";
+import { buildRemoteSceneUpdate, heldElementIds } from "./shared";
 import { bindFollowMode, type Follower } from "./followMode";
 import { bindCanvasWheelZoom } from "./wheelZoom";
 import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
@@ -238,6 +238,9 @@ export const useEditorCollaboration = ({
             elementOrder,
             lastSyncedFiles: lastSyncedFilesRef.current,
             incomingFiles,
+            protectedIds: heldElementIds(
+              excalidrawAPI.current.getAppState?.(),
+            ),
           });
         if (
           shouldUpdateFiles &&

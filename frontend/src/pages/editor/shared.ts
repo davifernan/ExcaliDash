@@ -7,36 +7,6 @@ export interface ElementVersionInfo {
   contentSig: string;
 }
 
-const toFiniteNumber = (value: any): number => {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
-
-export const getElementContentSig = (element: any): string => {
-  if (!element || typeof element !== "object") return "";
-  const type = typeof element.type === "string" ? element.type : "";
-  const isDeleted = element.isDeleted ? "1" : "0";
-  const status = typeof element.status === "string" ? element.status : "";
-  const x = toFiniteNumber(element.x);
-  const y = toFiniteNumber(element.y);
-  const w = toFiniteNumber(element.width);
-  const h = toFiniteNumber(element.height);
-  const angle = toFiniteNumber(element.angle);
-  const fileId = typeof element.fileId === "string" ? element.fileId : "";
-  const text = typeof element.text === "string" ? element.text : "";
-  const textSig = text ? `t${text.length}:${text.slice(0, 64)}` : "";
-  let pointsSig = "";
-  if (Array.isArray(element.points)) {
-    const pts = element.points as any[];
-    const len = pts.length;
-    const last = len > 0 ? pts[len - 1] : null;
-    const lastX = Array.isArray(last) ? toFiniteNumber(last[0]) : 0;
-    const lastY = Array.isArray(last) ? toFiniteNumber(last[1]) : 0;
-    pointsSig = `p${len}:${lastX},${lastY}`;
-  }
-  return `${type}|${isDeleted}|${status}|${x}|${y}|${w}|${h}|${angle}|${pointsSig}|${fileId}|${textSig}`;
-};
 
 /**
  * Matches CaptureUpdateAction.NEVER from @excalidraw/excalidraw.
@@ -67,6 +37,26 @@ type BuildRemoteSceneUpdateInput = {
   elementOrder?: readonly string[] | null;
   lastSyncedFiles?: Record<string, any>;
   incomingFiles?: Record<string, any>;
+  /** Elements this client is holding — see ReconcileOptions.protect. */
+  protectedIds?: ReadonlySet<string> | null;
+};
+
+/**
+ * The elements this client is in the middle of changing.
+ *
+ * Excalidraw names them in its app state while a pointer is down or a text
+ * editor is open. An incoming copy of one of these is always older than what is
+ * happening on this screen, whoever sent it.
+ */
+export const heldElementIds = (
+  appState: Record<string, any> | null | undefined
+): ReadonlySet<string> => {
+  const held = new Set<string>();
+  for (const key of ["editingTextElement", "resizingElement", "newElement"]) {
+    const id = appState?.[key]?.id;
+    if (typeof id === "string") held.add(id);
+  }
+  return held;
 };
 
 export const getPersistedAppState = (appState: Record<string, any> | null | undefined) => {
@@ -86,6 +76,7 @@ export const buildRemoteSceneUpdate = ({
   elementOrder = null,
   lastSyncedFiles = {},
   incomingFiles = {},
+  protectedIds = null,
 }: BuildRemoteSceneUpdateInput): {
   sceneUpdate: RemoteSceneUpdate | null;
   mergedElements: any[] | null;
@@ -112,7 +103,9 @@ export const buildRemoteSceneUpdate = ({
   const shouldUpdateElements = pendingElements.length > 0 || hasElementOrder;
 
   if (shouldUpdateElements) {
-    let mergedElements = reconcileElements(localElements, pendingElements);
+    let mergedElements = reconcileElements(localElements, pendingElements, {
+      protect: protectedIds,
+    });
     if (hasElementOrder) {
       mergedElements = applyElementOrder(mergedElements, elementOrder);
     }

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { getElementContentSig } from "./shared";
+import { elementContentSignature } from "../../utils/sync";
 import type { ElementVersionInfo } from "./shared";
 
 export const useEditorElementTracking = () => {
@@ -13,7 +13,7 @@ export const useEditorElementTracking = () => {
         typeof element?.updated === "number"
           ? element.updated
           : Number(element?.updated) || 0,
-      contentSig: getElementContentSig(element),
+      contentSig: elementContentSignature(element),
     });
   }, []);
 
@@ -26,7 +26,7 @@ export const useEditorElementTracking = () => {
       typeof element?.updated === "number"
         ? element.updated
         : Number(element?.updated) || 0;
-    const nextSig = getElementContentSig(element);
+    const nextSig = elementContentSignature(element);
     return (
       previous.version !== nextVersion ||
       previous.versionNonce !== nextNonce ||

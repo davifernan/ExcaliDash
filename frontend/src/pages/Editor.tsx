@@ -16,6 +16,7 @@ import { useEditorSceneLoader } from "./editor/useEditorSceneLoader";
 import { useEditorCollaboration } from "./editor/useEditorCollaboration";
 import { useEditorPersistence } from "./editor/useEditorPersistence";
 import { useEditorCanvasHandlers } from "./editor/useEditorCanvasHandlers";
+import { useStickyNotesFeature } from "../sticky";
 import { useEditorCommands } from "./editor/useEditorCommands";
 import { useEditorElementTracking } from "./editor/useEditorElementTracking";
 import { useEditorBroadcast } from "./editor/useEditorBroadcast";
@@ -302,6 +303,13 @@ export const Editor: React.FC = () => {
       resolveSafeSnapshot,
       broadcastChanges,
     });
+  const { renderTopRightUI, onCanvasChange: handleChangeWithNotes } =
+    useStickyNotesFeature({
+      excalidrawAPI,
+      containerRef: editorContainerRef,
+      canEdit,
+      onCanvasChange: handleCanvasChange,
+    });
   const commandRefs = React.useMemo(
     () => ({
       excalidrawAPI,
@@ -362,7 +370,8 @@ export const Editor: React.FC = () => {
         peers={peers}
         theme={theme}
         onBackClick={handleBackClick}
-        onCanvasChange={handleCanvasChange}
+        onCanvasChange={handleChangeWithNotes}
+        renderTopRightUI={renderTopRightUI}
         onCanvasDropCapture={handleCanvasDropCapture}
         onExportClick={handleExportClick}
         onLibraryChange={handleLibraryChange}

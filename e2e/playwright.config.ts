@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const FRONTEND_PORT = 6767;
-const BACKEND_PORT = 8000;
+// Overridable so a run can stand beside a live instance instead of taking its
+// port out from under it. A dev server that grabs the port production is on
+// takes the site down for as long as the run lasts.
+const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 6767;
+const BACKEND_PORT = Number(process.env.PORT) || 8000;
 const FRONTEND_URL = process.env.BASE_URL || `http://localhost:${FRONTEND_PORT}`;
 const BACKEND_URL = process.env.API_URL || `http://localhost:${BACKEND_PORT}`;
 
@@ -79,6 +82,7 @@ export default defineConfig({
       stderr: "pipe",
       env: {
         DATABASE_URL: "file:./dev.db",
+        PORT: String(BACKEND_PORT),
         FRONTEND_URL,
         CSRF_MAX_REQUESTS: "100000",
         RATE_LIMIT_MAX_REQUESTS: "100000",
@@ -86,7 +90,7 @@ export default defineConfig({
       },
     },
     {
-      command: "cd ../frontend && npm run dev -- --host",
+      command: `cd ../frontend && npm run dev -- --host --port ${FRONTEND_PORT}`,
       url: FRONTEND_URL,
       reuseExistingServer: process.env.E2E_REUSE_SERVER === "true",
       timeout: 120000,

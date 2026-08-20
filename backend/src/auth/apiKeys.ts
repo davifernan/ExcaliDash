@@ -8,6 +8,16 @@ const API_KEY_SCRYPT_KEYLEN = 32;
 const API_KEY_SCRYPT_MAXMEM = 32 * 1024 * 1024;
 
 export const API_KEY_PREFIX = "exd_";
+/**
+ * Scopes beyond the defaults, granted only when explicitly asked for.
+ *
+ * Reading a drawing's history and handing a drawing to another account are
+ * both riskier than editing it, so a key does not get them by accident: the
+ * default set stays exactly as it was.
+ */
+export const DRAWINGS_HISTORY_SCOPE = "drawings:history";
+export const DRAWINGS_SHARE_SCOPE = "drawings:share";
+
 export const DEFAULT_API_KEY_SCOPES = [
   "drawings:read",
   "drawings:write",

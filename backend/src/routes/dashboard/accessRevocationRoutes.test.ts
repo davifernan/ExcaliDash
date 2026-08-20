@@ -90,7 +90,9 @@ const createHarness = async () => {
   const prisma: any = {
     apiKey: {
       findUnique: vi.fn(async ({ where }: any) => {
-        const entry = keyRows.get(where.keyId);
+        const entry = where.keyId
+          ? keyRows.get(where.keyId)
+          : Array.from(keyRows.values()).find((candidate) => candidate.id === where.id);
         return entry ? {
           id: entry.id,
           keyId: entry.token.keyId,
@@ -102,7 +104,9 @@ const createHarness = async () => {
       }),
       update: vi.fn().mockResolvedValue({}),
     },
-    user: { findUnique: vi.fn(async ({ where }: any) => ({ name: where.id })) },
+    // isActive matters now: the access lookup re-reads the account, and a
+    // fixture without the flag makes every principal read as deactivated.
+    user: { findUnique: vi.fn(async ({ where }: any) => ({ name: where.id, isActive: true })) },
     drawing: {
       findUnique: vi.fn(async () => drawingExists
         ? { id: "drawing-1", userId: "owner", collectionId: "collection-1" }
@@ -169,6 +173,8 @@ const createHarness = async () => {
     "join-room", { drawingId: "drawing-1", user: { name: socket.id } },
   );
   await Promise.all([join(viewer), join(owner)]);
+  expect(viewer.rooms.has("drawing_drawing-1")).toBe(true);
+  expect(owner.rooms.has("drawing_drawing-1")).toBe(true);
   const baseDeps = {
     prisma,
     requireAuth,

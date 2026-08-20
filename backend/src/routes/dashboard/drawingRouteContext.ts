@@ -37,6 +37,10 @@ export const createDrawingRouteContext = (
   const getRequestPrincipal = async (
     req: express.Request,
   ): Promise<DrawingPrincipal | null> => {
+    if (req.user?.authCredentialType === "bootstrap" && req.user.id) {
+      return { kind: "user", userId: req.user.id, allowInactive: true };
+    }
+    if (req.principal) return req.principal;
     if (req.user?.id) return { kind: "user", userId: req.user.id };
     return null;
   };

@@ -8,13 +8,17 @@ import {
   type DrawingPrincipal,
 } from "../authz/sharing";
 import { createSocketAuthenticator } from "./socketAuth";
-import type { CollaborationAccessController } from "./collaborationAccess";
+import { createCollaborationAccessController, type CollaborationAccessController } from "./collaborationAccess";
 import { createSocketFollowManager } from "./socketFollow";
 import {
   createApiKeySocketRevoker,
   registerApiKeySocketRevoker,
+  registerUserSocketRechecker,
 } from "./socketRevocation";
 import { DRAWINGS_READ_SCOPE, DRAWINGS_WRITE_SCOPE } from "../auth/apiKeys";
+import { startNonOverlappingSocketAccessSweep } from "./socketAccessSweep";
+import { createSocketCredentialGuard } from "./socketCredentials";
+import { toPresenceColor, toPresenceInitials, toPresenceName } from "./socketPresence";
 import {
   createRateLimiter,
   parseCursorPayload,
@@ -34,25 +38,6 @@ type RegisterSocketHandlersDeps = {
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
 
-const toPresenceName = (value: unknown): string => {
-  if (typeof value !== "string") return "User";
-  const trimmed = value.trim().slice(0, 120);
-  return trimmed || "User";
-};
-
-const toPresenceInitials = (name: string): string => {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  }
-  return name.trim().slice(0, 2).toUpperCase() || "U";
-};
-
-const toPresenceColor = (value: unknown): string => {
-  if (typeof value !== "string") return "#4f46e5";
-  return /^#[0-9a-fA-F]{3,8}$/.test(value.trim()) ? value.trim() : "#4f46e5";
-};
-
 export const registerSocketHandlers = ({
   io,
   prisma,
@@ -62,6 +47,7 @@ export const registerSocketHandlers = ({
 }: RegisterSocketHandlersDeps): CollaborationAccessController => {
   const principals = new Map<string, DrawingPrincipal>();
   const connectedSockets = new Map<string, Socket>();
+  const credentialChecks = new Map<string, Promise<boolean>>();
   const drawingBySocket = new Map<string, string>();
   const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
   let followManager: ReturnType<typeof createSocketFollowManager>;
@@ -135,6 +121,7 @@ export const registerSocketHandlers = ({
     ) {
       return null;
     }
+    if (!(await credentialChecks.get(socket.id))) return null;
     const access = await getAccess(socket.id, drawingId);
     if (
       connectedSockets.get(socket.id) !== socket ||
@@ -165,8 +152,26 @@ export const registerSocketHandlers = ({
     removeFromDrawing: (socket, reason) => removeFromDrawing(socket, reason),
   });
 
+  const disconnectApiKey = createApiKeySocketRevoker({
+    connectedSockets,
+    principals,
+    removeFromDrawing,
+  });
+  const credentialGuard = createSocketCredentialGuard({
+    prisma,
+    connectedSockets,
+    principals,
+    removeFromDrawing,
+    disconnectApiKey,
+  });
+
   io.on("connection", (socket) => {
+    // Registration precedes the final credential read. A concurrent revoke
+    // must therefore either find this socket in the map or win the final read;
+    // there is no gap in which both mechanisms can miss it.
     connectedSockets.set(socket.id, socket);
+    const credentialCheck = credentialGuard.verifyRegisteredSocket(socket);
+    credentialChecks.set(socket.id, credentialCheck);
     let joinRevision = 0;
     let joinQueue = Promise.resolve();
     let pendingJoins = 0;
@@ -208,6 +213,12 @@ export const registerSocketHandlers = ({
         const isCurrentJoin = () =>
           connectedSockets.get(socket.id) === socket && revision === joinRevision;
 
+        if (!(await credentialCheck) || !isCurrentJoin()) {
+          ack?.({ ok: false, error: {
+            code: "authentication-failed", message: "Authentication failed",
+          } });
+          return;
+        }
         const access = await getAccess(socket.id, drawingId);
         if (!isCurrentJoin()) return;
         if (!canSocketView(socket.id, access)) {
@@ -333,6 +344,7 @@ export const registerSocketHandlers = ({
     socket.on("disconnect", async () => {
       joinRevision += 1;
       connectedSockets.delete(socket.id);
+      credentialChecks.delete(socket.id);
       await removeFromDrawing(socket, "disconnected", false);
       principals.delete(socket.id);
     });
@@ -365,35 +377,23 @@ export const registerSocketHandlers = ({
     );
   };
 
-  const disconnectApiKey = createApiKeySocketRevoker({
-    connectedSockets,
+  const controller = createCollaborationAccessController({
+    prisma,
     principals,
-    removeFromDrawing,
+    recheckSockets,
+    disconnectInactiveUserSockets:
+      credentialGuard.disconnectInactiveUserSockets,
+    disconnectApiKey,
   });
 
-  const controller: CollaborationAccessController = {
-    recheckDrawingAccess: (drawingId, affectedUserId) =>
-      recheckSockets(
-        (socketId, activeDrawingId) =>
-          activeDrawingId === drawingId &&
-          (!affectedUserId || principals.get(socketId)?.userId === affectedUserId),
-      ),
-    recheckUserAccess: (affectedUserId) =>
-      recheckSockets(
-        (socketId) => principals.get(socketId)?.userId === affectedUserId,
-      ),
-    disconnectApiKey,
-  };
-
   registerApiKeySocketRevoker(disconnectApiKey);
+  registerUserSocketRechecker(controller.recheckUserAccess);
   // Expiring link shares have no route invocation at expiry time. A periodic
   // server-side sweep bounds passive clients' access even if they send nothing.
-  const accessRecheckTimer = setInterval(() => {
-    void recheckSockets(() => true).catch((error) => {
-      console.error("Periodic socket access recheck failed:", error);
-    });
-  }, accessRecheckIntervalMs);
-  accessRecheckTimer.unref?.();
+  startNonOverlappingSocketAccessSweep(
+    () => recheckSockets(() => true),
+    accessRecheckIntervalMs,
+  );
 
   return controller;
 };

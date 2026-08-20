@@ -49,7 +49,10 @@ export type AssetRouteDeps = {
 };
 
 const principalOf = (req: Request) =>
-  req.user?.id ? ({ kind: "user" as const, userId: req.user.id }) : null;
+  req.user?.authCredentialType === "bootstrap" && req.user.id
+    ? ({ kind: "user" as const, userId: req.user.id, allowInactive: true })
+    : req.principal ??
+      (req.user?.id ? ({ kind: "user" as const, userId: req.user.id }) : null);
 
 /**
  * The document, if this request is allowed to have it.

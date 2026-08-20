@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import {
   createDrawing,
   deleteDrawing,
@@ -16,6 +16,23 @@ import {
 
 test.describe("Real-time Collaboration", () => {
   let createdDrawingIds: string[] = [];
+
+  const interactiveCanvas = (page: Page) =>
+    page.locator("canvas.excalidraw__canvas.interactive");
+
+  const drawRectangle = async (page: Page, x = 120, y = 120) => {
+    const canvas = interactiveCanvas(page);
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("Interactive canvas not found");
+    await page.keyboard.press("r");
+    await page.mouse.move(box.x + x, box.y + y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x + 180, box.y + y + 100, { steps: 5 });
+    await page.mouse.up();
+  };
+
+  const activeElements = (drawing: Awaited<ReturnType<typeof getDrawing>>) =>
+    (drawing.elements || []).filter((element) => !element.isDeleted);
 
   test.afterEach(async ({ request }) => {
     for (const id of createdDrawingIds) {
@@ -44,16 +61,12 @@ test.describe("Real-time Collaboration", () => {
       await page1.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
       await page2.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
 
-      await page1.waitForTimeout(2000);
-      await page2.waitForTimeout(2000);
-
-      const collaboratorIndicator1 = page1.locator("[data-testid='collaborator-avatar'], .collaborator-avatar, [class*='collaborator']");
-      const collaboratorIndicator2 = page2.locator("[data-testid='collaborator-avatar'], .collaborator-avatar, [class*='collaborator']");
-
-      const hasCollaborator1 = await collaboratorIndicator1.count();
-      const hasCollaborator2 = await collaboratorIndicator2.count();
-
-      expect(hasCollaborator1 + hasCollaborator2).toBeGreaterThanOrEqual(0);
+      const collaborator1 = page1.locator(".UserList__collaborator .Avatar");
+      const collaborator2 = page2.locator(".UserList__collaborator .Avatar");
+      await expect(collaborator1).toHaveCount(1);
+      await expect(collaborator2).toHaveCount(1);
+      await expect(collaborator1).toBeVisible();
+      await expect(collaborator2).toBeVisible();
     } finally {
       await context1.close();
       await context2.close();
@@ -80,28 +93,21 @@ test.describe("Real-time Collaboration", () => {
       await page1.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
       await page2.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
 
-      await page1.waitForTimeout(2000);
-      await page2.waitForTimeout(2000);
+      await expect(page1.locator(".UserList__collaborator .Avatar")).toHaveCount(1);
+      await expect(page2.locator(".UserList__collaborator .Avatar")).toHaveCount(1);
+      await drawRectangle(page1);
+      await expect.poll(async () =>
+        activeElements(await getDrawing(request, drawing.id)).length,
+      ).toBe(1);
 
-      const canvas1 = page1.locator("canvas.excalidraw__canvas.interactive");
-      const box1 = await canvas1.boundingBox();
-      if (!box1) throw new Error("Canvas not found");
-
-      await page1.keyboard.press("r");
-      await page1.waitForTimeout(200);
-
-      await page1.mouse.move(box1.x + 100, box1.y + 100);
-      await page1.mouse.down();
-      await page1.mouse.move(box1.x + 300, box1.y + 200, { steps: 5 });
-      await page1.mouse.up();
-
-      await page1.waitForTimeout(1000);
-
-      const updatedDrawing = await getDrawing(request, drawing.id);
-
-      const elements = updatedDrawing.elements || [];
-
-      expect(elements).toBeDefined();
+      // Browser 2 loaded the empty scene before the rectangle existed. It can
+      // delete that rectangle only if the live element-update reached it.
+      await expect.poll(async () => {
+        await interactiveCanvas(page2).click({ position: { x: 400, y: 300 } });
+        await page2.keyboard.press("Control+A");
+        await page2.keyboard.press("Delete");
+        return activeElements(await getDrawing(request, drawing.id)).length;
+      }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(0);
     } finally {
       await context1.close();
       await context2.close();
@@ -117,32 +123,30 @@ test.describe("Real-time Collaboration", () => {
 
     await page.goto(`/editor/${drawing.id}`);
     await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
-    await page.waitForTimeout(1000);
-
-    const canvas = page.locator("canvas.excalidraw__canvas.interactive");
-
-    await page.keyboard.press("r");
-    await page.waitForTimeout(200);
-
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-
-    await page.mouse.move(box.x + 150, box.y + 150);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 350, box.y + 250, { steps: 5 });
-    await page.mouse.up();
-
-    await page.waitForTimeout(2000);
-
-    let savedDrawing = await getDrawing(request, drawing.id);
-    const elementCount = savedDrawing.elements?.length || 0;
+    await drawRectangle(page, 150, 150);
+    let persistedElementId = "";
+    await expect.poll(async () => {
+      const elements = activeElements(await getDrawing(request, drawing.id));
+      persistedElementId = elements[0]?.id || "";
+      return elements.length;
+    }).toBe(1);
+    expect(persistedElementId).not.toBe("");
 
     await page.reload();
     await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
-    await page.waitForTimeout(1000);
+    await expect.poll(async () =>
+      activeElements(await getDrawing(request, drawing.id))
+        .some((element) => element.id === persistedElementId),
+    ).toBe(true);
 
-    savedDrawing = await getDrawing(request, drawing.id);
-    expect(savedDrawing.elements?.length || 0).toBe(elementCount);
+    // Deleting after reload proves the persisted element was hydrated into
+    // the new editor, not merely left in the database by the old page.
+    await expect.poll(async () => {
+      await interactiveCanvas(page).click({ position: { x: 400, y: 300 } });
+      await page.keyboard.press("Control+A");
+      await page.keyboard.press("Delete");
+      return activeElements(await getDrawing(request, drawing.id)).length;
+    }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(0);
   });
 
   test("should display collaborator cursor positions", async ({ browser, request }) => {
@@ -162,21 +166,20 @@ test.describe("Real-time Collaboration", () => {
       await page1.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
       await page2.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
 
-      await page1.waitForTimeout(2000);
-      await page2.waitForTimeout(2000);
-
-      const canvas1 = page1.locator("canvas.excalidraw__canvas.interactive");
+      await expect(page1.locator(".UserList__collaborator .Avatar")).toHaveCount(1);
+      await expect(page2.locator(".UserList__collaborator .Avatar")).toHaveCount(1);
+      const canvas1 = interactiveCanvas(page1);
       const box = await canvas1.boundingBox();
       if (!box) throw new Error("Canvas not found");
 
-      await page1.mouse.move(box.x + 300, box.y + 300);
-      await page1.waitForTimeout(500);
-      await page1.mouse.move(box.x + 400, box.y + 400);
-      await page1.waitForTimeout(500);
+      await page1.mouse.move(box.x + 250, box.y + 220);
+      await page2.waitForTimeout(300);
+      const firstCursorFrame = await interactiveCanvas(page2).screenshot();
+      await page1.mouse.move(box.x + 520, box.y + 410, { steps: 3 });
+      await page2.waitForTimeout(300);
+      const secondCursorFrame = await interactiveCanvas(page2).screenshot();
 
-
-      await page2.waitForTimeout(1000);
-
+      expect(firstCursorFrame.equals(secondCursorFrame)).toBe(false);
     } finally {
       await context1.close();
       await context2.close();

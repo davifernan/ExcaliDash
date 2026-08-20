@@ -51,7 +51,7 @@ class FakeIo {
     await new Promise<void>((resolve, reject) => {
       this.middleware(socket, (error?: Error) => error ? reject(error) : resolve());
     });
-    this.connectionHandler(socket);
+    await this.connectionHandler(socket);
     return socket;
   }
 }
@@ -73,7 +73,9 @@ describe("socket API key authorization", () => {
         findFirst: vi.fn().mockResolvedValue({ id: "read-key", revokedAt: null }),
         update: vi.fn().mockResolvedValue({}),
       },
-      user: { findUnique: vi.fn().mockResolvedValue({ name: "MCP" }) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ name: "MCP", isActive: true }),
+      },
       drawing: { findUnique: vi.fn().mockResolvedValue({ userId: "key-owner" }) },
       drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
     };
@@ -152,8 +154,13 @@ describe("socket API key authorization", () => {
     const prisma = {
       apiKey: {
         findUnique: vi.fn(async ({ where }: any) => {
-          if (where.id === "key-a") {
-            return { id: "key-a", revokedAt: null, userId: "owner" };
+          if (where.id) {
+            const current = Array.from(rows.values()).find(
+              (candidate) => candidate.id === where.id,
+            );
+            return current
+              ? { id: current.id, revokedAt: null, userId: "owner" }
+              : null;
           }
           const entry = rows.get(where.keyId)!;
           return {
@@ -167,7 +174,9 @@ describe("socket API key authorization", () => {
         }),
         update: vi.fn().mockResolvedValue({}),
       },
-      user: { findUnique: vi.fn().mockResolvedValue({ name: "Agent" }) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ name: "Agent", isActive: true }),
+      },
       drawing: { findUnique: vi.fn().mockResolvedValue({ userId: "owner" }) },
       drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
     };
@@ -231,5 +240,113 @@ describe("socket API key authorization", () => {
     expect(revoked.disconnect).toHaveBeenCalledOnce();
     expect(retained.disconnect).not.toHaveBeenCalled();
     expect(retained.rooms.has("drawing_drawing-1")).toBe(true);
+  });
+
+  it("cannot let a handshake finish after its API key was revoked", async () => {
+    const generated = generateApiKey();
+    let revokedAt: Date | null = null;
+    let lastUsedStarted = false;
+    let releaseLastUsed: (() => void) | undefined;
+    const prisma = {
+      apiKey: {
+        findUnique: vi.fn(async ({ where }: any) => {
+          if (where.keyId === generated.keyId) {
+            return {
+              id: "racing-key",
+              keyId: generated.keyId,
+              tokenHash: generated.tokenHash,
+              scopes: serializeApiKeyScopes(),
+              revokedAt,
+              user: { id: "owner", isActive: true },
+            };
+          }
+          if (where.id === "racing-key") {
+            return { id: "racing-key", revokedAt };
+          }
+          return null;
+        }),
+        findFirst: vi.fn().mockImplementation(async () => ({
+          id: "racing-key",
+          revokedAt,
+        })),
+        update: vi.fn(async ({ data }: any) => {
+          if (data.lastUsedAt) {
+            lastUsedStarted = true;
+            await new Promise<void>((resolve) => {
+              releaseLastUsed = resolve;
+            });
+          }
+          if (data.revokedAt) revokedAt = data.revokedAt;
+          return {};
+        }),
+      },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ name: "Agent", isActive: true }),
+      },
+      drawing: { findUnique: vi.fn().mockResolvedValue({ userId: "owner" }) },
+      drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    const io = new FakeIo();
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+
+    const pendingSocket = io.connect("racing-socket", generated.token);
+    await vi.waitFor(() => expect(lastUsedStarted).toBe(true));
+
+    const router = express.Router();
+    registerAccountApiKeyRoutes({
+      router,
+      prisma,
+      requireAuth: ((req: any, _res: any, next: any) => {
+        req.user = { id: "owner" };
+        next();
+      }) as any,
+      accountActionRateLimiter: ((_req: any, _res: any, next: any) => next()) as any,
+      ensureAuthEnabled: async () => true,
+      requireCsrf: () => true,
+      sanitizeText: (value: unknown) => String(value),
+      config: { enableAuditLogging: false },
+    } as any);
+    const layer = (router as any).stack.find(
+      (candidate: any) =>
+        candidate.route?.path === "/api-keys/:id" &&
+        candidate.route.methods.delete,
+    );
+    const req: any = {
+      params: { id: "racing-key" },
+      headers: {},
+      connection: {},
+    };
+    const res: any = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      json(payload: unknown) { this.payload = payload; return this; },
+    };
+    for (const handler of layer.route.stack) {
+      await handler.handle(req, res, () => undefined);
+    }
+    expect(res.statusCode).toBe(200);
+
+    releaseLastUsed?.();
+    const socket = await pendingSocket;
+    await vi.waitFor(() =>
+      expect(socket.disconnect).toHaveBeenCalledWith(true),
+    );
+    expect(socket.disconnected).toBe(true);
+
+    let joinAck: any;
+    await socket.trigger(
+      "join-room",
+      { drawingId: "drawing-1", user: {} },
+      (value: any) => { joinAck = value; },
+    );
+    expect(joinAck).toMatchObject({
+      ok: false,
+      error: { code: "authentication-failed" },
+    });
   });
 });

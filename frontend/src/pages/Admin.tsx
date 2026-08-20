@@ -14,6 +14,10 @@ import { UsersTable } from "./admin/UsersTable";
 import { AgentsTable, type AdminApiKey } from "./admin/AgentsTable";
 import type { AdminTab } from "./admin/AdminTabsHeader";
 import type { AdminUser } from "./admin/types";
+import {
+  getCreateUserOutcome,
+  type CreateUserResponse,
+} from "./admin/createUserOutcome";
 import { useAccessControlSettings } from "./admin/useAccessControlSettings";
 import { useAdminCollections } from "./admin/useAdminCollections";
 import { useLoginRateLimitSettings } from "./admin/useLoginRateLimitSettings";
@@ -199,7 +203,7 @@ export const Admin: React.FC = () => {
         isActive: createActive,
         sendInvite: willInvite,
       };
-      const response = await api.api.post<{ user: AdminUser; invited?: boolean }>(
+      const response = await api.api.post<CreateUserResponse>(
         "/auth/users",
         payload,
       );
@@ -208,11 +212,15 @@ export const Admin: React.FC = () => {
           a.createdAt.localeCompare(b.createdAt),
         ),
       );
-      setSuccess(
-        response.data.invited
-          ? "User created — invitation sent"
-          : "User created",
-      );
+      const outcome = getCreateUserOutcome(response.data);
+      setSuccess(outcome.success ?? "");
+      setError(outcome.error ?? "");
+      if (outcome.temporaryPassword) {
+        setResetPasswordResult({
+          email: response.data.user.email,
+          tempPassword: outcome.temporaryPassword,
+        });
+      }
       setCreateEmail("");
       setCreateName("");
       setCreateUsername("");

@@ -217,6 +217,9 @@ Base values are documented in `backend/.env.example`. Common ones to care about:
 | `PASSWORD_MIN_LENGTH` | `12` | Local-auth password minimum length. Combine with `PASSWORD_REQUIRE_*` flags to relax or enforce complexity. |
 | `BACKUP_SCHEDULE` | unset | Optional 5- or 6-field cron expression for scheduled SQLite backups, e.g. `0 0 4 * * *`. |
 | `BACKUP_DIR` | `/app/backups` | Directory where scheduled SQLite backup files are written. Mount this to persistent storage. |
+| `AUTH_CLEANUP_SCHEDULE` | `0 0 3 * * *` | Daily maintenance schedule for expired/revoked auth tokens and audit retention. |
+| `AUTH_TOKEN_RETENTION_DAYS` | `30` | Keep expired/used/revoked auth-token records this many days before deletion. Live tokens are never deleted. |
+| `AUDIT_LOG_RETENTION_DAYS` | `365` | Keep audit events for this many days. Increase this to meet company or legal retention requirements. |
 
 </details>
 

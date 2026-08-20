@@ -81,6 +81,10 @@ export const getHttpsRedirectUrl = (
   req: RequestLike,
   policy: HttpsRedirectPolicy
 ): string | null => {
+  const requestPath = (req.originalUrl || req.url || "/").split("?", 1)[0];
+  // Infrastructure probes must stay reachable over the container's local
+  // HTTP socket even when browsers are redirected to the public HTTPS host.
+  if (requestPath === "/health") return null;
   if (!policy.shouldEnforceHttps) return null;
   if (req.secure || getForwardedProto(req) === "https") return null;
 

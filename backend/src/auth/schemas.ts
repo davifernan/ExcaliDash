@@ -68,7 +68,9 @@ export const adminCreateUserSchema = z.object({
   mustResetPassword: z.boolean().optional(),
   isActive: z.boolean().optional(),
 }).superRefine((data, ctx) => {
-  if (!data.oidcOnly && !data.password) {
+  // An invitation lets the user choose their own password, so the admin does
+  // not have to invent one they would then have to pass on.
+  if (!data.oidcOnly && !data.sendInvite && !data.password) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["password"],

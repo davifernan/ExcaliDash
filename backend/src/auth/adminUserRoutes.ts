@@ -179,8 +179,16 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
               message: "OIDC-only invited users require OIDC to be enabled.",
             });
         }
+        // An invited account still needs a real hash: redeeming the link goes
+        // through the password reset flow, which refuses accounts without one.
+        // The value is random and never leaves the server.
+        const invitePassword =
+          !oidcOnly && !password ? crypto.randomBytes(24).toString("base64url") : null;
+        const effectivePassword = password ?? invitePassword;
         const passwordHash =
-          oidcOnly || !password ? "" : await bcrypt.hash(password, 10);
+          oidcOnly || !effectivePassword
+            ? ""
+            : await bcrypt.hash(effectivePassword, 10);
         const sanitizedName = sanitizeText(name, 100);
         const user = await prisma.user.create({
           data: {

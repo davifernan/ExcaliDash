@@ -109,6 +109,39 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
       drawings: drawingsManifest,
     };
 
+    const serializeDrawing = (drawing: DrawingWithCollection) => JSON.stringify({
+      type: "excalidraw" as const,
+      version: 2 as const,
+      source: exportSource,
+      elements: parseJsonField(drawing.elements, [] as unknown[]),
+      appState: parseJsonField(drawing.appState, {} as Record<string, unknown>),
+      files: parseJsonField(drawing.files, {} as Record<string, unknown>),
+      excalidash: {
+        drawingId: drawing.id,
+        collectionId: drawing.collectionId ?? null,
+        exportedAt,
+      },
+    }, null, 2);
+
+    const manifestJson = JSON.stringify(manifest, null, 2);
+    let exportedBytes = Buffer.byteLength(manifestJson, "utf8");
+    for (const drawing of drawings) {
+      const drawingBytes = Buffer.byteLength(serializeDrawing(drawing), "utf8");
+      if (drawingBytes > deps.MAX_IMPORT_DRAWING_BYTES) {
+        return res.status(413).json({
+          error: "Drawing is too large",
+          message: `Drawing cannot be backed up because it exceeds ${Math.floor(deps.MAX_IMPORT_DRAWING_BYTES / 1024 / 1024)} MiB: ${drawing.name}`,
+        });
+      }
+      exportedBytes += drawingBytes;
+      if (exportedBytes > deps.MAX_IMPORT_TOTAL_EXTRACTED_BYTES) {
+        return res.status(413).json({
+          error: "Backup is too large",
+          message: `Drawings cannot be backed up because their extracted size exceeds ${Math.floor(deps.MAX_IMPORT_TOTAL_EXTRACTED_BYTES / 1024 / 1024)} MiB`,
+        });
+      }
+    }
+
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
@@ -137,27 +170,14 @@ export const registerExcalidashExportRoute = (deps: RegisterImportExportDeps) =>
     });
     archive.pipe(res);
 
-    archive.append(JSON.stringify(manifest, null, 2), { name: "excalidash.manifest.json" });
+    archive.append(manifestJson, { name: "excalidash.manifest.json" });
 
     const drawingsManifestById = new Map(drawingsManifest.map((d) => [d.id, d]));
     for (const drawing of drawings) {
       const meta = drawingsManifestById.get(drawing.id);
       if (!meta) continue;
-      const drawingData = {
-        type: "excalidraw" as const,
-        version: 2 as const,
-        source: exportSource,
-        elements: parseJsonField(drawing.elements, [] as unknown[]),
-        appState: parseJsonField(drawing.appState, {} as Record<string, unknown>),
-        files: parseJsonField(drawing.files, {} as Record<string, unknown>),
-        excalidash: {
-          drawingId: drawing.id,
-          collectionId: drawing.collectionId ?? null,
-          exportedAt,
-        },
-      };
       assertSafeArchivePath(meta.filePath);
-      archive.append(JSON.stringify(drawingData, null, 2), { name: meta.filePath });
+      archive.append(serializeDrawing(drawing), { name: meta.filePath });
     }
 
     const readme = `ExcaliDash Backup (.excalidash)

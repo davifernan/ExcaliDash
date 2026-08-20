@@ -287,36 +287,47 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
         // An invitation carries a single-use link, never a password: a mailbox
         // keeps its contents indefinitely.
         let invited = false;
-        if (sendInvite && !oidcOnly && mailer?.enabled) {
-          const inviteToken = crypto.randomBytes(32).toString("hex");
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + INVITE_VALID_DAYS);
-          await prisma.passwordResetToken.create({
-            data: {
-              userId: user.id,
-              token: hashTokenForStorage(inviteToken),
-              expiresAt,
-            },
-          });
+        let invitationError: string | null = null;
+        if (sendInvite && !oidcOnly) {
+          if (!mailer?.enabled) {
+            invitationError = "Email delivery is not configured on this server.";
+          } else {
+            try {
+              const inviteToken = crypto.randomBytes(32).toString("hex");
+              const expiresAt = new Date();
+              expiresAt.setDate(expiresAt.getDate() + INVITE_VALID_DAYS);
+              await prisma.passwordResetToken.create({
+                data: {
+                  userId: user.id,
+                  token: hashTokenForStorage(inviteToken),
+                  expiresAt,
+                },
+              });
 
-          const baseUrl = resolveFrontendBaseUrl();
-          const mail = buildUserInviteEmail({
-            inviteUrl: `${baseUrl}/reset-password-confirm?token=${inviteToken}`,
-            instanceUrl: baseUrl,
-            expiresInDays: INVITE_VALID_DAYS,
-          });
-          const result = await mailer.send({
-            to: user.email,
-            subject: mail.subject,
-            html: mail.html,
-            text: mail.text,
-            idempotencyKey: `user-invite/${crypto.randomUUID()}`,
-          });
-          invited = result.delivered;
-          if (result.delivered === false) {
-            console.error(
-              `[mail] Invitation for ${user.email} was not delivered: ${result.reason}`,
-            );
+              const baseUrl = resolveFrontendBaseUrl();
+              const mail = buildUserInviteEmail({
+                inviteUrl: `${baseUrl}/reset-password-confirm?token=${inviteToken}`,
+                instanceUrl: baseUrl,
+                expiresInDays: INVITE_VALID_DAYS,
+              });
+              const result = await mailer.send({
+                to: user.email,
+                subject: mail.subject,
+                html: mail.html,
+                text: mail.text,
+                idempotencyKey: `user-invite/${crypto.randomUUID()}`,
+              });
+              invited = result.delivered;
+              if (result.delivered === false) {
+                invitationError = `The invitation email was not delivered${result.reason ? `: ${result.reason}` : "."}`;
+              }
+            } catch (error) {
+              console.error(`[mail] Invitation for ${user.email} failed:`, error);
+              invitationError = "The invitation could not be prepared or sent.";
+            }
+          }
+          if (invitationError) {
+            console.error(`[mail] Invitation for ${user.email} was not delivered: ${invitationError}`);
           }
         }
 
@@ -331,7 +342,14 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
           });
         }
         // The admin needs to know whether they still have to pass credentials on.
-        res.status(201).json({ user, invited });
+        res.status(201).json({
+          user,
+          invited,
+          invitationError,
+          // The random password is disclosed only to the creating admin and
+          // only when email delivery failed, so the account remains usable.
+          temporaryPassword: sendInvite && !invited ? invitePassword : null,
+        });
       } catch (error) {
         console.error("Create user error:", error);
         res

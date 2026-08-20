@@ -68,6 +68,12 @@ interface BackupConfig {
   retentionDays: number;
 }
 
+interface MaintenanceConfig {
+  authCleanupSchedule: string;
+  authTokenRetentionDays: number;
+  auditLogRetentionDays: number;
+}
+
 interface Config {
   port: number;
   nodeEnv: string;
@@ -92,6 +98,7 @@ interface Config {
   bootstrapSetupCodeMaxAttempts: number;
   passwordPolicy: PasswordPolicyConfig;
   backups: BackupConfig;
+  maintenance: MaintenanceConfig;
   mail: MailConfig;
   s3: S3Config;
 }
@@ -425,6 +432,11 @@ export const config: Config = {
   ),
   passwordPolicy: resolvePasswordPolicyConfig(getRequiredEnvNumber, getOptionalBoolean),
   backups: resolveBackupConfig(),
+  maintenance: {
+    authCleanupSchedule: getOptionalEnv("AUTH_CLEANUP_SCHEDULE", "0 0 3 * * *"),
+    authTokenRetentionDays: getRequiredEnvNumber("AUTH_TOKEN_RETENTION_DAYS", 30),
+    auditLogRetentionDays: getRequiredEnvNumber("AUDIT_LOG_RETENTION_DAYS", 365),
+  },
   mail: {
     transport: resolveMailTransport(
       getOptionalTrimmedEnv("RESEND_API_KEY"),

@@ -12,6 +12,18 @@ type BackupSchedulerOptions = {
   retentionDays: number;
 };
 
+type AuthCleanupOptions = {
+  prisma: PrismaClient;
+  schedule: string;
+  tokenRetentionDays: number;
+  auditRetentionDays: number;
+};
+
+type MaintenanceSchedulerOptions = {
+  backups: BackupSchedulerOptions;
+  authCleanup: AuthCleanupOptions;
+};
+
 type CronPart = Set<number>;
 
 type ParsedCron = {
@@ -74,11 +86,11 @@ const parseCronPart = (raw: string, min: number, max: number): CronPart => {
   return values;
 };
 
-const parseCronSchedule = (raw: string): ParsedCron => {
+const parseCronSchedule = (raw: string, label: string): ParsedCron => {
   const parts = raw.trim().split(/\s+/);
   const normalized = parts.length === 5 ? ["0", ...parts] : parts;
   if (normalized.length !== 6) {
-    throw new Error("BACKUP_SCHEDULE must be a 5- or 6-field cron expression");
+    throw new Error(`${label} must be a 5- or 6-field cron expression`);
   }
 
   return {
@@ -148,37 +160,87 @@ export const createSqliteBackup = async ({
   return target;
 };
 
-export const startScheduledBackups = (options: BackupSchedulerOptions): (() => void) | null => {
-  if (!options.schedule) return null;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-  let cron: ParsedCron;
-  try {
-    cron = parseCronSchedule(options.schedule);
-  } catch (error) {
-    console.error("[backup] Invalid BACKUP_SCHEDULE; scheduled backups disabled:", error);
-    return null;
-  }
+export const cleanupExpiredAuthData = async ({
+  prisma,
+  tokenRetentionDays,
+  auditRetentionDays,
+  now = new Date(),
+}: Omit<AuthCleanupOptions, "schedule"> & { now?: Date }) => {
+  const tokenCutoff = new Date(now.getTime() - tokenRetentionDays * DAY_MS);
+  const auditCutoff = new Date(now.getTime() - auditRetentionDays * DAY_MS);
 
-  let lastRunKey: string | null = null;
-  let running = false;
-  const tick = async () => {
-    const now = new Date();
-    if (!cronMatches(cron, now)) return;
-    const runKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
-    if (runKey === lastRunKey || running) return;
-    lastRunKey = runKey;
-    running = true;
+  // Recent terminal tokens remain available for incident investigation. Live
+  // tokens are never selected, regardless of age.
+  const refreshTokens = await prisma.refreshToken.deleteMany({
+    where: {
+      createdAt: { lt: tokenCutoff },
+      OR: [{ revoked: true }, { expiresAt: { lt: now } }],
+    },
+  });
+  const passwordResetTokens = await prisma.passwordResetToken.deleteMany({
+    where: {
+      createdAt: { lt: tokenCutoff },
+      OR: [{ used: true }, { expiresAt: { lt: now } }],
+    },
+  });
+  const auditLogs = await prisma.auditLog.deleteMany({
+    where: { createdAt: { lt: auditCutoff } },
+  });
+
+  const counts = {
+    refreshTokens: refreshTokens.count,
+    passwordResetTokens: passwordResetTokens.count,
+    auditLogs: auditLogs.count,
+  };
+  console.log("[maintenance] Auth retention cleanup completed", counts);
+  return counts;
+};
+
+export const startScheduledMaintenance = (
+  options: MaintenanceSchedulerOptions,
+): (() => void) | null => {
+  const jobs: Array<{
+    name: string;
+    cron: ParsedCron;
+    run: () => Promise<unknown>;
+    lastRunKey: string | null;
+    running: boolean;
+  }> = [];
+
+  const addJob = (name: string, schedule: string | null, run: () => Promise<unknown>) => {
+    if (!schedule) return;
     try {
-      await createSqliteBackup(options);
+      jobs.push({ name, cron: parseCronSchedule(schedule, name), run, lastRunKey: null, running: false });
     } catch (error) {
-      console.error("[backup] Scheduled backup failed:", error);
-    } finally {
-      running = false;
+      console.error(`[maintenance] Invalid ${name}; job disabled:`, error);
     }
   };
 
-  const interval = setInterval(tick, 1000);
+  addJob("BACKUP_SCHEDULE", options.backups.schedule, () => createSqliteBackup(options.backups));
+  addJob("AUTH_CLEANUP_SCHEDULE", options.authCleanup.schedule, () => cleanupExpiredAuthData(options.authCleanup));
+  if (jobs.length === 0) return null;
+
+  const tick = async () => {
+    const now = new Date();
+    const runKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
+    await Promise.all(jobs.map(async (job) => {
+      if (!cronMatches(job.cron, now) || job.lastRunKey === runKey || job.running) return;
+      job.lastRunKey = runKey;
+      job.running = true;
+      try {
+        await job.run();
+      } catch (error) {
+        console.error(`[maintenance] ${job.name} failed:`, error);
+      } finally {
+        job.running = false;
+      }
+    }));
+  };
+
+  const interval = setInterval(() => void tick(), 1000);
   interval.unref();
-  console.log(`[backup] Scheduled SQLite backups enabled (${options.schedule}) -> ${options.backupDir}`);
+  console.log(`[maintenance] Scheduled jobs enabled: ${jobs.map((job) => job.name).join(", ")}`);
   return () => clearInterval(interval);
 };

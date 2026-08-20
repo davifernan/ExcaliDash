@@ -1,0 +1,258 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { BOOTSTRAP_USER_ID } from "../auth/authMode";
+import type { CollaborationAccessController } from "./collaborationAccess";
+import { registerSocketHandlers } from "./socket";
+
+type Emission = { scope: string; event: string; payload: any };
+
+class FakeOperator {
+  constructor(
+    private emissions: Emission[],
+    private scope: string,
+  ) {}
+  get volatile() {
+    return this;
+  }
+  emit(event: string, payload: any) {
+    this.emissions.push({ scope: this.scope, event, payload });
+  }
+}
+
+class FakeSocket {
+  readonly handshake = { auth: {}, headers: {} };
+  readonly rooms = new Set<string>([this.id]);
+  private handlers = new Map<string, (...args: any[]) => any>();
+  constructor(
+    readonly id: string,
+    private emissions: Emission[],
+  ) {}
+  get volatile() {
+    return this;
+  }
+  on(event: string, handler: (...args: any[]) => any) {
+    this.handlers.set(event, handler);
+  }
+  emit(event: string, payload: any) {
+    this.emissions.push({ scope: this.id, event, payload });
+  }
+  to(scope: string) {
+    return new FakeOperator(this.emissions, scope);
+  }
+  async join(scope: string) {
+    this.rooms.add(scope);
+  }
+  async leave(scope: string) {
+    this.rooms.delete(scope);
+  }
+  async trigger(event: string, ...args: any[]) {
+    return this.handlers.get(event)?.(...args);
+  }
+}
+
+class FakeIo {
+  readonly emissions: Emission[] = [];
+  private middleware: ((socket: FakeSocket, next: (error?: Error) => void) => any) | null = null;
+  private connectionHandler: ((socket: FakeSocket) => void) | null = null;
+  use(handler: any) {
+    this.middleware = handler;
+  }
+  on(event: string, handler: any) {
+    if (event === "connection") this.connectionHandler = handler;
+  }
+  to(scope: string) {
+    return new FakeOperator(this.emissions, scope);
+  }
+  async connect(id: string) {
+    const socket = new FakeSocket(id, this.emissions);
+    await new Promise<void>((resolve, reject) => {
+      this.middleware?.(socket, (error?: Error) =>
+        error ? reject(error) : resolve(),
+      );
+    });
+    this.connectionHandler?.(socket);
+    return socket;
+  }
+}
+
+const room = (drawingId: string) => `drawing_${drawingId}`;
+
+describe("socket collaboration races", () => {
+  let io: FakeIo;
+  let allowed: boolean;
+  let accessLookups: number;
+  let controller: CollaborationAccessController;
+  let drawingLookup: () => Promise<{ userId: string } | null>;
+
+  beforeEach(() => {
+    io = new FakeIo();
+    allowed = true;
+    accessLookups = 0;
+    drawingLookup = async () =>
+      allowed ? { userId: BOOTSTRAP_USER_ID } : null;
+    controller = registerSocketHandlers({
+      io: io as any,
+      prisma: {
+        drawing: {
+          findUnique: async () => {
+            accessLookups += 1;
+            return drawingLookup();
+          },
+        },
+        drawingLinkShare: { findFirst: async () => null },
+      } as any,
+      authModeService: { getAuthEnabled: async () => false } as any,
+      jwtSecret: "test-secret",
+    });
+  });
+
+  const join = (socket: FakeSocket, drawingId = "drawing-1") =>
+    socket.trigger("join-room", {
+      drawingId,
+      user: { name: "Local User", color: "#123456" },
+    });
+  const lastEmission = (event: string, scope?: string) =>
+    io.emissions
+      .filter((item) => item.event === event && (!scope || item.scope === scope))
+      .at(-1);
+
+  it("evicts passive sockets and their follow edges immediately after a revoke", async () => {
+    const target = await io.connect("socket-target");
+    const viewer = await io.connect("socket-revoked");
+    await join(target);
+    await join(viewer);
+    await viewer.trigger("follow-user", {
+      drawingId: "drawing-1",
+      targetPresenceId: "socket-target",
+      action: "FOLLOW",
+    });
+    allowed = false;
+
+    await controller.recheckDrawingAccess("drawing-1");
+
+    expect(target.rooms.has(room("drawing-1"))).toBe(false);
+    expect(viewer.rooms.has(room("drawing-1"))).toBe(false);
+    expect(lastEmission("follow-status", "socket-revoked")?.payload).toMatchObject({
+      followingPresenceId: null,
+      reason: "access-revoked",
+    });
+    expect(lastEmission("presence-update", room("drawing-1"))?.payload).toEqual([]);
+  });
+
+  it("does not create ghost presence when disconnect overtakes an awaited join", async () => {
+    let release: ((value: { userId: string }) => void) | null = null;
+    drawingLookup = () => new Promise((resolve) => { release = resolve; });
+    const stale = await io.connect("socket-stale");
+    const pendingJoin = join(stale);
+    await Promise.resolve();
+    await stale.trigger("disconnect");
+    release?.({ userId: BOOTSTRAP_USER_ID });
+    await pendingJoin;
+
+    drawingLookup = async () => ({ userId: BOOTSTRAP_USER_ID });
+    const observer = await io.connect("socket-observer");
+    await join(observer);
+    expect(stale.rooms.has(room("drawing-1"))).toBe(false);
+    expect(lastEmission("presence-update", room("drawing-1"))?.payload).toEqual([
+      expect.objectContaining({ presenceId: "socket-observer" }),
+    ]);
+  });
+
+  it("serializes concurrent joins so only the newest board owns the socket", async () => {
+    let release: ((value: { userId: string }) => void) | null = null;
+    let lookupNumber = 0;
+    drawingLookup = async () => {
+      lookupNumber += 1;
+      return lookupNumber === 1
+        ? new Promise((resolve) => { release = resolve; })
+        : { userId: BOOTSTRAP_USER_ID };
+    };
+    const socket = await io.connect("socket-switching");
+    const firstJoin = join(socket, "drawing-1");
+    await Promise.resolve();
+    const secondJoin = join(socket, "drawing-2");
+    release?.({ userId: BOOTSTRAP_USER_ID });
+    await Promise.all([firstJoin, secondJoin]);
+
+    expect(socket.rooms.has(room("drawing-1"))).toBe(false);
+    expect(socket.rooms.has(room("drawing-2"))).toBe(true);
+  });
+
+  it("orders a slow FOLLOW before a later UNFOLLOW", async () => {
+    const target = await io.connect("socket-target");
+    const follower = await io.connect("socket-follower");
+    await join(target);
+    await join(follower);
+    const blockAt = accessLookups + 2;
+    let release: (() => void) | null = null;
+    const normalLookup = drawingLookup;
+    drawingLookup = async () => {
+      if (accessLookups === blockAt) {
+        await new Promise<void>((resolve) => { release = resolve; });
+      }
+      return normalLookup();
+    };
+    const follow = follower.trigger("follow-user", {
+      drawingId: "drawing-1",
+      targetPresenceId: "socket-target",
+      action: "FOLLOW",
+    });
+    while (!release) await Promise.resolve();
+    const unfollow = follower.trigger("follow-user", {
+      drawingId: "drawing-1",
+      action: "UNFOLLOW",
+    });
+    release();
+    await Promise.all([follow, unfollow]);
+
+    expect(lastEmission("follow-status", "socket-follower")?.payload)
+      .toMatchObject({ followingPresenceId: null });
+    expect(lastEmission("followed-by-update", "socket-target")?.payload.followers)
+      .toEqual([]);
+  });
+
+  it("rejects a three-person follow cycle without changing existing edges", async () => {
+    const sockets = await Promise.all([
+      io.connect("alice"), io.connect("bob"), io.connect("carol"),
+    ]);
+    await Promise.all(sockets.map((socket) => join(socket)));
+    await sockets[0].trigger("follow-user", {
+      drawingId: "drawing-1", targetPresenceId: "bob", action: "FOLLOW",
+    });
+    await sockets[1].trigger("follow-user", {
+      drawingId: "drawing-1", targetPresenceId: "carol", action: "FOLLOW",
+    });
+    await sockets[2].trigger("follow-user", {
+      drawingId: "drawing-1", targetPresenceId: "alice", action: "FOLLOW",
+    });
+
+    expect(lastEmission("follow-status", "carol")?.payload).toEqual({
+      drawingId: "drawing-1",
+      followingPresenceId: null,
+      reason: "cycle-detected",
+    });
+    expect(lastEmission("followed-by-update", "alice")).toBeUndefined();
+  });
+
+  it("reports a rate-limited command and leaves server state unchanged", async () => {
+    const target = await io.connect("target");
+    const follower = await io.connect("follower");
+    await join(target);
+    await join(follower);
+    for (let index = 0; index < 12; index += 1) {
+      await follower.trigger("follow-user", {
+        drawingId: "drawing-1", targetPresenceId: "target", action: "FOLLOW",
+      });
+    }
+    await follower.trigger("follow-user", {
+      drawingId: "drawing-1", action: "UNFOLLOW",
+    });
+
+    expect(lastEmission("follow-status", "follower")?.payload).toEqual({
+      drawingId: "drawing-1",
+      followingPresenceId: "target",
+      reason: "rate-limited",
+    });
+    expect(lastEmission("followed-by-update", "target")?.payload.followers)
+      .toEqual([{ presenceId: "follower", name: "Local User" }]);
+  });
+});

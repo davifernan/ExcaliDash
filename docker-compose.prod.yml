@@ -1,6 +1,18 @@
+# Deployment without building on the server.
+#
+# These are THIS FORK's images, not upstream's. Upstream's images do not
+# contain the snapshot compression, the password reset and invitation mails,
+# the API-key agents or the editor's save-conflict merge, so pointing this file
+# at them would quietly downgrade the instance.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Pin a specific build by replacing :latest with :sha-<commit>, which is what
+# the Settings page shows under the version number.
 services:
   backend:
-    image: zimengxiong/excalidash-backend:latest
+    image: ghcr.io/davifernan/excalidash-backend:latest
     container_name: excalidash-backend
     environment:
       - DATABASE_PROVIDER=sqlite
@@ -15,6 +27,27 @@ services:
       # Recommended to set explicitly for portability and multi-instance setups.
       - JWT_SECRET=${JWT_SECRET}
       - CSRF_SECRET=${CSRF_SECRET}
+      # Public address of the instance. Used to build links in outgoing mail.
+      - FRONTEND_URL=${FRONTEND_URL}
+      - BACKEND_URL=${BACKEND_URL}
+      # How long a session survives when "remember me" was ticked.
+      - JWT_REFRESH_EXPIRES_IN_REMEMBERED=${JWT_REFRESH_EXPIRES_IN_REMEMBERED:-30d}
+      # --- Password reset and invitations by mail ----------------------
+      # Without a transport the reset form is hidden rather than offered and
+      # then silently failing.
+      - ENABLE_PASSWORD_RESET=${ENABLE_PASSWORD_RESET:-false}
+      - MAIL_TRANSPORT=${MAIL_TRANSPORT:-none}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_REPLY_TO=${MAIL_REPLY_TO}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      # --- Keeping the database from growing without bound -------------
+      - ENABLE_SNAPSHOT_COMPRESSION=${ENABLE_SNAPSHOT_COMPRESSION:-true}
+      - ENABLE_SNAPSHOT_VACUUM=${ENABLE_SNAPSHOT_VACUUM:-true}
       # Optional OIDC settings (required for AUTH_MODE=hybrid or oidc_enforced)
       # - OIDC_PROVIDER_NAME=Authentik
       # - OIDC_ISSUER_URL=https://auth.example.com/application/o/excalidash/
@@ -40,7 +73,7 @@ services:
       retries: 3
 
   frontend:
-    image: zimengxiong/excalidash-frontend:latest
+    image: ghcr.io/davifernan/excalidash-frontend:latest
     container_name: excalidash-frontend
     ports:
       - "6767:80"

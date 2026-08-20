@@ -230,7 +230,17 @@ export const AdvancedSettings = ({
               {appVersion}{" "}
             </span>{" "}
             {buildLabel && (
-              <span className="uppercase tracking-wide text-red-500 dark:text-red-400">
+              <span
+                className={`uppercase tracking-wide ${
+                  // Red is a warning, so it belongs on builds that are not
+                  // meant to be run by anyone but the person who made them.
+                  // Marking a healthy release build the same way is how people
+                  // learn to stop reading the marker.
+                  /development|pre-release/i.test(buildLabel)
+                    ? "text-red-500 dark:text-red-400"
+                    : "text-slate-400 dark:text-neutral-500"
+                }`}
+              >
                 {" "}
                 {buildLabel}{" "}
               </span>

@@ -162,7 +162,9 @@ export const useEditorPersistence = ({
       ): Promise<void> => {
         try {
           const updated = await api.updateDrawing(drawingId, {
-            elements: Array.from(elementsToSave),
+            // Copied because Drawing.elements is mutable and the caller's array
+            // is not; the payload must not alias the scene either way.
+            elements: [...elementsToSave],
             appState: persistableAppState,
             ...(filesToSave ? { files: filesToSave } : {}),
             version: refs.currentDrawingVersion.current ?? undefined,

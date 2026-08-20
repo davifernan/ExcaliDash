@@ -67,6 +67,7 @@ export type RegisterImportExportDeps = {
   removeFileIfExists: (filePath?: string) => Promise<void>;
   verifyDatabaseIntegrityAsync: (filePath: string) => Promise<boolean>;
   MAX_IMPORT_ARCHIVE_ENTRIES: number;
+  MAX_IMPORT_ARCHIVE_BYTES: number;
   MAX_IMPORT_COLLECTIONS: number;
   MAX_IMPORT_DRAWINGS: number;
   MAX_IMPORT_MANIFEST_BYTES: number;

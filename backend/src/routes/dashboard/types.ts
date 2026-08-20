@@ -1,6 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { Prisma, PrismaClient } from "../../generated/client";
+import type { CollaborationAccessController } from "../../server/collaborationAccess";
 
 export type SortField = "name" | "createdAt" | "updatedAt";
 export type SortDirection = "asc" | "desc";
@@ -44,6 +45,7 @@ export type DashboardRouteDeps = {
   collectionNameSchema: z.ZodTypeAny;
   ensureTrashCollection: EnsureTrashCollection;
   invalidateDrawingsCache: () => void;
+  collaborationAccess: CollaborationAccessController;
   buildDrawingsCacheKey: BuildDrawingsCacheKey;
   getCachedDrawingsBody: (key: string) => Buffer | null;
   cacheDrawingsResponse: (key: string, payload: unknown) => Buffer;

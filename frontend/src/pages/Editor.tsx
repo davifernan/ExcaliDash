@@ -104,7 +104,13 @@ export const Editor: React.FC = () => {
       replace: true,
     });
   }, [id, location.hash, location.pathname, location.search, navigate]);
-  const { peers, socketMeRef, socketRef, isSyncing, onPointerUpdate } =
+  const {
+    peers,
+    followers,
+    socketRef,
+    isSyncing,
+    onPointerUpdate,
+  } =
     useEditorCollaboration({
       drawingId: id,
       me,
@@ -133,11 +139,10 @@ export const Editor: React.FC = () => {
         drawingId: id,
         elements: [],
         files: filesDelta,
-        userId: socketMeRef.current.id,
       });
       return true;
     },
-    [id, socketMeRef, socketRef],
+    [id, socketRef],
   );
   const setExcalidrawAPI = useCallback(
     (api: any) => {
@@ -224,7 +229,6 @@ export const Editor: React.FC = () => {
     lastSyncedFilesRef,
     latestAppStateRef,
     latestFilesRef,
-    socketMeRef,
     socketRef,
     debouncedSave,
     debouncedSavePreview,
@@ -345,6 +349,7 @@ export const Editor: React.FC = () => {
         canEdit={canEdit}
         drawingName={drawingName}
         editorContainerRef={editorContainerRef}
+        followers={followers}
         initialData={initialData}
         isHeaderVisible={isHeaderVisible}
         isRenaming={isRenaming}

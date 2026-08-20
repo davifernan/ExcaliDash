@@ -18,10 +18,8 @@ import type { UserIdentity } from "../../utils/identity";
 import { UIOptions } from "./shared";
 import { PdfWidget } from "./PdfWidget";
 import { getPdfWidgetAssetId, isPdfWidgetLink } from "./pdfWidgetElements";
-
-interface Peer extends UserIdentity {
-  isActive: boolean;
-}
+import type { Peer } from "./useEditorCollaboration";
+import type { Follower } from "./followMode";
 
 type EditorViewProps = {
   id?: string;
@@ -30,6 +28,7 @@ type EditorViewProps = {
   canEdit: boolean;
   drawingName: string;
   editorContainerRef: React.RefObject<HTMLDivElement>;
+  followers: Follower[];
   initialData: any;
   isHeaderVisible: boolean;
   isRenaming: boolean;
@@ -64,7 +63,7 @@ const UserAvatar = ({
   label,
   inactive = false,
 }: {
-  user: UserIdentity;
+  user: Pick<UserIdentity, "name" | "initials" | "color">;
   label: string;
   inactive?: boolean;
 }) => (
@@ -91,6 +90,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   canEdit,
   drawingName,
   editorContainerRef,
+  followers,
   initialData,
   isHeaderVisible,
   isRenaming,
@@ -163,6 +163,16 @@ export const EditorView: React.FC<EditorViewProps> = ({
         )}
       </div>
       <div className="flex items-center gap-3">
+        {followers.length > 0 ? (
+          <span
+            className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-100 text-indigo-900 dark:bg-indigo-900/30 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800"
+            title={followers.map((follower) => follower.name).join(", ")}
+          >
+            {followers.length === 1
+              ? `${followers[0].name} is following you`
+              : `${followers.length} people are following you`}
+          </span>
+        ) : null}
         {!canEdit ? (
           <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
             Read-only
@@ -208,7 +218,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           <div className="flex items-center gap-2">
             {peers.map((peer) => (
               <UserAvatar
-                key={peer.id}
+                key={peer.presenceId}
                 user={peer}
                 label={peer.name}
                 inactive={!peer.isActive}

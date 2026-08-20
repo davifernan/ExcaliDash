@@ -10,7 +10,6 @@ type UseEditorBroadcastParams = {
   lastSyncedFilesRef: MutableRefObject<Record<string, any>>;
   latestAppStateRef: MutableRefObject<any>;
   latestFilesRef: MutableRefObject<any>;
-  socketMeRef: MutableRefObject<{ id: string }>;
   socketRef: MutableRefObject<any>;
   debouncedSave: (
     drawingId: string,
@@ -37,7 +36,6 @@ export const useEditorBroadcast = ({
   lastSyncedFilesRef,
   latestAppStateRef,
   latestFilesRef,
-  socketMeRef,
   socketRef,
   debouncedSave,
   debouncedSavePreview,
@@ -92,7 +90,6 @@ export const useEditorBroadcast = ({
           elementOrder: shouldSyncOrder
             ? normalizedElements.map((el: any) => el?.id).filter(Boolean)
             : undefined,
-          userId: socketMeRef.current.id,
         });
         const appState = latestAppStateRef.current;
         if (appState) {
@@ -117,7 +114,6 @@ export const useEditorBroadcast = ({
       recordElementVersion,
       setHasSceneChangesSinceLoad,
       socketRef,
-      socketMeRef,
     ],
   );
 

@@ -21,7 +21,27 @@ const showTemporaryViewerError = (
   setViewerActionError: React.Dispatch<React.SetStateAction<string | null>>,
 ) => {
   setViewerActionError(message);
-  setTimeout(() => setViewerActionError(null), 3000);
+  setTimeout(() => setViewerActionError(null), 6000);
+};
+
+const quoteNames = (ids: string[], drawings: DrawingSummary[]): string => {
+  const names = ids.map((id) => drawings.find((drawing) => drawing.id === id)?.name || id);
+  const visible = names.slice(0, 3).map((name) => `“${name}”`).join(", ");
+  return names.length > 3 ? `${visible} and ${names.length - 3} more` : visible;
+};
+
+const runAll = async (
+  ids: string[],
+  action: (id: string) => Promise<unknown>,
+): Promise<{ succeeded: string[]; failed: string[] }> => {
+  const results = await Promise.allSettled(ids.map(action));
+  return ids.reduce(
+    (summary, id, index) => {
+      summary[results[index].status === "fulfilled" ? "succeeded" : "failed"].push(id);
+      return summary;
+    },
+    { succeeded: [] as string[], failed: [] as string[] },
+  );
 };
 
 export const useDashboardDrawingActions = ({
@@ -75,6 +95,9 @@ export const useDashboardDrawingActions = ({
       navigate(`/editor/${id}`);
     } catch (err) {
       console.error(err);
+      handleViewerActionError(
+        "Couldn’t create a drawing. Check your connection and try again.",
+      );
     }
   };
 
@@ -100,6 +123,9 @@ export const useDashboardDrawingActions = ({
     } catch (err) {
       console.error("Failed to rename drawing:", err);
       refreshData();
+      handleViewerActionError(
+        `Couldn’t rename ${quoteNames([id], drawings)}. The original name was restored; check your connection and try again.`,
+      );
     }
   };
 
@@ -135,6 +161,9 @@ export const useDashboardDrawingActions = ({
     } catch (err) {
       console.error("Failed to move to trash", err);
       refreshData();
+      handleViewerActionError(
+        `Couldn’t move ${quoteNames([id], drawings)} to Trash. The list was refreshed; check your connection and try again.`,
+      );
     }
   };
 
@@ -155,6 +184,9 @@ export const useDashboardDrawingActions = ({
     } catch (err) {
       console.error("Failed to delete drawing", err);
       refreshData();
+      handleViewerActionError(
+        `Couldn’t permanently delete ${quoteNames([id], drawings)}. Nothing was removed; check your connection and try again.`,
+      );
     }
   };
 
@@ -166,13 +198,16 @@ export const useDashboardDrawingActions = ({
       return next;
     });
     setSelectedIds(new Set());
-    try {
-      await Promise.all(
-        ids.map((id) => api.updateDrawing(id, { collectionId: "trash" })),
-      );
-    } catch (err) {
-      console.error("Failed bulk move to trash", err);
+    const { succeeded, failed } = await runAll(
+      ids,
+      (id) => api.updateDrawing(id, { collectionId: "trash" }),
+    );
+    if (failed.length > 0) {
       refreshData();
+      setSelectedIds(new Set(failed));
+      handleViewerActionError(
+        `Moved ${succeeded.length} of ${ids.length} drawings to Trash. Couldn’t move ${quoteNames(failed, drawings)}. The list was refreshed; retry the selected drawings.`,
+      );
     }
   };
 
@@ -185,18 +220,21 @@ export const useDashboardDrawingActions = ({
   const executeBulkPermanentDelete = async () => {
     const ids = Array.from(selectedIds);
     setShowBulkDeleteConfirm(false);
-    try {
-      await Promise.all(ids.map((id) => api.deleteDrawing(id)));
-      const toDelete = new Set(ids);
+    const { succeeded, failed } = await runAll(ids, api.deleteDrawing);
+    if (succeeded.length > 0) {
+      const toDelete = new Set(succeeded);
       setDrawings((current) => {
         const next = current.filter((drawing) => !toDelete.has(drawing.id));
         setTotalCount((count) => count - (current.length - next.length));
         return next;
       });
-      setSelectedIds(new Set());
-    } catch (err) {
-      console.error("Failed bulk delete", err);
+    }
+    setSelectedIds(new Set(failed));
+    if (failed.length > 0) {
       refreshData();
+      handleViewerActionError(
+        `Deleted ${succeeded.length} of ${ids.length} drawings. Couldn’t delete ${quoteNames(failed, drawings)}. Check your connection and retry the selected drawings.`,
+      );
     }
   };
 
@@ -213,13 +251,16 @@ export const useDashboardDrawingActions = ({
       },
     );
     setSelectedIds(new Set());
-    try {
-      await Promise.all(
-        idsToMove.map((id) => api.updateDrawing(id, { collectionId })),
-      );
-    } catch (err) {
-      console.error("Failed bulk move", err);
+    const { succeeded, failed } = await runAll(
+      idsToMove,
+      (id) => api.updateDrawing(id, { collectionId }),
+    );
+    if (failed.length > 0) {
       refreshData();
+      setSelectedIds(new Set(failed));
+      handleViewerActionError(
+        `Moved ${succeeded.length} of ${idsToMove.length} drawings. Couldn’t move ${quoteNames(failed, drawings)}. The list was refreshed; retry the selected drawings.`,
+      );
     }
   };
 
@@ -229,19 +270,22 @@ export const useDashboardDrawingActions = ({
       refreshData();
     } catch (err) {
       console.error("Failed to duplicate drawing:", err);
+      handleViewerActionError(
+        `Couldn’t duplicate ${quoteNames([id], drawings)}. Check your connection and try again.`,
+      );
     }
   };
 
   const handleBulkDuplicate = async () => {
     if (selectedIds.size === 0) return;
-    try {
-      await Promise.all(
-        Array.from(selectedIds).map((id) => api.duplicateDrawing(id)),
+    const ids = Array.from(selectedIds);
+    const { succeeded, failed } = await runAll(ids, api.duplicateDrawing);
+    if (succeeded.length > 0) refreshData();
+    setSelectedIds(new Set(failed));
+    if (failed.length > 0) {
+      handleViewerActionError(
+        `Duplicated ${succeeded.length} of ${ids.length} drawings. Couldn’t duplicate ${quoteNames(failed, drawings)}. Check your connection and retry the selected drawings.`,
       );
-      setSelectedIds(new Set());
-      refreshData();
-    } catch (err) {
-      console.error("Failed bulk duplicate:", err);
     }
   };
 
@@ -262,6 +306,9 @@ export const useDashboardDrawingActions = ({
     } catch (error) {
       console.error("Failed to move drawing:", error);
       refreshData();
+      handleViewerActionError(
+        `Couldn’t move ${quoteNames([id], drawings)}. The list was refreshed; check your connection and try again.`,
+      );
     }
   };
 
@@ -309,15 +356,17 @@ export const useDashboardDrawingActions = ({
       },
     );
     if (selectedIds.has(draggedDrawingId)) setSelectedIds(new Set());
-    try {
-      await Promise.all(
-        Array.from(idsToMove).map((id) =>
-          api.updateDrawing(id, { collectionId: targetCollectionId }),
-        ),
-      );
-    } catch (err) {
-      console.error("Failed to move", err);
+    const ids = Array.from(idsToMove);
+    const { succeeded, failed } = await runAll(
+      ids,
+      (id) => api.updateDrawing(id, { collectionId: targetCollectionId }),
+    );
+    if (failed.length > 0) {
       refreshData();
+      setSelectedIds(new Set(failed));
+      handleViewerActionError(
+        `Moved ${succeeded.length} of ${ids.length} drawings. Couldn’t move ${quoteNames(failed, drawings)}. The list was refreshed; retry the selected drawings.`,
+      );
     }
   };
 

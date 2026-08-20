@@ -28,6 +28,17 @@ export const bindSocketRoomLifecycle = ({
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
+  // Clearing the connection state empties the collaborator list, and Excalidraw
+  // drops userToFollow as soon as the person being followed leaves it. Reading
+  // the target after that always yields null, which made the restore below dead
+  // code: a two second blip ended follow even though the other person never
+  // went anywhere. So the target is captured while it can still be read.
+  let rememberedTarget: string | null = null;
+  const rememberTarget = () => {
+    const current = getFollowTargetPresenceId();
+    if (current) rememberedTarget = current;
+  };
+
   const clearTimer = (timer: ReturnType<typeof setTimeout> | null) => {
     if (timer !== null) clearTimeout(timer);
   };
@@ -49,6 +60,7 @@ export const bindSocketRoomLifecycle = ({
     }
     if (resetSocketId !== socketId) {
       resetSocketId = socketId;
+      rememberTarget();
       resetConnectionState();
     }
     joiningSocketId = socketId;
@@ -73,7 +85,8 @@ export const bindSocketRoomLifecycle = ({
       }
       joinedSocketId = socketId;
       onJoined(presence);
-      const targetPresenceId = getFollowTargetPresenceId();
+      const targetPresenceId = getFollowTargetPresenceId() || rememberedTarget;
+      rememberedTarget = null;
       if (targetPresenceId) {
         socket.emit("follow-user", {
           drawingId,
@@ -85,6 +98,7 @@ export const bindSocketRoomLifecycle = ({
   };
 
   const onDisconnect = () => {
+    rememberTarget();
     clearTimer(ackTimer);
     clearTimer(retryTimer);
     ackTimer = null;

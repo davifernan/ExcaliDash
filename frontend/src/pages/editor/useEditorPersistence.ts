@@ -326,8 +326,13 @@ export const useEditorPersistence = ({
     }
   };
 
+  // Which board the pending save belongs to. Needed when the page is closing
+  // and there is no argument left to read it from.
+  const pendingDrawingId = useRef<string | null>(null);
+
   const debouncedSave = useCallback(
     debounce((drawingId, elements, appState, files) => {
+      pendingDrawingId.current = drawingId;
       enqueueSceneSave(drawingId, elements, appState, files);
     }, 1000),
     [enqueueSceneSave],
@@ -369,12 +374,70 @@ export const useEditorPersistence = ({
     [],
   );
 
+  /**
+   * Do not throw away the last second of work.
+   *
+   * Saving is debounced by a second, and leaving used to cancel whatever was
+   * still pending — so a change made just before closing the tab or pressing
+   * back was simply gone when the board was opened again. The socket does not
+   * help here: it broadcasts, it does not persist.
+   *
+   * Leaving the editor within the app runs the pending save instead of
+   * dropping it. That covers navigating away, which is the common case and the
+   * one that can still finish normally.
+   */
   useEffect(() => {
     return () => {
-      debouncedSave.cancel();
+      debouncedSave.flush();
+      // The preview is cosmetic and regenerates on the next save.
       debouncedSavePreview.cancel();
     };
   }, [debouncedSave, debouncedSavePreview]);
+
+  /**
+   * Closing the tab is the harder case: the page is going away and a normal
+   * request goes with it. `keepalive` lets the browser finish this one after
+   * the page is gone, which is exactly what it is for.
+   *
+   * `pagehide` rather than `beforeunload`, because `beforeunload` does not fire
+   * reliably on mobile, where a tab is often discarded rather than closed.
+   */
+  useEffect(() => {
+    const saveOnTheWayOut = () => {
+      const drawingId = pendingDrawingId.current;
+      const elements = refs.latestElements.current;
+      if (!drawingId || !elements) return;
+      if (refs.lastPersistedElements.current === elements) return;
+
+      const body = JSON.stringify({
+        elements,
+        appState: getPersistedAppState(refs.latestAppState.current),
+        version: refs.currentDrawingVersion.current ?? undefined,
+      });
+
+      try {
+        void fetch(`${api.API_URL}/drawings/${drawingId}`, {
+          method: "PUT",
+          credentials: "include",
+          keepalive: true,
+          headers: { "Content-Type": "application/json", ...api.currentCsrfHeader() },
+          body,
+        });
+      } catch {
+        // Nothing sensible to do while the page is disappearing.
+      }
+    };
+
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") saveOnTheWayOut();
+    };
+    window.addEventListener("pagehide", saveOnTheWayOut);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("pagehide", saveOnTheWayOut);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
+  }, [refs]);
 
   return {
     debouncedSave,

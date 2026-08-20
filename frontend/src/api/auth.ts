@@ -21,6 +21,17 @@ type RetriableRequestConfig = {
 
 let authEnabledProbeCache: { value: boolean; fetchedAt: number } | null = null;
 let csrfToken: string | null = null;
+
+/**
+ * The CSRF header as it stands right now.
+ *
+ * Needed by the last-moment save on page unload, which cannot use the axios
+ * client: that would be cancelled along with the page. A keepalive fetch has to
+ * build the request itself, and it still has to pass the same check.
+ */
+export const currentCsrfHeader = (): Record<string, string> =>
+  csrfToken ? { [csrfHeaderName]: csrfToken } : {};
+
 let csrfHeaderName = "x-csrf-token";
 let csrfTokenPromise: Promise<void> | null = null;
 let refreshPromise: Promise<void> | null = null;

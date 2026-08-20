@@ -3,7 +3,7 @@ import type { MutableRefObject, RefObject } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 import type { UserIdentity } from "../../utils/identity";
-import { buildRemoteSceneUpdate } from "./shared";
+import { buildRemoteSceneUpdate, heldElementIds } from "./shared";
 
 interface Peer extends UserIdentity {
   isActive: boolean;
@@ -193,6 +193,9 @@ export const useEditorCollaboration = ({
             elementOrder,
             lastSyncedFiles: lastSyncedFilesRef.current,
             incomingFiles,
+            protectedIds: heldElementIds(
+              excalidrawAPI.current.getAppState?.(),
+            ),
           });
         if (
           shouldUpdateFiles &&

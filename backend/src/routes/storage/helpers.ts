@@ -11,10 +11,7 @@ export type S3ObjectRecord = {
 
 export const VALID_STORAGE_FILE_ID = /^[\w-]{1,200}$/;
 
-export const collectReferencedFileIds = (
-  elements: any[],
-  includeDeleted: boolean,
-): Set<string> => {
+export const collectReferencedFileIds = (elements: any[], includeDeleted: boolean): Set<string> => {
   const ids = new Set<string>();
   for (const el of elements) {
     if (!includeDeleted && el.isDeleted) continue;

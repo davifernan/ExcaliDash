@@ -22,9 +22,7 @@ const asset = {
 };
 
 const loadPendingPage = (container: HTMLElement) => {
-  const pending = container.querySelector<HTMLImageElement>(
-    ".pdf-widget__page-image--pending",
-  );
+  const pending = container.querySelector<HTMLImageElement>(".pdf-widget__page-image--pending");
   expect(pending).not.toBeNull();
   fireEvent.load(pending!);
 };

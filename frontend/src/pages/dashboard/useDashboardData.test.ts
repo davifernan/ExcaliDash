@@ -14,7 +14,7 @@ type Deferred<T> = {
   reject: (reason?: unknown) => void;
 };
 
-const deferred = <T,>(): Deferred<T> => {
+const deferred = <T>(): Deferred<T> => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
   const promise = new Promise<T>((res, rej) => {
@@ -66,7 +66,7 @@ describe("useDashboardData", () => {
         sortDirection: "desc",
         pageSize: 24,
         onRefreshSuccess,
-      })
+      }),
     );
 
     await waitFor(() => {
@@ -110,7 +110,7 @@ describe("useDashboardData", () => {
         sortField: "updatedAt",
         sortDirection: "desc",
         pageSize: 24,
-      })
+      }),
     );
 
     await waitFor(() => {
@@ -164,7 +164,7 @@ describe("useDashboardData", () => {
           sortDirection: "desc",
           pageSize: 24,
         }),
-      { initialProps: "first" }
+      { initialProps: "first" },
     );
 
     rerender("second");
@@ -234,9 +234,7 @@ describe("useDashboardData", () => {
       await result.current.refreshData();
     });
 
-    expect(result.current.collections.map((collection) => collection.id)).toEqual([
-      "shared-a",
-    ]);
+    expect(result.current.collections.map((collection) => collection.id)).toEqual(["shared-a"]);
   });
 
   it("reports drawing load failures without discarding previously loaded drawings", async () => {

@@ -113,9 +113,7 @@ export const useEditorCollaboration = ({
           excalidrawAPI.current.getAppState().collaborators || [],
         );
         const nextPresenceIds = new Set(
-          users
-            .filter((user) => user.presenceId !== selfId)
-            .map((user) => user.presenceId),
+          users.filter((user) => user.presenceId !== selfId).map((user) => user.presenceId),
         );
         knownPresenceIdsRef.current.forEach((presenceId) => {
           if (!nextPresenceIds.has(presenceId)) {
@@ -145,8 +143,7 @@ export const useEditorCollaboration = ({
       }
     });
     socket.on("error", (payload: any) => {
-      const message =
-        typeof payload?.message === "string" ? payload.message : null;
+      const message = typeof payload?.message === "string" ? payload.message : null;
       console.warn("[Editor] Socket error:", payload);
       if (message === "You do not have access to this drawing") {
         onAccessDenied();
@@ -202,8 +199,7 @@ export const useEditorCollaboration = ({
         selfPresenceIdRef.current = serverUser.presenceId;
         const lastUsers = lastPresenceUsersRef.current;
         if (lastUsers) {
-          setPeers(lastUsers.filter((user) =>
-            user.presenceId !== selfPresenceIdRef.current));
+          setPeers(lastUsers.filter((user) => user.presenceId !== selfPresenceIdRef.current));
         }
       },
       getFollowTargetPresenceId: () =>
@@ -216,16 +212,13 @@ export const useEditorCollaboration = ({
       remoteFlushRafIdRef.current = null;
       if (!excalidrawAPI.current) return;
       const hasPendingElements = pendingRemoteElementsRef.current.size > 0;
-      const hasPendingFiles =
-        Object.keys(pendingRemoteFilesRef.current || {}).length > 0;
+      const hasPendingFiles = Object.keys(pendingRemoteFilesRef.current || {}).length > 0;
       const pendingOrderRaw = pendingRemoteElementOrderRef.current;
       const hasPendingOrder = hasNonEmptyArray(pendingOrderRaw);
       if (!hasPendingElements && !hasPendingFiles && !hasPendingOrder) return;
       isSyncing.current = true;
       try {
-        const pendingElements = Array.from(
-          pendingRemoteElementsRef.current.values(),
-        );
+        const pendingElements = Array.from(pendingRemoteElementsRef.current.values());
         pendingRemoteElementsRef.current.clear();
         const incomingFiles = pendingRemoteFilesRef.current || {};
         pendingRemoteFilesRef.current = {};
@@ -233,26 +226,19 @@ export const useEditorCollaboration = ({
         pendingRemoteElementOrderRef.current = null;
         const { sceneUpdate, mergedElements, nextFiles, shouldUpdateFiles } =
           buildRemoteSceneUpdate({
-            localElements:
-              excalidrawAPI.current.getSceneElementsIncludingDeleted(),
+            localElements: excalidrawAPI.current.getSceneElementsIncludingDeleted(),
             pendingElements,
             elementOrder,
             lastSyncedFiles: lastSyncedFilesRef.current,
             incomingFiles,
-            protectedIds: heldElementIds(
-              excalidrawAPI.current.getAppState?.(),
-            ),
+            protectedIds: heldElementIds(excalidrawAPI.current.getAppState?.()),
           });
-        if (
-          shouldUpdateFiles &&
-          typeof excalidrawAPI.current.addFiles === "function"
-        ) {
+        if (shouldUpdateFiles && typeof excalidrawAPI.current.addFiles === "function") {
           excalidrawAPI.current.addFiles(Object.values(incomingFiles));
         }
         if (mergedElements) {
           if (elementOrder) {
-            lastSyncedElementOrderSigRef.current =
-              computeElementOrderSig(mergedElements);
+            lastSyncedElementOrderSigRef.current = computeElementOrderSig(mergedElements);
           }
           pendingElements.forEach((el: any) => {
             recordElementVersion(el);
@@ -270,14 +256,12 @@ export const useEditorCollaboration = ({
         isSyncing.current = false;
       }
       const moreElements = pendingRemoteElementsRef.current.size > 0;
-      const moreFiles =
-        Object.keys(pendingRemoteFilesRef.current || {}).length > 0;
+      const moreFiles = Object.keys(pendingRemoteFilesRef.current || {}).length > 0;
       const moreOrder = hasNonEmptyArray(pendingRemoteElementOrderRef.current);
       if (moreElements || moreFiles || moreOrder) {
         if (!remoteFlushScheduledRef.current) {
           remoteFlushScheduledRef.current = true;
-          remoteFlushRafIdRef.current =
-            requestAnimationFrame(flushRemoteUpdates);
+          remoteFlushRafIdRef.current = requestAnimationFrame(flushRemoteUpdates);
         }
       }
     };
@@ -319,9 +303,7 @@ export const useEditorCollaboration = ({
     );
     socket.on("drawing-server-update", (payload: { drawingId?: string }) => {
       if (!payload?.drawingId || payload.drawingId !== drawingId) return;
-      toast.info(
-        "Drawing storage changed on the server. Reloading the editor.",
-      );
+      toast.info("Drawing storage changed on the server. Reloading the editor.");
       window.location.reload();
     });
     const handleActivity = (isActive: boolean) => {
@@ -359,7 +341,8 @@ export const useEditorCollaboration = ({
       pendingRemoteElementsRef.current.clear();
       pendingRemoteFilesRef.current = {};
       pendingRemoteElementOrderRef.current = null;
-      selfPresenceIdRef.current = null; lastPresenceUsersRef.current = null;
+      selfPresenceIdRef.current = null;
+      lastPresenceUsersRef.current = null;
       knownPresenceIdsRef.current.clear();
       cancelAnimationFrame(animationFrameId.current);
     };

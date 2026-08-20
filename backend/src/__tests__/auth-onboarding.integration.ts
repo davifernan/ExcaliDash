@@ -136,14 +136,11 @@ describe("Auth onboarding decision", () => {
   });
 
   it("requires CSRF token for bootstrap registration", async () => {
-    const noCsrfResponse = await agent
-      .post("/auth/register")
-      .set("User-Agent", userAgent)
-      .send({
-        email: "bootstrap-admin@test.local",
-        password: "StrongPass1!",
-        name: "Bootstrap Admin",
-      });
+    const noCsrfResponse = await agent.post("/auth/register").set("User-Agent", userAgent).send({
+      email: "bootstrap-admin@test.local",
+      password: "StrongPass1!",
+      name: "Bootstrap Admin",
+    });
 
     expect(noCsrfResponse.status).toBe(403);
     expect(noCsrfResponse.body?.error).toBe("CSRF token missing");
@@ -176,13 +173,10 @@ describe("Auth onboarding decision", () => {
   });
 
   it("requires CSRF token for login and does not expose tokens in response body", async () => {
-    const noCsrfResponse = await agent
-      .post("/auth/login")
-      .set("User-Agent", userAgent)
-      .send({
-        email: "bootstrap-admin@test.local",
-        password: "StrongPass1!",
-      });
+    const noCsrfResponse = await agent.post("/auth/login").set("User-Agent", userAgent).send({
+      email: "bootstrap-admin@test.local",
+      password: "StrongPass1!",
+    });
 
     expect(noCsrfResponse.status).toBe(403);
     expect(noCsrfResponse.body?.error).toBe("CSRF token missing");

@@ -8,9 +8,7 @@ export const EXPIRY_OPTIONS = [
   { label: "Disable at...", value: "custom" },
 ];
 
-export const EXPIRY_OPTIONS_FOR_EDIT = EXPIRY_OPTIONS.filter(
-  (option) => option.value !== "never",
-);
+export const EXPIRY_OPTIONS_FOR_EDIT = EXPIRY_OPTIONS.filter((option) => option.value !== "never");
 
 export const DEFAULT_EDIT_EXPIRY_OPTION = "7d";
 

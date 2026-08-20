@@ -99,13 +99,11 @@ describe("Link Sharing - Expiry Resolution", () => {
     ownerToken = jwt.sign(
       { userId: ownerUser.id, email: ownerUser.email, type: "access" },
       config.jwtSecret,
-      signOptions
+      signOptions,
     );
 
     ownerAgent = request.agent(app);
-    const csrfRes = await ownerAgent
-      .get("/csrf-token")
-      .set("User-Agent", userAgent);
+    const csrfRes = await ownerAgent.get("/csrf-token").set("User-Agent", userAgent);
     ownerCsrfHeaderName = csrfRes.body.header;
     ownerCsrfToken = csrfRes.body.token;
   });

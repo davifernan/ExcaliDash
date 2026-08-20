@@ -32,8 +32,7 @@ export const useLoginRateLimitSettings = ({
   const [enabled, setEnabled] = useState(true);
   const [windowMinutes, setWindowMinutes] = useState(15);
   const [maxAttempts, setMaxAttempts] = useState(20);
-  const [savedConfig, setSavedConfig] =
-    useState<LoginRateLimitFormState | null>(null);
+  const [savedConfig, setSavedConfig] = useState<LoginRateLimitFormState | null>(null);
   const [autoSaveQueued, setAutoSaveQueued] = useState(false);
   const lastAutoSaveAttemptKeyRef = useRef<string | null>(null);
   const [resetIdentifier, setResetIdentifier] = useState("");
@@ -80,8 +79,7 @@ export const useLoginRateLimitSettings = ({
     } catch (err: unknown) {
       let message = "Failed to load rate limit config";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -96,10 +94,7 @@ export const useLoginRateLimitSettings = ({
     try {
       const payload = {
         enabled: normalizedConfig.enabled,
-        windowMs: Math.max(
-          10_000,
-          Math.round(normalizedConfig.windowMinutes * 60_000),
-        ),
+        windowMs: Math.max(10_000, Math.round(normalizedConfig.windowMinutes * 60_000)),
         max: sanitizePositiveInt(normalizedConfig.max),
       };
       const response = await api.api.put<{
@@ -121,8 +116,7 @@ export const useLoginRateLimitSettings = ({
     } catch (err: unknown) {
       let message = "Failed to save rate limit config";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
       return false;
@@ -147,8 +141,7 @@ export const useLoginRateLimitSettings = ({
     } catch (err: unknown) {
       let message = "Failed to reset rate limit";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -176,15 +169,7 @@ export const useLoginRateLimitSettings = ({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [
-    authEnabled,
-    isAdmin,
-    savedConfig,
-    dirty,
-    saving,
-    normalizedConfigKey,
-    saveConfig,
-  ]);
+  }, [authEnabled, isAdmin, savedConfig, dirty, saving, normalizedConfigKey, saveConfig]);
 
   useEffect(() => {
     if (!dirty) {

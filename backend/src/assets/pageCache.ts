@@ -58,7 +58,7 @@ export class DiskFullError extends Error {
   constructor(freePercent: number, needPercent: number) {
     super(
       `Not enough free disk to render this page: ${freePercent.toFixed(1)}% free, ` +
-      `${needPercent}% required. Free some space and try again.`,
+        `${needPercent}% required. Free some space and try again.`,
     );
     this.name = "DiskFullError";
   }
@@ -108,7 +108,8 @@ class GlobalRenderQueue {
 
     this.waiting.shift();
     this.active += 1;
-    void next.work()
+    void next
+      .work()
       .then(next.resolve, next.reject)
       .finally(() => {
         this.active -= 1;
@@ -159,9 +160,8 @@ async function produce(
 
   const render = deps.render ?? renderPage;
   const source = resolveStoragePath(deps.storageDir, asset.blob.storageKey);
-  const rendered = await globalRenderQueue.run(
-    renderConcurrency(deps.renderConcurrency),
-    () => render(source, page),
+  const rendered = await globalRenderQueue.run(renderConcurrency(deps.renderConcurrency), () =>
+    render(source, page),
   );
 
   const compress = shouldCompress(rendered.mimeType);

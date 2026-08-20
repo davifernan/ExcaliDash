@@ -84,9 +84,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {!isTrash &&
-        (!isShared ||
-          drawing.accessLevel === "edit" ||
-          drawing.accessLevel === "owner") ? (
+        (!isShared || drawing.accessLevel === "edit" || drawing.accessLevel === "owner") ? (
           <button
             role="menuitem"
             onClick={onRename}
@@ -114,7 +112,11 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
               <ArrowRight size={12} />
             </button>
             {showMoveSubmenu && (
-              <div role="menu" aria-label="Move drawing to" className="absolute left-full top-0 ml-1 w-40 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-lg py-1 max-h-64 overflow-y-auto">
+              <div
+                role="menu"
+                aria-label="Move drawing to"
+                className="absolute left-full top-0 ml-1 w-40 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-lg py-1 max-h-64 overflow-y-auto"
+              >
                 <CollectionMoveOptions
                   collections={collections}
                   currentCollectionId={drawing.collectionId}
@@ -163,11 +165,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
           disabled={isExporting}
           className="w-full px-3 py-2 text-sm text-left text-slate-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isExporting ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Download size={14} />
-          )}
+          {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           {isExporting ? "Exporting..." : "Export"}
         </button>
         {exportError && (

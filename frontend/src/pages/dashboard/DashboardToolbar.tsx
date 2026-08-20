@@ -87,8 +87,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
 }) => {
   const [isCreatingDrawing, setIsCreatingDrawing] = React.useState(false);
   const canModifySelection =
-    !isSharedView &&
-    (!isSharedCollection || currentCollection?.sharedRole === "edit");
+    !isSharedView && (!isSharedCollection || currentCollection?.sharedRole === "edit");
 
   return (
     <div className="mb-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
@@ -127,9 +126,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               <span className="text-indigo-600 dark:text-indigo-400 flex-shrink-0">
                 {currentSortOption.icon}
               </span>
-              <span className="whitespace-nowrap flex-1 text-left">
-                {currentSortOption.label}
-              </span>
+              <span className="whitespace-nowrap flex-1 text-left">{currentSortOption.label}</span>
               <ChevronDown
                 size={16}
                 className="text-slate-400 dark:text-neutral-500 flex-shrink-0"
@@ -137,10 +134,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
             </button>
             {showSortMenu && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => onShowSortMenuChange(false)}
-                />
+                <div className="fixed inset-0 z-40" onClick={() => onShowSortMenuChange(false)} />
                 <div className="absolute top-full left-0 mt-2 z-50 bg-white dark:bg-neutral-800 rounded-lg border-2 border-black dark:border-neutral-700 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] py-1 min-w-[180px]">
                   {sortOptions.map((option) => (
                     <button
@@ -156,9 +150,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                           : "text-slate-600 dark:text-neutral-300 hover:bg-slate-50 dark:hover:bg-neutral-700 hover:text-indigo-600 dark:hover:text-indigo-400",
                       )}
                     >
-                      <span className="text-indigo-600 dark:text-indigo-400">
-                        {option.icon}
-                      </span>
+                      <span className="text-indigo-600 dark:text-indigo-400">{option.icon}</span>
                       <span>{option.label}</span>
                       {sortConfig.field === option.field && (
                         <span className="ml-auto text-xs">✓</span>
@@ -175,22 +167,10 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-all border-2 border-black dark:border-neutral-700 h-[42px] min-w-[42px]",
               "bg-white dark:bg-neutral-900 text-indigo-600 dark:text-indigo-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:hover:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] hover:-translate-y-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/30",
             )}
-            title={
-              sortConfig.direction === "asc"
-                ? "Sort Ascending"
-                : "Sort Descending"
-            }
-            aria-label={
-              sortConfig.direction === "asc"
-                ? "Sort ascending"
-                : "Sort descending"
-            }
+            title={sortConfig.direction === "asc" ? "Sort Ascending" : "Sort Descending"}
+            aria-label={sortConfig.direction === "asc" ? "Sort ascending" : "Sort descending"}
           >
-            {sortConfig.direction === "asc" ? (
-              <ArrowUp size={18} />
-            ) : (
-              <ArrowDown size={18} />
-            )}
+            {sortConfig.direction === "asc" ? <ArrowUp size={18} /> : <ArrowDown size={18} />}
           </button>
         </div>
       </div>
@@ -220,7 +200,11 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                 : "bg-slate-100 dark:bg-neutral-900 border-slate-300 dark:border-neutral-800 text-slate-300 dark:text-neutral-700 cursor-not-allowed",
             )}
             title={isTrashView ? "Delete Permanently" : "Move to Trash"}
-            aria-label={isTrashView ? "Delete selected drawings permanently" : "Move selected drawings to Trash"}
+            aria-label={
+              isTrashView
+                ? "Delete selected drawings permanently"
+                : "Move selected drawings to Trash"
+            }
           >
             <Trash2 size={20} />
           </button>
@@ -240,9 +224,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
           </button>
           <div className="relative">
             <button
-              onClick={() =>
-                hasSelection && onShowBulkMoveMenuChange(!showBulkMoveMenu)
-              }
+              onClick={() => hasSelection && onShowBulkMoveMenuChange(!showBulkMoveMenu)}
               disabled={!hasSelection || !canModifySelection}
               className={clsx(
                 "h-[42px] w-[42px] flex items-center justify-center rounded-xl border-2 transition-all",
@@ -308,10 +290,7 @@ export const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
         />
         <button
           onClick={() => {
-            if (
-              isSharedCollection &&
-              currentCollection?.sharedRole !== "edit"
-            ) {
+            if (isSharedCollection && currentCollection?.sharedRole !== "edit") {
               onViewerActionError("Viewers can't import drawings");
               return;
             }

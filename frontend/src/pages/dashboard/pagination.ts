@@ -5,7 +5,7 @@ export const isLatestRequest = (requestVersion: number, currentVersion: number):
 
 export const mergeUniqueDrawings = (
   existing: DrawingSummary[],
-  incoming: DrawingSummary[]
+  incoming: DrawingSummary[],
 ): DrawingSummary[] => {
   const seen = new Set(existing.map((d) => d.id));
   const nextPage = incoming.filter((d) => !seen.has(d.id));

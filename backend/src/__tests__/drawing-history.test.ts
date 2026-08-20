@@ -96,8 +96,15 @@ function buildApp() {
     prisma,
     requireAuth: (_req: any, _res: any, next: any) => next(),
     optionalAuth: (_req: any, _res: any, next: any) => next(),
-    asyncHandler: (fn: any) => (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next),
-    parseJsonField: (val: string, fallback: any) => { try { return JSON.parse(val); } catch { return fallback; } },
+    asyncHandler: (fn: any) => (req: any, res: any, next: any) =>
+      Promise.resolve(fn(req, res, next)).catch(next),
+    parseJsonField: (val: string, fallback: any) => {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return fallback;
+      }
+    },
     sanitizeText: (input: unknown) => String(input ?? ""),
     validateImportedDrawing: vi.fn().mockReturnValue(true),
     drawingCreateSchema: { safeParse: vi.fn().mockReturnValue({ success: true, data: {} }) } as any,
@@ -174,7 +181,7 @@ describe("Drawing Version History", () => {
       await request(app).get(`/drawings/${MOCK_DRAWING_ID}/history?limit=10&offset=5`);
 
       expect(prisma.drawingSnapshot.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 10, skip: 5 })
+        expect.objectContaining({ take: 10, skip: 5 }),
       );
     });
   });
@@ -185,7 +192,9 @@ describe("Drawing Version History", () => {
       prisma.drawing.findFirst.mockResolvedValue(mockDrawing);
       prisma.drawingSnapshot.findFirst.mockResolvedValue(mockSnapshot);
 
-      const res = await request(app).get(`/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}`);
+      const res = await request(app).get(
+        `/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}`,
+      );
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(MOCK_SNAPSHOT_ID);
@@ -220,7 +229,9 @@ describe("Drawing Version History", () => {
         version: 6,
       });
 
-      const res = await request(app).post(`/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}/restore`);
+      const res = await request(app).post(
+        `/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}/restore`,
+      );
 
       expect(res.status).toBe(200);
 
@@ -249,7 +260,9 @@ describe("Drawing Version History", () => {
       prisma.drawing.findFirst.mockResolvedValue(mockDrawing);
       prisma.drawingSnapshot.findFirst.mockResolvedValue(null);
 
-      const res = await request(app).post(`/drawings/${MOCK_DRAWING_ID}/history/nonexistent/restore`);
+      const res = await request(app).post(
+        `/drawings/${MOCK_DRAWING_ID}/history/nonexistent/restore`,
+      );
 
       expect(res.status).toBe(404);
     });
@@ -343,9 +356,7 @@ describe("Snapshot payload compression", () => {
       elements: encodeSnapshotField(archivedScene),
     });
 
-    const res = await request(app).get(
-      `/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}`,
-    );
+    const res = await request(app).get(`/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.elements)).toBe(true);
@@ -360,9 +371,7 @@ describe("Snapshot payload compression", () => {
     prisma.drawing.findFirst.mockResolvedValue(mockDrawing);
     prisma.drawingSnapshot.findFirst.mockResolvedValue(mockSnapshot);
 
-    const res = await request(app).get(
-      `/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}`,
-    );
+    const res = await request(app).get(`/drawings/${MOCK_DRAWING_ID}/history/${MOCK_SNAPSHOT_ID}`);
 
     expect(res.status).toBe(200);
     expect(res.body.elements[0].id).toBe("el-old");

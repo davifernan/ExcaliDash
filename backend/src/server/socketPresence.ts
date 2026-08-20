@@ -14,7 +14,5 @@ export const toPresenceInitials = (name: string): string => {
 
 export const toPresenceColor = (value: unknown): string => {
   if (typeof value !== "string") return "#4f46e5";
-  return /^#[0-9a-fA-F]{3,8}$/.test(value.trim())
-    ? value.trim()
-    : "#4f46e5";
+  return /^#[0-9a-fA-F]{3,8}$/.test(value.trim()) ? value.trim() : "#4f46e5";
 };

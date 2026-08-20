@@ -138,10 +138,15 @@ export class StreamingZipArchive {
         if (cursor + recordLength > central.length) {
           throw new ImportValidationError("Truncated ZIP directory entry");
         }
-        if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) {
+        if (
+          compressedSize === 0xffffffff ||
+          uncompressedSize === 0xffffffff ||
+          localHeaderOffset === 0xffffffff
+        ) {
           throw new ImportValidationError("ZIP64 entries are not supported");
         }
-        if ((flags & 0x1) !== 0) throw new ImportValidationError("Encrypted ZIP entries are not supported");
+        if ((flags & 0x1) !== 0)
+          throw new ImportValidationError("Encrypted ZIP entries are not supported");
         if (compressionMethod !== 0 && compressionMethod !== 8) {
           throw new ImportValidationError("Unsupported ZIP compression method");
         }
@@ -193,7 +198,8 @@ export class StreamingZipArchive {
   }
 
   async stream(entry: StreamingZipEntry, budget: ExtractionBudget): Promise<Readable> {
-    if (entry.directory) throw new ImportValidationError(`Cannot extract directory entry: ${entry.name}`);
+    if (entry.directory)
+      throw new ImportValidationError(`Cannot extract directory entry: ${entry.name}`);
     const handle = await fs.open(this.filePath, "r");
     let local: Buffer;
     try {
@@ -219,15 +225,15 @@ export class StreamingZipArchive {
         throw new ImportValidationError(`Invalid ZIP entry bounds: ${entry.name}`);
       }
 
-      const compressed = entry.compressedSize === 0
-        ? Readable.from([])
-        : createReadStream(this.filePath, {
-            start: dataOffset,
-            end: dataOffset + entry.compressedSize - 1,
-          });
-      const source = entry.compressionMethod === 8
-        ? compressed.pipe(createInflateRaw())
-        : compressed;
+      const compressed =
+        entry.compressedSize === 0
+          ? Readable.from([])
+          : createReadStream(this.filePath, {
+              start: dataOffset,
+              end: dataOffset + entry.compressedSize - 1,
+            });
+      const source =
+        entry.compressionMethod === 8 ? compressed.pipe(createInflateRaw()) : compressed;
       let bytes = 0;
       let crc = 0xffffffff;
       const verify = new Transform({

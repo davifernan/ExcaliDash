@@ -12,7 +12,9 @@ class FakeOperator {
     private scope: string,
     private excludedId?: string,
   ) {}
-  get volatile() { return this; }
+  get volatile() {
+    return this;
+  }
   emit(event: string, payload: any) {
     for (const socket of this.sockets.values()) {
       if (socket.id !== this.excludedId && socket.rooms.has(this.scope)) {
@@ -43,7 +45,9 @@ class FakeSocket {
   ) {
     this.handshake = { auth: { token }, headers: {} };
   }
-  get volatile() { return this; }
+  get volatile() {
+    return this;
+  }
   on(event: string, handler: (...args: any[]) => any) {
     this.handlers.set(event, handler);
   }
@@ -53,8 +57,12 @@ class FakeSocket {
   to(scope: string) {
     return new FakeOperator(this.sockets, scope, this.id);
   }
-  async join(scope: string) { this.rooms.add(scope); }
-  async leave(scope: string) { this.rooms.delete(scope); }
+  async join(scope: string) {
+    this.rooms.add(scope);
+  }
+  async leave(scope: string) {
+    this.rooms.delete(scope);
+  }
   async trigger(event: string, ...args: any[]) {
     return this.handlers.get(event)?.(...args);
   }
@@ -64,16 +72,20 @@ class FakeIo {
   readonly sockets = new Map<string, FakeSocket>();
   private middleware: any;
   private connectionHandler: any;
-  use(handler: any) { this.middleware = handler; }
+  use(handler: any) {
+    this.middleware = handler;
+  }
   on(event: string, handler: any) {
     if (event === "connection") this.connectionHandler = handler;
   }
-  to(scope: string) { return new FakeOperator(this.sockets, scope); }
+  to(scope: string) {
+    return new FakeOperator(this.sockets, scope);
+  }
   async connect(id: string, token: string) {
     const socket = new FakeSocket(id, token, this.sockets);
     this.sockets.set(id, socket);
     await new Promise<void>((resolve, reject) => {
-      this.middleware(socket, (error?: Error) => error ? reject(error) : resolve());
+      this.middleware(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });
     await this.connectionHandler(socket);
     return socket;
@@ -81,10 +93,7 @@ class FakeIo {
 }
 
 const tokenFor = (userId: string) =>
-  jwt.sign(
-    { userId, email: `${userId}@example.test`, type: "access" },
-    "test-secret",
-  );
+  jwt.sign({ userId, email: `${userId}@example.test`, type: "access" }, "test-secret");
 
 describe("live account deactivation", () => {
   it("removes and disconnects an existing editor before the admin response", async () => {
@@ -130,9 +139,7 @@ describe("live account deactivation", () => {
       },
       drawingPermission: {
         findUnique: vi.fn(async ({ where }: any) =>
-          where.drawingId_granteeUserId.granteeUserId === "member"
-            ? { permission: "edit" }
-            : null,
+          where.drawingId_granteeUserId.granteeUserId === "member" ? { permission: "edit" } : null,
         ),
       },
       drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -168,9 +175,7 @@ describe("live account deactivation", () => {
       config: { enableAuditLogging: false },
     } as any);
     const layer = (router as any).stack.find(
-      (candidate: any) =>
-        candidate.route?.path === "/users/:id" &&
-        candidate.route.methods.patch,
+      (candidate: any) => candidate.route?.path === "/users/:id" && candidate.route.methods.patch,
     );
     const req: any = {
       params: { id: "member" },
@@ -180,8 +185,14 @@ describe("live account deactivation", () => {
     };
     const res: any = {
       statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      json(payload: unknown) { this.payload = payload; return this; },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        this.payload = payload;
+        return this;
+      },
     };
     for (const handler of layer.route.stack) {
       await handler.handle(req, res, () => undefined);

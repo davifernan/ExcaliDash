@@ -11,7 +11,9 @@ const Probe = () => {
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="auth-enabled">{String(authEnabled)}</span>
       <span data-testid="auth-status-error">{String(authStatusError)}</span>
-      <button data-testid="retry" onClick={() => void retryAuthStatus()}>retry</button>
+      <button data-testid="retry" onClick={() => void retryAuthStatus()}>
+        retry
+      </button>
     </div>
   );
 };
@@ -43,7 +45,7 @@ describe("AuthProvider", () => {
         <AuthProvider>
           <Probe />
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await waitFor(() => {
@@ -51,14 +53,12 @@ describe("AuthProvider", () => {
     });
     expect(screen.getByTestId("auth-enabled").textContent).toBe("null");
     expect(screen.getByTestId("auth-status-error").textContent).toContain(
-      "Unable to reach the backend API"
+      "Unable to reach the backend API",
     );
   });
 
   it("clears stored auth state when backend reports auth disabled", async () => {
-    const storage = new Map<string, string>([
-      ["excalidash-user", JSON.stringify({ id: "u1" })],
-    ]);
+    const storage = new Map<string, string>([["excalidash-user", JSON.stringify({ id: "u1" })]]);
     Object.defineProperty(window, "localStorage", {
       configurable: true,
       value: {
@@ -79,7 +79,7 @@ describe("AuthProvider", () => {
         <AuthProvider>
           <Probe />
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await waitFor(() => {
@@ -115,7 +115,7 @@ describe("AuthProvider", () => {
         <AuthProvider>
           <Probe />
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await waitFor(() => {
@@ -156,12 +156,12 @@ describe("AuthProvider", () => {
         <AuthProvider>
           <Probe />
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await waitFor(() => {
       expect(screen.getByTestId("auth-status-error").textContent).toContain(
-        "Unable to reach the backend API"
+        "Unable to reach the backend API",
       );
     });
 

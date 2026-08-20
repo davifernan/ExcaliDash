@@ -1,36 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { Logo } from '../components/Logo';
-import { authPasswordResetConfirm, isAxiosError } from '../api';
-import { getPasswordPolicy, validatePassword } from '../utils/passwordPolicy';
-import { PasswordRequirements } from '../components/PasswordRequirements';
-import { PasswordInput } from '../components/PasswordInput';
-import { PasswordMatch } from '../components/PasswordMatch';
+import React, { useState, useEffect } from "react";
+import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import { Logo } from "../components/Logo";
+import { authPasswordResetConfirm, isAxiosError } from "../api";
+import { getPasswordPolicy, validatePassword } from "../utils/passwordPolicy";
+import { PasswordRequirements } from "../components/PasswordRequirements";
+import { PasswordInput } from "../components/PasswordInput";
+import { PasswordMatch } from "../components/PasswordMatch";
 
 export const PasswordResetConfirm: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const token = searchParams.get('token');
-  
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const token = searchParams.get("token");
+
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const passwordPolicy = getPasswordPolicy();
 
   useEffect(() => {
     if (!token) {
-      setError('Invalid reset link. Please request a new password reset.');
+      setError("Invalid reset link. Please request a new password reset.");
     }
   }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError("Passwords do not match");
       return;
     }
 
@@ -41,7 +41,7 @@ export const PasswordResetConfirm: React.FC = () => {
     }
 
     if (!token) {
-      setError('Invalid reset token');
+      setError("Invalid reset token");
       return;
     }
 
@@ -51,13 +51,13 @@ export const PasswordResetConfirm: React.FC = () => {
       await authPasswordResetConfirm(token, password);
       setSuccess(true);
       setTimeout(() => {
-        navigate('/login');
+        navigate("/login");
       }, 3000);
     } catch (err: unknown) {
-      let message = 'Failed to reset password';
+      let message = "Failed to reset password";
       if (isAxiosError(err)) {
         if (err.response?.status === 404) {
-          message = 'Password reset feature is not enabled on this server';
+          message = "Password reset feature is not enabled on this server";
         } else if (err.response?.data?.message) {
           message = err.response.data.message;
         } else if (err.response?.data?.error) {
@@ -136,7 +136,11 @@ export const PasswordResetConfirm: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              <PasswordRequirements password={password} policy={passwordPolicy} className="text-gray-600 dark:text-gray-400" />
+              <PasswordRequirements
+                password={password}
+                policy={passwordPolicy}
+                className="text-gray-600 dark:text-gray-400"
+              />
             </div>
             <div>
               <label htmlFor="confirmPassword" className="sr-only">
@@ -164,7 +168,7 @@ export const PasswordResetConfirm: React.FC = () => {
               disabled={loading || !token}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Resetting...' : 'Reset password'}
+              {loading ? "Resetting..." : "Reset password"}
             </button>
           </div>
 

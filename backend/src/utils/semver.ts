@@ -21,7 +21,8 @@ export const parseSemver = (input: string): ParsedSemver | null => {
     return null;
   }
 
-  const pre = typeof match.groups.pre === "string" && match.groups.pre.length > 0 ? match.groups.pre : "";
+  const pre =
+    typeof match.groups.pre === "string" && match.groups.pre.length > 0 ? match.groups.pre : "";
   const prerelease = pre ? pre.split(".") : [];
 
   return { major, minor, patch, prerelease, raw: trimmed };

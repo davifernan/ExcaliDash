@@ -36,11 +36,7 @@ export const createSocketFollowManager = ({
   // decision; senders still take the normal fresh requireAccess path, and all
   // explicit/periodic revocation checks invalidate this cache before checking.
 
-  const cacheFollowerAccess = (
-    socketId: string,
-    drawingId: string,
-    access: DrawingAccess,
-  ) => {
+  const cacheFollowerAccess = (socketId: string, drawingId: string, access: DrawingAccess) => {
     followerAccessCache.set(socketId, {
       drawingId,
       access,
@@ -50,10 +46,7 @@ export const createSocketFollowManager = ({
 
   const getFollowerAccess = async (socketId: string, drawingId: string) => {
     const cached = followerAccessCache.get(socketId);
-    if (
-      cached?.drawingId === drawingId &&
-      cached.expiresAt > Date.now()
-    ) {
+    if (cached?.drawingId === drawingId && cached.expiresAt > Date.now()) {
       return cached.access;
     }
     const access = await getAccess(socketId, drawingId);
@@ -87,11 +80,7 @@ export const createSocketFollowManager = ({
     });
   };
 
-  const clearFollower = (
-    followerId: string,
-    reason: string,
-    notifyFollower: boolean,
-  ) => {
+  const clearFollower = (followerId: string, reason: string, notifyFollower: boolean) => {
     const targetId = followingBySocket.get(followerId);
     if (!targetId) return;
     followingBySocket.delete(followerId);
@@ -190,8 +179,7 @@ export const createSocketFollowManager = ({
         if (cancellationRevision !== followCancellationRevision) return;
         cacheFollowerAccess(socket.id, drawingId, followerAccess);
         const targetId =
-          typeof payload.targetPresenceId === "string" &&
-          payload.targetPresenceId.length <= 200
+          typeof payload.targetPresenceId === "string" && payload.targetPresenceId.length <= 200
             ? payload.targetPresenceId
             : null;
         if (payload.action !== "FOLLOW" || !targetId || targetId === socket.id) {

@@ -11,7 +11,9 @@ const MIB = 1024 * 1024;
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => fs.promises.rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => fs.promises.rm(dir, { recursive: true, force: true })),
+  );
 });
 
 describe("ExcaliDash backup round trip", () => {
@@ -98,7 +100,8 @@ describe("ExcaliDash backup round trip", () => {
       assetStorageDir: uploadDir,
       backendRoot: path.resolve(__dirname, "../../.."),
       getBackendVersion: () => "test",
-      parseJsonField: (raw: string | null | undefined, fallback: unknown) => raw ? JSON.parse(raw) : fallback,
+      parseJsonField: (raw: string | null | undefined, fallback: unknown) =>
+        raw ? JSON.parse(raw) : fallback,
       sanitizeText,
       validateImportedDrawing,
       ensureTrashCollection: async () => undefined,
@@ -133,12 +136,15 @@ describe("ExcaliDash backup round trip", () => {
       return exportResponse;
     };
     const exportEnded = new Promise<void>((resolve) => exportResponse.on("end", resolve));
-    await exportHandler({
-      user: { id: "user-1", email: "owner@example.com", role: "USER" },
-      query: {},
-      protocol: "https",
-      get: () => "draw.example.com",
-    }, exportResponse);
+    await exportHandler(
+      {
+        user: { id: "user-1", email: "owner@example.com", role: "USER" },
+        query: {},
+        protocol: "https",
+        get: () => "draw.example.com",
+      },
+      exportResponse,
+    );
     await exportEnded;
     const archive = Buffer.concat(chunks);
     expect(archive.length).toBeGreaterThan(0);
@@ -156,10 +162,13 @@ describe("ExcaliDash backup round trip", () => {
         return this;
       },
     };
-    await importHandler({
-      user: { id: "user-1", email: "owner@example.com", role: "USER" },
-      file: { filename: stagedFilename },
-    }, importResponse);
+    await importHandler(
+      {
+        user: { id: "user-1", email: "owner@example.com", role: "USER" },
+        file: { filename: stagedFilename },
+      },
+      importResponse,
+    );
 
     expect(importResponse.statusCode, JSON.stringify(importResponse.body)).toBe(200);
     expect(imported).toHaveLength(1);

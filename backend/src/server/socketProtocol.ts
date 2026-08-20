@@ -89,9 +89,7 @@ export const parseCursorPayload = (value: unknown): CursorPayload | null => {
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-export const parseElementUpdatePayload = (
-  value: unknown,
-): ElementUpdatePayload | null => {
+export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload | null => {
   if (!isPlainRecord(value)) return null;
   const drawingId = parseDrawingId(value.drawingId);
   if (!drawingId || !Array.isArray(value.elements)) return null;
@@ -109,9 +107,7 @@ export const parseElementUpdatePayload = (
     if (
       !Array.isArray(value.elementOrder) ||
       value.elementOrder.length > SOCKET_LIMITS.elementOrderLength ||
-      !value.elementOrder.every(
-        (id) => typeof id === "string" && id.length > 0 && id.length <= 200,
-      )
+      !value.elementOrder.every((id) => typeof id === "string" && id.length > 0 && id.length <= 200)
     ) {
       return null;
     }

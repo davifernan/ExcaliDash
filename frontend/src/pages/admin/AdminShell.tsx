@@ -48,16 +48,11 @@ type AdminStatusMessagesProps = {
   error: string;
 };
 
-export const AdminStatusMessages: React.FC<AdminStatusMessagesProps> = ({
-  success,
-  error,
-}) => (
+export const AdminStatusMessages: React.FC<AdminStatusMessagesProps> = ({ success, error }) => (
   <>
     {success && (
       <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl">
-        <p className="text-green-800 dark:text-green-200 font-medium">
-          {success}
-        </p>
+        <p className="text-green-800 dark:text-green-200 font-medium">{success}</p>
       </div>
     )}
     {error && (

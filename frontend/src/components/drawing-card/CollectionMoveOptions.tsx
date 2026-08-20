@@ -38,9 +38,7 @@ export const CollectionMoveOptions: React.FC<CollectionMoveOptionsProps> = ({
         onClick={() => moveToCollection(null)}
         className={clsx(
           optionClassName,
-          currentCollectionId === null
-            ? selectedClassName
-            : unselectedClassName,
+          currentCollectionId === null ? selectedClassName : unselectedClassName,
         )}
       >
         Unorganized {currentCollectionId === null && <Check size={checkSize} />}
@@ -52,9 +50,7 @@ export const CollectionMoveOptions: React.FC<CollectionMoveOptionsProps> = ({
           onClick={() => moveToCollection(collection.id)}
           className={clsx(
             optionClassName,
-            currentCollectionId === collection.id
-              ? selectedClassName
-              : unselectedClassName,
+            currentCollectionId === collection.id ? selectedClassName : unselectedClassName,
           )}
         >
           <span className="truncate">{collection.name}</span>

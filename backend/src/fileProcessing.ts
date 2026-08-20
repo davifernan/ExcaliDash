@@ -3,13 +3,7 @@
  * This is the single interception point for all image uploads on the backend.
  */
 import type { PrismaClient } from "./generated/client";
-import {
-  isS3Enabled,
-  getS3Config,
-  uploadBuffer,
-  getPublicUrl,
-  buildS3Key,
-} from "./s3";
+import { isS3Enabled, getS3Config, uploadBuffer, getPublicUrl, buildS3Key } from "./s3";
 
 /**
  * Reject anything that could escape the per-user/per-drawing S3 prefix.
@@ -31,9 +25,7 @@ const MIME_TO_EXT: Record<string, string> = {
  * Decode a base64 data URL into a Buffer and its MIME type.
  * Returns null if the string is not a valid data URL.
  */
-export const decodeDataURL = (
-  dataURL: string,
-): { buffer: Buffer; mimeType: string } | null => {
+export const decodeDataURL = (dataURL: string): { buffer: Buffer; mimeType: string } | null => {
   const match = dataURL.match(/^data:([^;]+);base64,(.+)$/s);
   if (!match) return null;
 
@@ -98,9 +90,7 @@ export const processFilesForS3 = async (
 
     // Drawing-scoped access URL: a file id alone would be ambiguous
     // because the same content hash legitimately repeats across drawings.
-    const accessUrl = cfg.publicUrl
-      ? getPublicUrl(s3Key)
-      : `/api/files/${drawingId}/${fileId}`;
+    const accessUrl = cfg.publicUrl ? getPublicUrl(s3Key) : `/api/files/${drawingId}/${fileId}`;
 
     // Persist the S3File record so private-bucket deployments can serve it.
     // Composite (drawingId, fileId) PK so re-uploading the same image into
@@ -116,9 +106,7 @@ export const processFilesForS3 = async (
 
   const entries = Object.entries(files);
   for (let i = 0; i < entries.length; i += UPLOAD_CONCURRENCY) {
-    await Promise.all(
-      entries.slice(i, i + UPLOAD_CONCURRENCY).map(processFile),
-    );
+    await Promise.all(entries.slice(i, i + UPLOAD_CONCURRENCY).map(processFile));
   }
 
   return result;

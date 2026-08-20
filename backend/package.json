@@ -16,7 +16,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check:max-lines": "node ../scripts/check-source-line-count.cjs"
+    "check:max-lines": "node ../scripts/check-source-line-count.cjs",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "keywords": [],
   "author": "",
@@ -63,6 +65,7 @@
     "@types/supertest": "^6.0.3",
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.11",
+    "prettier": "^3.9.6",
     "supertest": "^7.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",

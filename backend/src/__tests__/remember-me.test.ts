@@ -16,8 +16,6 @@ describe("stay signed in", () => {
   it("never shortens the session compared to the default", () => {
     // The checkbox is additive: unticking it must not log people out sooner
     // than they are used to today.
-    expect(getRefreshCookieMaxAgeMs(true)).toBeGreaterThan(
-      getRefreshCookieMaxAgeMs(false),
-    );
+    expect(getRefreshCookieMaxAgeMs(true)).toBeGreaterThan(getRefreshCookieMaxAgeMs(false));
   });
 });

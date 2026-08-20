@@ -61,7 +61,12 @@ describe("Profile API keys", () => {
         id: "key-2",
         name,
         prefix: "exd_key_new456",
-        scopes: scopes ?? ["drawings:read", "drawings:write", "collections:read", "collections:write"],
+        scopes: scopes ?? [
+          "drawings:read",
+          "drawings:write",
+          "collections:read",
+          "collections:write",
+        ],
       },
       token: "exd_key_new456.secret-token-value",
     }));
@@ -76,7 +81,7 @@ describe("Profile API keys", () => {
     render(
       <MemoryRouter>
         <Profile />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("Existing Key")).toBeInTheDocument();
@@ -89,7 +94,9 @@ describe("Profile API keys", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /create api key/i }));
 
-    expect(await screen.findByDisplayValue("exd_key_new456.secret-token-value")).toBeInTheDocument();
+    expect(
+      await screen.findByDisplayValue("exd_key_new456.secret-token-value"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/copy this token now/i)).toBeInTheDocument();
     expect(api.createApiKey).toHaveBeenCalledWith("CI Token", [
       "drawings:read",
@@ -100,7 +107,9 @@ describe("Profile API keys", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /copy generated api token/i }));
     await waitFor(() => {
-      expect(navigator.clipboard?.writeText).toHaveBeenCalledWith("exd_key_new456.secret-token-value");
+      expect(navigator.clipboard?.writeText).toHaveBeenCalledWith(
+        "exd_key_new456.secret-token-value",
+      );
     });
 
     fireEvent.click(screen.getByRole("button", { name: /done/i }));
@@ -126,10 +135,12 @@ describe("Profile API keys", () => {
     render(
       <MemoryRouter>
         <Profile />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/api key management is unavailable until you reset your password/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/api key management is unavailable until you reset your password/i),
+    ).toBeInTheDocument();
     expect(api.listApiKeys).not.toHaveBeenCalled();
     expect(screen.queryByLabelText(/api key name/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /create api key/i })).not.toBeInTheDocument();
@@ -146,7 +157,7 @@ describe("Profile API keys", () => {
     render(
       <MemoryRouter>
         <Profile />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     fireEvent.change(screen.getByLabelText(/api key name/i), {
@@ -166,7 +177,7 @@ describe("Profile API keys", () => {
     render(
       <MemoryRouter>
         <Profile />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await screen.findByText("Existing Key");
@@ -179,7 +190,9 @@ describe("Profile API keys", () => {
     fireEvent.click(screen.getByLabelText(/write collections/i));
     fireEvent.click(screen.getByRole("button", { name: /create api key/i }));
 
-    expect(await screen.findByDisplayValue("exd_key_new456.secret-token-value")).toBeInTheDocument();
+    expect(
+      await screen.findByDisplayValue("exd_key_new456.secret-token-value"),
+    ).toBeInTheDocument();
     expect(api.createApiKey).toHaveBeenCalledWith("Read Token", ["drawings:read"]);
     expect(screen.getAllByText("drawings:read").length).toBeGreaterThan(0);
   });
@@ -188,7 +201,7 @@ describe("Profile API keys", () => {
     render(
       <MemoryRouter>
         <Profile />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await screen.findByText("Existing Key");
@@ -222,7 +235,7 @@ describe("Profile API keys", () => {
     render(
       <MemoryRouter>
         <Profile />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     await screen.findByText("Existing Key");

@@ -37,7 +37,6 @@ const canvasContext = {
 HTMLCanvasElement.prototype.getContext = (() =>
   canvasContext) as unknown as HTMLCanvasElement["getContext"];
 
-
 beforeEach(() => {
   vi.clearAllMocks();
 });

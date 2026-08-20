@@ -1,11 +1,7 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { Prisma } from "../../generated/client";
-import {
-  canEditDrawing,
-  getDrawingAccess,
-  isOwnerAccess,
-} from "../../authz/sharing";
+import { canEditDrawing, getDrawingAccess, isOwnerAccess } from "../../authz/sharing";
 import { rewritePreviewForS3 } from "../../fileProcessing";
 import {
   getUserTrashCollectionId,
@@ -14,7 +10,11 @@ import {
   toPublicTrashCollectionId,
 } from "./trash";
 import { encodeSnapshotField } from "../../snapshots/snapshotCodec";
-import { captureSnapshotAssets, referencedAssetIds, syncDrawingAssets } from "../../assets/assetService";
+import {
+  captureSnapshotAssets,
+  referencedAssetIds,
+  syncDrawingAssets,
+} from "../../assets/assetService";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
 export const registerDrawingCreateUpdateRoutes = (
@@ -48,8 +48,7 @@ export const registerDrawingCreateUpdateRoutes = (
       if (isImportedDrawing && !validateImportedDrawing(req.body)) {
         return res.status(400).json({
           error: "Invalid imported drawing file",
-          message:
-            "The imported file contains potentially malicious content or invalid structure",
+          message: "The imported file contains potentially malicious content or invalid structure",
         });
       }
 
@@ -72,15 +71,11 @@ export const registerDrawingCreateUpdateRoutes = (
       const targetCollectionId =
         toInternalTrashCollectionId(targetCollectionIdRaw, req.user.id) ?? null;
 
-      if (
-        targetCollectionId &&
-        !isTrashCollectionId(targetCollectionId, req.user.id)
-      ) {
+      if (targetCollectionId && !isTrashCollectionId(targetCollectionId, req.user.id)) {
         const collection = await prisma.collection.findFirst({
           where: { id: targetCollectionId },
         });
-        if (!collection)
-          return res.status(404).json({ error: "Collection not found" });
+        if (!collection) return res.status(404).json({ error: "Collection not found" });
 
         // If the collection belongs to someone else, check the user has editor access
         if (collection.userId !== req.user.id) {
@@ -91,10 +86,7 @@ export const registerDrawingCreateUpdateRoutes = (
               role: "edit",
             },
           });
-          if (!share)
-            return res
-              .status(403)
-              .json({ error: "No edit access to this collection" });
+          if (!share) return res.status(403).json({ error: "No edit access to this collection" });
         }
       } else if (targetCollectionIdRaw === "trash") {
         await ensureTrashCollection(prisma, req.user.id);
@@ -102,11 +94,7 @@ export const registerDrawingCreateUpdateRoutes = (
 
       const newDrawingId = uuidv4();
       const originalFiles = payload.files ?? {};
-      const processedFiles = await processFilesForS3(
-        originalFiles,
-        req.user.id,
-        newDrawingId,
-      );
+      const processedFiles = await processFilesForS3(originalFiles, req.user.id, newDrawingId);
       const processedPreview = rewritePreviewForS3(
         payload.preview ?? null,
         originalFiles,
@@ -129,10 +117,7 @@ export const registerDrawingCreateUpdateRoutes = (
 
       return res.json({
         ...newDrawing,
-        collectionId: toPublicTrashCollectionId(
-          newDrawing.collectionId,
-          req.user.id,
-        ),
+        collectionId: toPublicTrashCollectionId(newDrawing.collectionId, req.user.id),
         elements: parseJsonField(newDrawing.elements, []),
         appState: parseJsonField(newDrawing.appState, {}),
         files: parseJsonField(newDrawing.files, {}),
@@ -163,8 +148,7 @@ export const registerDrawingCreateUpdateRoutes = (
       const existingDrawing = await prisma.drawing.findUnique({
         where: { id },
       });
-      if (!existingDrawing)
-        return res.status(404).json({ error: "Drawing not found" });
+      if (!existingDrawing) return res.status(404).json({ error: "Drawing not found" });
 
       const parsed = drawingUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -193,7 +177,11 @@ export const registerDrawingCreateUpdateRoutes = (
         payload.appState !== undefined ||
         payload.files !== undefined;
 
-      if (isSceneUpdate && payload.version !== undefined && payload.version !== existingDrawing.version) {
+      if (
+        isSceneUpdate &&
+        payload.version !== undefined &&
+        payload.version !== existingDrawing.version
+      ) {
         return res.status(409).json({
           error: "Conflict",
           code: "VERSION_CONFLICT",
@@ -201,22 +189,14 @@ export const registerDrawingCreateUpdateRoutes = (
           currentVersion: existingDrawing.version,
         });
       }
-      const data: Prisma.DrawingUpdateInput = isSceneUpdate
-        ? { version: { increment: 1 } }
-        : {};
+      const data: Prisma.DrawingUpdateInput = isSceneUpdate ? { version: { increment: 1 } } : {};
 
       if (payload.name !== undefined) data.name = payload.name;
-      if (payload.elements !== undefined)
-        data.elements = JSON.stringify(payload.elements);
-      if (payload.appState !== undefined)
-        data.appState = JSON.stringify(payload.appState);
+      if (payload.elements !== undefined) data.elements = JSON.stringify(payload.elements);
+      if (payload.appState !== undefined) data.appState = JSON.stringify(payload.appState);
       let processedFilesForUpdate: Record<string, unknown> | undefined;
       if (payload.files !== undefined) {
-        processedFilesForUpdate = await processFilesForS3(
-          payload.files,
-          ownerUserId,
-          id,
-        );
+        processedFilesForUpdate = await processFilesForS3(payload.files, ownerUserId, id);
         data.files = JSON.stringify(processedFilesForUpdate);
       }
       if (payload.preview !== undefined) {
@@ -235,16 +215,13 @@ export const registerDrawingCreateUpdateRoutes = (
         }
         if (payload.collectionId === "trash") {
           await ensureTrashCollection(prisma, ownerUserId);
-          (data as Prisma.DrawingUncheckedUpdateInput).collectionId =
-            trashCollectionId;
+          (data as Prisma.DrawingUncheckedUpdateInput).collectionId = trashCollectionId;
         } else if (payload.collectionId) {
           const collection = await prisma.collection.findFirst({
             where: { id: payload.collectionId, userId: ownerUserId },
           });
-          if (!collection)
-            return res.status(404).json({ error: "Collection not found" });
-          (data as Prisma.DrawingUncheckedUpdateInput).collectionId =
-            payload.collectionId;
+          if (!collection) return res.status(404).json({ error: "Collection not found" });
+          (data as Prisma.DrawingUncheckedUpdateInput).collectionId = payload.collectionId;
         } else {
           (data as Prisma.DrawingUncheckedUpdateInput).collectionId = null;
         }
@@ -266,14 +243,8 @@ export const registerDrawingCreateUpdateRoutes = (
               data: {
                 drawingId: id,
                 version: existingDrawing.version,
-                elements: encodeSnapshotField(
-                  existingDrawing.elements,
-                  compress,
-                ),
-                appState: encodeSnapshotField(
-                  existingDrawing.appState,
-                  compress,
-                ),
+                elements: encodeSnapshotField(existingDrawing.elements, compress),
+                appState: encodeSnapshotField(existingDrawing.appState, compress),
                 files: encodeSnapshotField(existingDrawing.files, compress),
               },
             });
@@ -316,8 +287,7 @@ export const registerDrawingCreateUpdateRoutes = (
       } catch (error) {
         if (
           error === versionConflictError ||
-          (error instanceof Error &&
-            error.message === versionConflictError.message)
+          (error instanceof Error && error.message === versionConflictError.message)
         ) {
           const latestDrawing = await prisma.drawing.findFirst({
             where: { id },
@@ -327,8 +297,7 @@ export const registerDrawingCreateUpdateRoutes = (
             return res.status(409).json({
               error: "Conflict",
               code: "VERSION_CONFLICT",
-              message:
-                "Drawing has changed since this editor state was loaded.",
+              message: "Drawing has changed since this editor state was loaded.",
               currentVersion: latestDrawing?.version ?? null,
             });
           }
@@ -342,10 +311,7 @@ export const registerDrawingCreateUpdateRoutes = (
 
       return res.json({
         ...updatedDrawing,
-        collectionId: toPublicTrashCollectionId(
-          updatedDrawing.collectionId,
-          ownerUserId,
-        ),
+        collectionId: toPublicTrashCollectionId(updatedDrawing.collectionId, ownerUserId),
         elements: parseJsonField(updatedDrawing.elements, []),
         appState: parseJsonField(updatedDrawing.appState, {}),
         files: parseJsonField(updatedDrawing.files, {}),
@@ -353,5 +319,4 @@ export const registerDrawingCreateUpdateRoutes = (
       });
     }),
   );
-
 };

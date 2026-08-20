@@ -39,8 +39,9 @@ describe("storage keys", () => {
   });
 
   it("puts the renderer version into the cache path", () => {
-    expect(pageCacheKey("doc1", "poppler-24.02", 7, ".svg.br"))
-      .toBe("cache/doc1/poppler-24.02/000007.svg.br");
+    expect(pageCacheKey("doc1", "poppler-24.02", 7, ".svg.br")).toBe(
+      "cache/doc1/poppler-24.02/000007.svg.br",
+    );
   });
 
   it("pads page numbers so they sort as they read", () => {
@@ -57,25 +58,38 @@ describe("storage keys", () => {
 
 describe("resolving a key to a path", () => {
   it("keeps a normal key inside the directory", () => {
-    expect(resolveStoragePath("/var/assets", "originals/ab/cd/x")).toBe("/var/assets/originals/ab/cd/x");
+    expect(resolveStoragePath("/var/assets", "originals/ab/cd/x")).toBe(
+      "/var/assets/originals/ab/cd/x",
+    );
   });
 
   it("refuses a key that climbs out", () => {
-    expect(() => resolveStoragePath("/var/assets", "../secrets")).toThrow(/outside the asset directory/);
+    expect(() => resolveStoragePath("/var/assets", "../secrets")).toThrow(
+      /outside the asset directory/,
+    );
   });
 
   it("refuses an absolute key pointing elsewhere", () => {
-    expect(() => resolveStoragePath("/var/assets", "/etc/passwd")).toThrow(/outside the asset directory/);
+    expect(() => resolveStoragePath("/var/assets", "/etc/passwd")).toThrow(
+      /outside the asset directory/,
+    );
   });
 
   it("refuses a sibling directory with the same prefix", () => {
-    expect(() => resolveStoragePath("/var/assets", "../assets-other/x")).toThrow(/outside the asset directory/);
+    expect(() => resolveStoragePath("/var/assets", "../assets-other/x")).toThrow(
+      /outside the asset directory/,
+    );
   });
 });
 
 describe("storing an upload", () => {
   it("writes the file and reports its size and hash", async () => {
-    const stored = await storeStream(root, originalKey("aabbccdd"), streamOf("hello ", "world"), 1024);
+    const stored = await storeStream(
+      root,
+      originalKey("aabbccdd"),
+      streamOf("hello ", "world"),
+      1024,
+    );
 
     expect(stored.sizeBytes).toBe(11);
     // sha256 of "hello world"
@@ -98,7 +112,9 @@ describe("storing an upload", () => {
   });
 
   it("leaves nothing behind when it refuses a file", async () => {
-    await storeStream(root, originalKey("aabbccdd"), streamOf("x".repeat(500)), 100).catch(() => {});
+    await storeStream(root, originalKey("aabbccdd"), streamOf("x".repeat(500)), 100).catch(
+      () => {},
+    );
     expect(await readdir(join(root, "staging"))).toEqual([]);
   });
 
@@ -109,7 +125,9 @@ describe("storing an upload", () => {
         this.destroy(new Error("connection lost"));
       },
     });
-    await expect(storeStream(root, originalKey("aabbccdd"), broken, 1024)).rejects.toThrow(/connection lost/);
+    await expect(storeStream(root, originalKey("aabbccdd"), broken, 1024)).rejects.toThrow(
+      /connection lost/,
+    );
     expect(await readdir(join(root, "staging"))).toEqual([]);
   });
 
@@ -155,7 +173,9 @@ describe("reading and removing", () => {
   it("refuses to remove outside the directory", async () => {
     const bystander = join(root, "..", "bystander.txt");
     await writeFile(bystander, "keep me");
-    await expect(removeStored(root, "../bystander.txt")).rejects.toThrow(/outside the asset directory/);
+    await expect(removeStored(root, "../bystander.txt")).rejects.toThrow(
+      /outside the asset directory/,
+    );
     expect(await readFile(bystander, "utf8")).toBe("keep me");
     await rm(bystander, { force: true });
   });
@@ -200,14 +220,22 @@ describe("storing compressed", () => {
   it("measures the limit against the original, not the compressed size", async () => {
     // Compresses to almost nothing, but the caller asked for a 100 byte cap.
     await expect(
-      storeStream(root, originalKey("aabbccdd"), streamOf("a".repeat(5000)), 100, { compress: true }),
+      storeStream(root, originalKey("aabbccdd"), streamOf("a".repeat(5000)), 100, {
+        compress: true,
+      }),
     ).rejects.toBeInstanceOf(AssetTooLargeError);
   });
 
   it("reports the uncompressed size, which is what a reader receives", async () => {
-    const stored = await storeStream(root, originalKey("aabbccdd"), streamOf("x".repeat(900)), 10_000, {
-      compress: true,
-    });
+    const stored = await storeStream(
+      root,
+      originalKey("aabbccdd"),
+      streamOf("x".repeat(900)),
+      10_000,
+      {
+        compress: true,
+      },
+    );
     expect(stored.sizeBytes).toBe(900);
   });
 });

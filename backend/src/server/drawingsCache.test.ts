@@ -50,10 +50,10 @@ describe("drawings cache store", () => {
     const payload = { drawings: [{ id: "d1" }], totalCount: 1 };
 
     const body = cacheDrawingsResponse(key, payload);
-    expect(body.toString("utf8")).toContain("\"totalCount\":1");
+    expect(body.toString("utf8")).toContain('"totalCount":1');
 
     now = 800;
-    expect(getCachedDrawingsBody(key)?.toString("utf8")).toContain("\"d1\"");
+    expect(getCachedDrawingsBody(key)?.toString("utf8")).toContain('"d1"');
 
     now = 1200;
     expect(getCachedDrawingsBody(key)).toBeNull();

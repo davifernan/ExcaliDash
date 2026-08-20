@@ -8,8 +8,13 @@ import { registerSocketHandlers } from "./socket";
 type Emission = { scope: string; event: string; payload: any };
 
 class FakeOperator {
-  constructor(private emissions: Emission[], private scope: string) {}
-  get volatile() { return this; }
+  constructor(
+    private emissions: Emission[],
+    private scope: string,
+  ) {}
+  get volatile() {
+    return this;
+  }
   emit(event: string, payload: any) {
     this.emissions.push({ scope: this.scope, event, payload });
   }
@@ -18,20 +23,36 @@ class FakeOperator {
 class FakeSocket {
   readonly rooms = new Set<string>([this.id]);
   readonly handshake: { auth: { token?: string }; headers: Record<string, string> };
-  readonly disconnect = vi.fn(() => { this.disconnected = true; });
+  readonly disconnect = vi.fn(() => {
+    this.disconnected = true;
+  });
   disconnected = false;
   private handlers = new Map<string, (...args: any[]) => any>();
-  constructor(readonly id: string, private emissions: Emission[], token?: string) {
+  constructor(
+    readonly id: string,
+    private emissions: Emission[],
+    token?: string,
+  ) {
     this.handshake = { auth: token ? { token } : {}, headers: {} };
   }
-  get volatile() { return this; }
-  on(event: string, handler: (...args: any[]) => any) { this.handlers.set(event, handler); }
+  get volatile() {
+    return this;
+  }
+  on(event: string, handler: (...args: any[]) => any) {
+    this.handlers.set(event, handler);
+  }
   emit(event: string, payload: any) {
     this.emissions.push({ scope: this.id, event, payload });
   }
-  to(scope: string) { return new FakeOperator(this.emissions, scope); }
-  async join(scope: string) { this.rooms.add(scope); }
-  async leave(scope: string) { this.rooms.delete(scope); }
+  to(scope: string) {
+    return new FakeOperator(this.emissions, scope);
+  }
+  async join(scope: string) {
+    this.rooms.add(scope);
+  }
+  async leave(scope: string) {
+    this.rooms.delete(scope);
+  }
   async trigger(event: string, ...args: any[]) {
     return this.handlers.get(event)?.(...args);
   }
@@ -41,15 +62,19 @@ class FakeIo {
   readonly emissions: Emission[] = [];
   private middleware: any;
   private connectionHandler: any;
-  use(handler: any) { this.middleware = handler; }
+  use(handler: any) {
+    this.middleware = handler;
+  }
   on(event: string, handler: any) {
     if (event === "connection") this.connectionHandler = handler;
   }
-  to(scope: string) { return new FakeOperator(this.emissions, scope); }
+  to(scope: string) {
+    return new FakeOperator(this.emissions, scope);
+  }
   async connect(id: string, token?: string) {
     const socket = new FakeSocket(id, this.emissions, token);
     await new Promise<void>((resolve, reject) => {
-      this.middleware(socket, (error?: Error) => error ? reject(error) : resolve());
+      this.middleware(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });
     await this.connectionHandler(socket);
     return socket;
@@ -91,7 +116,9 @@ describe("socket API key authorization", () => {
     await mcp.trigger(
       "join-room",
       { drawingId: "drawing-1", user: { name: "spoofed" } },
-      (value: any) => { joinAck = value; },
+      (value: any) => {
+        joinAck = value;
+      },
     );
     expect(joinAck).toMatchObject({
       ok: true,
@@ -131,8 +158,14 @@ describe("socket API key authorization", () => {
     const req: any = { params: { id: "read-key" }, headers: {}, connection: {} };
     const res: any = {
       statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      json(payload: unknown) { this.payload = payload; return this; },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        this.payload = payload;
+        return this;
+      },
     };
     for (const handler of layer.route.stack) {
       await handler.handle(req, res, () => undefined);
@@ -158,9 +191,7 @@ describe("socket API key authorization", () => {
             const current = Array.from(rows.values()).find(
               (candidate) => candidate.id === where.id,
             );
-            return current
-              ? { id: current.id, revokedAt: null, userId: "owner" }
-              : null;
+            return current ? { id: current.id, revokedAt: null, userId: "owner" } : null;
           }
           const entry = rows.get(where.keyId)!;
           return {
@@ -223,14 +254,19 @@ describe("socket API key authorization", () => {
     } as any);
     const layer = (router as any).stack.find(
       (candidate: any) =>
-        candidate.route?.path === "/users/api-keys/:id" &&
-        candidate.route.methods.delete,
+        candidate.route?.path === "/users/api-keys/:id" && candidate.route.methods.delete,
     );
     const req: any = { params: { id: "key-a" }, headers: {}, connection: {} };
     const res: any = {
       statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      json(payload: unknown) { this.payload = payload; return this; },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        this.payload = payload;
+        return this;
+      },
     };
     for (const handler of layer.route.stack) {
       await handler.handle(req, res, () => undefined);
@@ -313,8 +349,7 @@ describe("socket API key authorization", () => {
     } as any);
     const layer = (router as any).stack.find(
       (candidate: any) =>
-        candidate.route?.path === "/api-keys/:id" &&
-        candidate.route.methods.delete,
+        candidate.route?.path === "/api-keys/:id" && candidate.route.methods.delete,
     );
     const req: any = {
       params: { id: "racing-key" },
@@ -323,8 +358,14 @@ describe("socket API key authorization", () => {
     };
     const res: any = {
       statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      json(payload: unknown) { this.payload = payload; return this; },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        this.payload = payload;
+        return this;
+      },
     };
     for (const handler of layer.route.stack) {
       await handler.handle(req, res, () => undefined);
@@ -333,17 +374,13 @@ describe("socket API key authorization", () => {
 
     releaseLastUsed?.();
     const socket = await pendingSocket;
-    await vi.waitFor(() =>
-      expect(socket.disconnect).toHaveBeenCalledWith(true),
-    );
+    await vi.waitFor(() => expect(socket.disconnect).toHaveBeenCalledWith(true));
     expect(socket.disconnected).toBe(true);
 
     let joinAck: any;
-    await socket.trigger(
-      "join-room",
-      { drawingId: "drawing-1", user: {} },
-      (value: any) => { joinAck = value; },
-    );
+    await socket.trigger("join-room", { drawingId: "drawing-1", user: {} }, (value: any) => {
+      joinAck = value;
+    });
     expect(joinAck).toMatchObject({
       ok: false,
       error: { code: "authentication-failed" },

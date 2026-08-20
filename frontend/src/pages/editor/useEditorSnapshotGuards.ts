@@ -31,16 +31,11 @@ export const useEditorSnapshotGuards = ({
   }, [initialSceneElementsRef, lastPersistedElementsRef, latestElementsRef]);
 
   const hasIntentionalDeletionDelta = useCallback(
-    (
-      baseline: readonly any[] = [],
-      candidate: readonly any[] = [],
-    ): boolean => {
+    (baseline: readonly any[] = [], candidate: readonly any[] = []): boolean => {
       if (!Array.isArray(candidate) || candidate.length === 0) return false;
       if (!hasRenderableElements(baseline)) return false;
       if (hasRenderableElements(candidate)) return false;
-      const baselineById = new Map(
-        baseline.map((element: any) => [element?.id, element]),
-      );
+      const baselineById = new Map(baseline.map((element: any) => [element?.id, element]));
       const getVersion = (element: any): number =>
         typeof element?.version === "number" ? element.version : 0;
       const getUpdated = (element: any): number => {
@@ -48,11 +43,7 @@ export const useEditorSnapshotGuards = ({
         return typeof value === "number" ? value : Number(value) || 0;
       };
       return candidate.some((element: any) => {
-        if (
-          !element ||
-          element.isDeleted !== true ||
-          typeof element.id !== "string"
-        ) {
+        if (!element || element.isDeleted !== true || typeof element.id !== "string") {
           return false;
         }
         const previous = baselineById.get(element.id);
@@ -75,21 +66,12 @@ export const useEditorSnapshotGuards = ({
   const resolveSafeSnapshot = useCallback(
     (candidateSnapshot: readonly any[] = []) => {
       const baseline = getRenderableBaselineSnapshot();
-      const staleEmptySnapshot = isStaleEmptySnapshot(
-        baseline,
-        candidateSnapshot,
-      );
-      const staleNonRenderableSnapshot = isStaleNonRenderableSnapshot(
-        baseline,
-        candidateSnapshot,
-      );
+      const staleEmptySnapshot = isStaleEmptySnapshot(baseline, candidateSnapshot);
+      const staleNonRenderableSnapshot = isStaleNonRenderableSnapshot(baseline, candidateSnapshot);
       const intentionalDeletionDelta = staleNonRenderableSnapshot
         ? hasIntentionalDeletionDelta(baseline, candidateSnapshot)
         : false;
-      if (
-        staleEmptySnapshot ||
-        (staleNonRenderableSnapshot && !intentionalDeletionDelta)
-      ) {
+      if (staleEmptySnapshot || (staleNonRenderableSnapshot && !intentionalDeletionDelta)) {
         return {
           snapshot: baseline,
           prevented: true,
@@ -108,19 +90,12 @@ export const useEditorSnapshotGuards = ({
   );
 
   const normalizeImageElementStatus = useCallback(
-    (
-      elements: readonly any[] = [],
-      files?: Record<string, any> | null,
-    ): readonly any[] => {
+    (elements: readonly any[] = [], files?: Record<string, any> | null): readonly any[] => {
       if (!Array.isArray(elements) || elements.length === 0) return elements;
       const fileMap = files || {};
       let changed = false;
       const normalized = elements.map((element: any) => {
-        if (
-          !element ||
-          element.type !== "image" ||
-          typeof element.fileId !== "string"
-        ) {
+        if (!element || element.type !== "image" || typeof element.fileId !== "string") {
           return element;
         }
         const file = fileMap[element.fileId];

@@ -77,12 +77,7 @@ export const useEditorPersistence = ({
     | null
   >(null);
   const savePreviewRef = useRef<
-    | ((
-        drawingId: string,
-        elements: readonly any[],
-        appState: any,
-        files: any,
-      ) => Promise<void>)
+    | ((drawingId: string, elements: readonly any[], appState: any, files: any) => Promise<void>)
     | null
   >(null);
   const saveLibraryRef = useRef<((items: any[]) => Promise<void>) | null>(null);
@@ -104,14 +99,11 @@ export const useEditorPersistence = ({
         staleNonRenderableSnapshot,
       } = resolveSafeSnapshot(candidateElements);
       const persistableElements = Array.from(safeElements);
-      if (
-        refs.suspiciousBlankLoad.current &&
-        !hasRenderableElements(persistableElements)
-      ) {
-        console.warn(
-          "[Editor] Blocking non-renderable save due to suspicious blank load",
-          { drawingId, elementCount: persistableElements.length },
-        );
+      if (refs.suspiciousBlankLoad.current && !hasRenderableElements(persistableElements)) {
+        console.warn("[Editor] Blocking non-renderable save due to suspicious blank load", {
+          drawingId,
+          elementCount: persistableElements.length,
+        });
         return;
       }
       if (staleEmptySnapshot || staleNonRenderableSnapshot) {
@@ -126,8 +118,7 @@ export const useEditorPersistence = ({
         return;
       }
       let persistableFiles = files ?? refs.latestFiles.current ?? {};
-      const compressedFilesResult =
-        await compressExcalidrawFiles(persistableFiles);
+      const compressedFilesResult = await compressExcalidrawFiles(persistableFiles);
       if (compressedFilesResult.changed) {
         persistableFiles = compressedFilesResult.files;
         if (
@@ -136,9 +127,7 @@ export const useEditorPersistence = ({
         ) {
           refs.isSyncing.current = true;
           try {
-            refs.excalidrawAPI.current.addFiles(
-              Object.values(persistableFiles),
-            );
+            refs.excalidrawAPI.current.addFiles(Object.values(persistableFiles));
           } finally {
             refs.isSyncing.current = false;
           }
@@ -147,12 +136,8 @@ export const useEditorPersistence = ({
         refs.lastSyncedFiles.current = persistableFiles;
       }
       const filesChangedSincePersist =
-        Object.keys(
-          getFilesDelta(
-            refs.lastPersistedFiles.current || {},
-            persistableFiles || {},
-          ),
-        ).length > 0;
+        Object.keys(getFilesDelta(refs.lastPersistedFiles.current || {}, persistableFiles || {}))
+          .length > 0;
       const normalizedElementsForSave = Array.from(
         normalizeImageElementStatus(persistableElements, persistableFiles),
       );
@@ -205,9 +190,7 @@ export const useEditorPersistence = ({
                 // whatever is being typed, dragged or drawn right now must
                 // survive it. Without this a conflict resolved mid-gesture
                 // pulls the element out of the person's hand.
-                protect: heldElementIds(
-                  refs.excalidrawAPI.current?.getAppState?.() ?? null,
-                ),
+                protect: heldElementIds(refs.excalidrawAPI.current?.getAppState?.() ?? null),
               },
             );
             const mergedFiles = filesToSave
@@ -285,23 +268,14 @@ export const useEditorPersistence = ({
       const snapshotFromArgs = Array.isArray(elements) ? elements : [];
       const snapshotFromRef = refs.latestElements.current ?? [];
       const candidateSnapshot =
-        hasRenderableElements(snapshotFromArgs) ||
-        !hasRenderableElements(snapshotFromRef)
+        hasRenderableElements(snapshotFromArgs) || !hasRenderableElements(snapshotFromRef)
           ? snapshotFromArgs
           : snapshotFromRef;
-      const {
-        snapshot: currentSnapshot,
-        prevented: preventedPreviewOverwrite,
-      } = resolveSafeSnapshot(candidateSnapshot);
+      const { snapshot: currentSnapshot, prevented: preventedPreviewOverwrite } =
+        resolveSafeSnapshot(candidateSnapshot);
       const currentFiles = refs.latestFiles.current ?? files;
-      const normalizedSnapshot = normalizeImageElementStatus(
-        currentSnapshot,
-        currentFiles,
-      );
-      if (
-        refs.suspiciousBlankLoad.current &&
-        !hasRenderableElements(currentSnapshot)
-      ) {
+      const normalizedSnapshot = normalizeImageElementStatus(currentSnapshot, currentFiles);
+      if (refs.suspiciousBlankLoad.current && !hasRenderableElements(currentSnapshot)) {
         return;
       }
       if (preventedPreviewOverwrite) {

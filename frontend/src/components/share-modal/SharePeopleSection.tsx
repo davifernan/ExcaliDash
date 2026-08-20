@@ -83,9 +83,7 @@ export const SharePeopleSection: React.FC<Props> = ({
           <div className="flex-1 min-w-0 flex flex-col justify-center">
             <div className="text-xs font-black text-slate-900 dark:text-neutral-100 leading-tight">
               {user?.name}{" "}
-              <span className="text-slate-400 dark:text-neutral-500 font-bold ml-1">
-                (you)
-              </span>
+              <span className="text-slate-400 dark:text-neutral-500 font-bold ml-1">(you)</span>
             </div>
             <div className="text-[10px] font-bold text-slate-500 dark:text-neutral-400 mt-0.5">
               {user?.email}
@@ -97,10 +95,7 @@ export const SharePeopleSection: React.FC<Props> = ({
         </div>
 
         {(sharing?.permissions || []).map((permission) => (
-          <div
-            key={permission.id}
-            className="flex items-center gap-3 px-1 py-1.5 group"
-          >
+          <div key={permission.id} className="flex items-center gap-3 px-1 py-1.5 group">
             <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-sm border-2 border-indigo-600 dark:border-indigo-500 shrink-0">
               {permission.granteeUser.name.charAt(0).toUpperCase()}
             </div>
@@ -117,10 +112,7 @@ export const SharePeopleSection: React.FC<Props> = ({
               onChange={async (value) => {
                 if (value === "remove") await handleRevokeUser(permission.id);
                 else if (value === "view" || value === "edit")
-                  await handleUpdateUserPermission(
-                    permission.granteeUserId,
-                    value,
-                  );
+                  await handleUpdateUserPermission(permission.granteeUserId, value);
               }}
               options={[
                 { label: "Viewer", value: "view" },

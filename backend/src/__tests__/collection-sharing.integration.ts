@@ -103,23 +103,17 @@ describe("Collection Sharing - Backend Integration", () => {
     editorToken = signAccessToken(editor);
 
     ownerAgent = request.agent(app);
-    const ownerCsrfRes = await ownerAgent
-      .get("/csrf-token")
-      .set("User-Agent", userAgent);
+    const ownerCsrfRes = await ownerAgent.get("/csrf-token").set("User-Agent", userAgent);
     ownerCsrfHeaderName = ownerCsrfRes.body.header;
     ownerCsrfToken = ownerCsrfRes.body.token;
 
     viewerAgent = request.agent(app);
-    const viewerCsrfRes = await viewerAgent
-      .get("/csrf-token")
-      .set("User-Agent", userAgent);
+    const viewerCsrfRes = await viewerAgent.get("/csrf-token").set("User-Agent", userAgent);
     viewerCsrfHeaderName = viewerCsrfRes.body.header;
     viewerCsrfToken = viewerCsrfRes.body.token;
 
     editorAgent = request.agent(app);
-    const editorCsrfRes = await editorAgent
-      .get("/csrf-token")
-      .set("User-Agent", userAgent);
+    const editorCsrfRes = await editorAgent.get("/csrf-token").set("User-Agent", userAgent);
     editorCsrfHeaderName = editorCsrfRes.body.header;
     editorCsrfToken = editorCsrfRes.body.token;
   }, 120000);
@@ -271,9 +265,7 @@ describe("Collection Sharing - Backend Integration", () => {
 
     expect(beforeDeleteCollectionsResponse.status).toBe(200);
     expect(
-      (beforeDeleteCollectionsResponse.body as any[]).some(
-        (c) => c.id === collection.id,
-      ),
+      (beforeDeleteCollectionsResponse.body as any[]).some((c) => c.id === collection.id),
     ).toBe(true);
 
     const deleteCollectionResponse = await ownerAgent
@@ -291,11 +283,9 @@ describe("Collection Sharing - Backend Integration", () => {
       .set("Authorization", `Bearer ${viewerToken}`);
 
     expect(afterDeleteCollectionsResponse.status).toBe(200);
-    expect(
-      (afterDeleteCollectionsResponse.body as any[]).some(
-        (c) => c.id === collection.id,
-      ),
-    ).toBe(false);
+    expect((afterDeleteCollectionsResponse.body as any[]).some((c) => c.id === collection.id)).toBe(
+      false,
+    );
   });
 
   it("prevents a view-only invited user from renaming, editing, or deleting drawings in the shared collection", async () => {

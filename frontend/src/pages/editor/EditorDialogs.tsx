@@ -55,9 +55,7 @@ export const EditorDialogs: React.FC<EditorDialogsProps> = ({
                 files: excalidrawAPI.getFiles(),
               };
             }
-            const elements = Array.isArray(snapshot.elements)
-              ? snapshot.elements
-              : [];
+            const elements = Array.isArray(snapshot.elements) ? snapshot.elements : [];
             const files = snapshot.files || {};
             if (Object.keys(files).length > 0) {
               excalidrawAPI.addFiles(Object.values(files));
@@ -79,9 +77,7 @@ export const EditorDialogs: React.FC<EditorDialogsProps> = ({
               captureUpdate: CaptureUpdateAction.NEVER,
             });
             if (previewBackupRef.current.files) {
-              excalidrawAPI.addFiles(
-                Object.values(previewBackupRef.current.files),
-              );
+              excalidrawAPI.addFiles(Object.values(previewBackupRef.current.files));
             }
             previewBackupRef.current = null;
           }

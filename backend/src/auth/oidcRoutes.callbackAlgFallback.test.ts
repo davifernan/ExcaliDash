@@ -59,17 +59,11 @@ vi.mock("openid-client", () => {
 
 const base64UrlEncode = (value: Buffer | string): string => {
   const buffer = typeof value === "string" ? Buffer.from(value, "utf8") : value;
-  return buffer
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 };
 
 const signFlowPayload = (encodedPayload: string, secret: string): string =>
-  base64UrlEncode(
-    crypto.createHmac("sha256", secret).update(encodedPayload, "utf8").digest(),
-  );
+  base64UrlEncode(crypto.createHmac("sha256", secret).update(encodedPayload, "utf8").digest());
 
 const makeFlowCookie = (
   secret: string,
@@ -136,9 +130,7 @@ const createPrismaMock = (options?: {
   };
 
   return {
-    $transaction: vi.fn(async (runner: (arg: typeof tx) => Promise<unknown>) =>
-      runner(tx),
-    ),
+    $transaction: vi.fn(async (runner: (arg: typeof tx) => Promise<unknown>) => runner(tx)),
     refreshToken: {
       create: vi.fn(async () => ({})),
     },
@@ -234,9 +226,7 @@ describe("OIDC callback alg mismatch fallback", () => {
     callbackMock.mockImplementation(async () => {
       callCount += 1;
       if (callCount === 1) {
-        throw new Error(
-          "unexpected JWT alg received, expected RS256, got: HS256",
-        );
+        throw new Error("unexpected JWT alg received, expected RS256, got: HS256");
       }
       return {
         claims: () => ({

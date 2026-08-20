@@ -1,12 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  LayoutGrid,
-  Folder,
-  Plus,
-  Archive,
-  FolderOpen,
-  Shield,
-} from "lucide-react";
+import { LayoutGrid, Folder, Plus, Archive, FolderOpen, Shield } from "lucide-react";
 import type { Collection } from "../types";
 import clsx from "clsx";
 import { ConfirmModal } from "./ConfirmModal";
@@ -16,10 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { displayFontFamily } from "../utils/displayFont";
 import { SidebarItem } from "./sidebar/SidebarItem";
 import { SidebarFooter } from "./sidebar/SidebarFooter";
-import {
-  SidebarContextMenu,
-  type SidebarContextMenuState,
-} from "./sidebar/SidebarContextMenu";
+import { SidebarContextMenu, type SidebarContextMenuState } from "./sidebar/SidebarContextMenu";
 
 interface SidebarProps {
   collections: Collection[];
@@ -45,17 +35,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [newCollectionName, setNewCollectionName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [contextMenu, setContextMenu] =
-    useState<SidebarContextMenuState | null>(null);
-  const [collectionToDelete, setCollectionToDelete] = useState<string | null>(
-    null,
-  );
-  const [collectionToShare, setCollectionToShare] = useState<string | null>(
-    null,
-  );
-  const [pendingAction, setPendingAction] = useState<
-    "create" | "rename" | "delete" | null
-  >(null);
+  const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
+  const [collectionToDelete, setCollectionToDelete] = useState<string | null>(null);
+  const [collectionToShare, setCollectionToShare] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"create" | "rename" | "delete" | null>(null);
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
     document.addEventListener("click", handleClickOutside);
@@ -68,8 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setPendingAction("create");
       try {
         await onCreateCollection(name);
-      setNewCollectionName("");
-      setIsCreating(false);
+        setNewCollectionName("");
+        setIsCreating(false);
       } catch {
         // The action reports the actionable error; keep the entered name for retry.
       } finally {
@@ -201,7 +184,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onBlur={() => !newCollectionName && setIsCreating(false)}
                 />
                 {pendingAction === "create" && (
-                  <span aria-live="polite" className="mt-2 block text-xs font-bold text-indigo-600 dark:text-indigo-300">
+                  <span
+                    aria-live="polite"
+                    className="mt-2 block text-xs font-bold text-indigo-600 dark:text-indigo-300"
+                  >
                     Creating collection...
                   </span>
                 )}
@@ -314,9 +300,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <ShareCollectionModal
         isOpen={!!collectionToShare}
         collectionId={collectionToShare ?? ""}
-        collectionName={
-          collections.find((c) => c.id === collectionToShare)?.name ?? ""
-        }
+        collectionName={collections.find((c) => c.id === collectionToShare)?.name ?? ""}
         onClose={() => setCollectionToShare(null)}
       />
     </>

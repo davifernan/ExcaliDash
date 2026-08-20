@@ -7,7 +7,6 @@ export interface ElementVersionInfo {
   contentSig: string;
 }
 
-
 /**
  * Matches CaptureUpdateAction.NEVER from @excalidraw/excalidraw.
  * Kept as a local constant so that shared.ts doesn't pull in the full
@@ -49,7 +48,7 @@ type BuildRemoteSceneUpdateInput = {
  * happening on this screen, whoever sent it.
  */
 export const heldElementIds = (
-  appState: Record<string, any> | null | undefined
+  appState: Record<string, any> | null | undefined,
 ): ReadonlySet<string> => {
   const held = new Set<string>();
   for (const key of ["editingTextElement", "resizingElement", "newElement"]) {
@@ -96,9 +95,7 @@ export const buildRemoteSceneUpdate = ({
   }
 
   const shouldUpdateFiles = Object.keys(incomingFiles).length > 0;
-  const nextFiles = shouldUpdateFiles
-    ? { ...lastSyncedFiles, ...incomingFiles }
-    : lastSyncedFiles;
+  const nextFiles = shouldUpdateFiles ? { ...lastSyncedFiles, ...incomingFiles } : lastSyncedFiles;
   const hasElementOrder = Array.isArray(elementOrder) && elementOrder.length > 0;
   const shouldUpdateElements = pendingElements.length > 0 || hasElementOrder;
 
@@ -171,7 +168,7 @@ export const hasRenderableElements = (elements: readonly any[] = []): boolean =>
  */
 export const isSuspiciousEmptySnapshot = (
   previousPersisted: readonly any[] = [],
-  nextSnapshot: readonly any[] = []
+  nextSnapshot: readonly any[] = [],
 ): boolean => {
   if (!Array.isArray(nextSnapshot) || nextSnapshot.length > 0) return false;
   return hasRenderableElements(previousPersisted);
@@ -184,7 +181,7 @@ export const isSuspiciousEmptySnapshot = (
  */
 export const isStaleEmptySnapshot = (
   latestSnapshot: readonly any[] = [],
-  candidateSnapshot: readonly any[] = []
+  candidateSnapshot: readonly any[] = [],
 ): boolean => {
   if (!Array.isArray(candidateSnapshot) || candidateSnapshot.length > 0) return false;
   if (!hasRenderableElements(latestSnapshot)) return false;
@@ -200,7 +197,7 @@ export const isStaleEmptySnapshot = (
  */
 export const isStaleNonRenderableSnapshot = (
   latestSnapshot: readonly any[] = [],
-  candidateSnapshot: readonly any[] = []
+  candidateSnapshot: readonly any[] = [],
 ): boolean => {
   if (!Array.isArray(candidateSnapshot)) return false;
   if (hasRenderableElements(candidateSnapshot)) return false;
@@ -219,7 +216,7 @@ const buildFileSignature = (file: any): string => {
 
 export const getFilesDelta = (
   previous: Record<string, any>,
-  next: Record<string, any>
+  next: Record<string, any>,
 ): Record<string, any> => {
   const delta: Record<string, any> = {};
   const prev = previous || {};
@@ -257,9 +254,22 @@ export { getInitialsFromName } from "../../utils/user";
 
 export const getColorFromString = (str: string): string => {
   const COLORS = [
-    "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#10b981",
-    "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6",
-    "#a855f7", "#d946ef", "#ec4899", "#f43f5e",
+    "#ef4444",
+    "#f97316",
+    "#f59e0b",
+    "#84cc16",
+    "#22c55e",
+    "#10b981",
+    "#14b8a6",
+    "#06b6d4",
+    "#0ea5e9",
+    "#3b82f6",
+    "#6366f1",
+    "#8b5cf6",
+    "#a855f7",
+    "#d946ef",
+    "#ec4899",
+    "#f43f5e",
   ];
   let hash = 0;
   for (let i = 0; i < str.length; i++) {

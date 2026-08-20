@@ -8,7 +8,10 @@ import {
   type DrawingPrincipal,
 } from "../authz/sharing";
 import { createSocketAuthenticator } from "./socketAuth";
-import { createCollaborationAccessController, type CollaborationAccessController } from "./collaborationAccess";
+import {
+  createCollaborationAccessController,
+  type CollaborationAccessController,
+} from "./collaborationAccess";
 import { createSocketFollowManager } from "./socketFollow";
 import {
   createApiKeySocketRevoker,
@@ -52,9 +55,7 @@ export const registerSocketHandlers = ({
   const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
   let followManager: ReturnType<typeof createSocketFollowManager>;
 
-  io.use(
-    createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }),
-  );
+  io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
   const emitPresence = (drawingId: string) => {
     const users = Array.from(presencesByDrawing.get(drawingId)?.values() || []);
@@ -63,16 +64,10 @@ export const registerSocketHandlers = ({
 
   const getPresence = (socketId: string): PresenceUser | null => {
     const drawingId = drawingBySocket.get(socketId);
-    return drawingId
-      ? presencesByDrawing.get(drawingId)?.get(socketId) || null
-      : null;
+    return drawingId ? presencesByDrawing.get(drawingId)?.get(socketId) || null : null;
   };
 
-  const removeFromDrawing = async (
-    socket: Socket,
-    reason: string,
-    leaveSocketRoom = true,
-  ) => {
+  const removeFromDrawing = async (socket: Socket, reason: string, leaveSocketRoom = true) => {
     const drawingId = drawingBySocket.get(socket.id);
     if (!drawingId) return;
     followManager.clearSocket(socket.id, reason);
@@ -96,29 +91,14 @@ export const registerSocketHandlers = ({
     return !apiKey || apiKey.scopes.includes(scope);
   };
 
-  const canSocketView = (
-    socketId: string,
-    access: Awaited<ReturnType<typeof getAccess>>,
-  ) =>
-    canViewDrawing(access) &&
-    apiKeyHasScope(socketId, DRAWINGS_READ_SCOPE);
+  const canSocketView = (socketId: string, access: Awaited<ReturnType<typeof getAccess>>) =>
+    canViewDrawing(access) && apiKeyHasScope(socketId, DRAWINGS_READ_SCOPE);
 
-  const canSocketEdit = (
-    socketId: string,
-    access: Awaited<ReturnType<typeof getAccess>>,
-  ) =>
-    canEditDrawing(access) &&
-    apiKeyHasScope(socketId, DRAWINGS_WRITE_SCOPE);
+  const canSocketEdit = (socketId: string, access: Awaited<ReturnType<typeof getAccess>>) =>
+    canEditDrawing(access) && apiKeyHasScope(socketId, DRAWINGS_WRITE_SCOPE);
 
-  const requireAccess = async (
-    socket: Socket,
-    drawingId: string,
-    requireEdit = false,
-  ) => {
-    if (
-      drawingBySocket.get(socket.id) !== drawingId ||
-      !socket.rooms.has(roomName(drawingId))
-    ) {
+  const requireAccess = async (socket: Socket, drawingId: string, requireEdit = false) => {
+    if (drawingBySocket.get(socket.id) !== drawingId || !socket.rooms.has(roomName(drawingId))) {
       return null;
     }
     if (!(await credentialChecks.get(socket.id))) return null;
@@ -214,9 +194,13 @@ export const registerSocketHandlers = ({
           connectedSockets.get(socket.id) === socket && revision === joinRevision;
 
         if (!(await credentialCheck) || !isCurrentJoin()) {
-          ack?.({ ok: false, error: {
-            code: "authentication-failed", message: "Authentication failed",
-          } });
+          ack?.({
+            ok: false,
+            error: {
+              code: "authentication-failed",
+              message: "Authentication failed",
+            },
+          });
           return;
         }
         const access = await getAccess(socket.id, drawingId);
@@ -350,9 +334,7 @@ export const registerSocketHandlers = ({
     });
   });
 
-  const recheckSockets = async (
-    matches: (socketId: string, drawingId: string) => boolean,
-  ) => {
+  const recheckSockets = async (matches: (socketId: string, drawingId: string) => boolean) => {
     const candidates = Array.from(connectedSockets.values()).filter((socket) => {
       const drawingId = drawingBySocket.get(socket.id);
       return Boolean(drawingId && matches(socket.id, drawingId));
@@ -381,8 +363,7 @@ export const registerSocketHandlers = ({
     prisma,
     principals,
     recheckSockets,
-    disconnectInactiveUserSockets:
-      credentialGuard.disconnectInactiveUserSockets,
+    disconnectInactiveUserSockets: credentialGuard.disconnectInactiveUserSockets,
     disconnectApiKey,
   });
 
@@ -390,10 +371,7 @@ export const registerSocketHandlers = ({
   registerUserSocketRechecker(controller.recheckUserAccess);
   // Expiring link shares have no route invocation at expiry time. A periodic
   // server-side sweep bounds passive clients' access even if they send nothing.
-  startNonOverlappingSocketAccessSweep(
-    () => recheckSockets(() => true),
-    accessRecheckIntervalMs,
-  );
+  startNonOverlappingSocketAccessSweep(() => recheckSockets(() => true), accessRecheckIntervalMs);
 
   return controller;
 };

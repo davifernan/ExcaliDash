@@ -91,7 +91,7 @@ export type ReconcileOptions = {
 export const reconcileElements = (
   localElements: readonly any[],
   remoteElements: readonly any[],
-  options?: ReconcileOptions
+  options?: ReconcileOptions,
 ): any[] => {
   const localMap = new Map<string, any>();
   localElements.forEach((el) => {
@@ -154,7 +154,7 @@ export const reconcileElements = (
 
 export const applyElementOrder = (
   elements: readonly any[],
-  elementOrder: readonly string[] | undefined | null
+  elementOrder: readonly string[] | undefined | null,
 ): any[] => {
   if (!Array.isArray(elementOrder) || elementOrder.length === 0) return [...elements];
 

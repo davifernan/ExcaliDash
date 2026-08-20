@@ -122,9 +122,7 @@ export const registerDrawingSharingRoutes = (
       }
 
       const granteeUserId =
-        typeof req.body?.granteeUserId === "string"
-          ? req.body.granteeUserId
-          : null;
+        typeof req.body?.granteeUserId === "string" ? req.body.granteeUserId : null;
       const permission = normalizeDrawingPermission(req.body?.permission);
       if (!granteeUserId || !permission) {
         return res.status(400).json({
@@ -209,10 +207,7 @@ export const registerDrawingSharingRoutes = (
       });
       invalidateDrawingsCache();
       if (deleted.count > 0 && permission) {
-        await collaborationAccess.recheckDrawingAccess(
-          id,
-          permission.granteeUserId,
-        );
+        await collaborationAccess.recheckDrawingAccess(id, permission.granteeUserId);
       }
 
       if (config.enableAuditLogging) {
@@ -247,9 +242,7 @@ export const registerDrawingSharingRoutes = (
 
       const permission = normalizeDrawingPermission(req.body?.permission);
       if (!permission) {
-        return res
-          .status(400)
-          .json({ error: "Validation error", message: "Invalid permission" });
+        return res.status(400).json({ error: "Validation error", message: "Invalid permission" });
       }
 
       const now = Date.now();
@@ -257,16 +250,12 @@ export const registerDrawingSharingRoutes = (
       const defaultTtlMs = resolveDefaultTtlMs(permission);
       const effectiveDefaultTtlMs =
         permission === "edit" ? Math.min(defaultTtlMs, maxTtlMs) : defaultTtlMs;
-      const hasExpiresAtKey = Object.prototype.hasOwnProperty.call(
-        req.body ?? {},
-        "expiresAt",
-      );
+      const hasExpiresAtKey = Object.prototype.hasOwnProperty.call(req.body ?? {}, "expiresAt");
       const rawExpiresAt = req.body?.expiresAt;
 
       let expiresAt: Date | null;
       if (hasExpiresAtKey && rawExpiresAt === null) {
-        expiresAt =
-          permission === "view" ? null : new Date(now + effectiveDefaultTtlMs);
+        expiresAt = permission === "view" ? null : new Date(now + effectiveDefaultTtlMs);
       } else {
         const requestedExpiresAt =
           typeof rawExpiresAt === "string" && rawExpiresAt.trim().length > 0
@@ -284,16 +273,9 @@ export const registerDrawingSharingRoutes = (
               message: "Expiry must be at least 1 minute in the future",
             });
           }
-          const ttlMs =
-            permission === "edit"
-              ? Math.min(candidateTtlMs, maxTtlMs)
-              : candidateTtlMs;
+          const ttlMs = permission === "edit" ? Math.min(candidateTtlMs, maxTtlMs) : candidateTtlMs;
           expiresAt = new Date(now + ttlMs);
-        } else if (
-          hasExpiresAtKey &&
-          rawExpiresAt !== undefined &&
-          rawExpiresAt !== null
-        ) {
+        } else if (hasExpiresAtKey && rawExpiresAt !== undefined && rawExpiresAt !== null) {
           return res.status(400).json({
             error: "Validation error",
             message: "Invalid expiry",

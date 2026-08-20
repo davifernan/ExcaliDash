@@ -38,14 +38,8 @@ export const SettingsMainGrid = ({
       {" "}
       <div className="w-12 h-12 sm:w-16 sm:h-16 bg-indigo-50 dark:bg-neutral-800 rounded-2xl flex items-center justify-center border-2 border-indigo-100 dark:border-neutral-700">
         {" "}
-        <Archive
-          size={32}
-          className="text-indigo-600 dark:text-indigo-400 hidden sm:block"
-        />{" "}
-        <Archive
-          size={24}
-          className="text-indigo-600 dark:text-indigo-400 sm:hidden"
-        />{" "}
+        <Archive size={32} className="text-indigo-600 dark:text-indigo-400 hidden sm:block" />{" "}
+        <Archive size={24} className="text-indigo-600 dark:text-indigo-400 sm:hidden" />{" "}
       </div>{" "}
       <div className="text-center">
         {" "}
@@ -85,26 +79,14 @@ export const SettingsMainGrid = ({
       <div className="w-12 h-12 sm:w-16 sm:h-16 bg-amber-50 dark:bg-neutral-800 rounded-2xl flex items-center justify-center border-2 border-amber-100 dark:border-neutral-700 group-hover:border-amber-200 dark:group-hover:border-neutral-600 transition-colors">
         {" "}
         {theme === "light" ? (
-          <Moon
-            size={32}
-            className="text-amber-600 dark:text-amber-400 hidden sm:block"
-          />
+          <Moon size={32} className="text-amber-600 dark:text-amber-400 hidden sm:block" />
         ) : (
-          <Sun
-            size={32}
-            className="text-amber-600 dark:text-amber-400 hidden sm:block"
-          />
+          <Sun size={32} className="text-amber-600 dark:text-amber-400 hidden sm:block" />
         )}
         {theme === "light" ? (
-          <Moon
-            size={24}
-            className="text-amber-600 dark:text-amber-400 sm:hidden"
-          />
+          <Moon size={24} className="text-amber-600 dark:text-amber-400 sm:hidden" />
         ) : (
-          <Sun
-            size={24}
-            className="text-amber-600 dark:text-amber-400 sm:hidden"
-          />
+          <Sun size={24} className="text-amber-600 dark:text-amber-400 sm:hidden" />
         )}{" "}
       </div>{" "}
       <div className="text-center">
@@ -127,26 +109,14 @@ export const SettingsMainGrid = ({
       <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-50 dark:bg-neutral-800 rounded-2xl flex items-center justify-center border-2 border-blue-100 dark:border-neutral-700 group-hover:border-blue-200 dark:group-hover:border-neutral-600 transition-colors">
         {" "}
         {imageCompression ? (
-          <Zap
-            size={32}
-            className="text-blue-600 dark:text-blue-400 hidden sm:block"
-          />
+          <Zap size={32} className="text-blue-600 dark:text-blue-400 hidden sm:block" />
         ) : (
-          <ZapOff
-            size={32}
-            className="text-blue-600 dark:text-blue-400 hidden sm:block"
-          />
+          <ZapOff size={32} className="text-blue-600 dark:text-blue-400 hidden sm:block" />
         )}{" "}
         {imageCompression ? (
-          <Zap
-            size={24}
-            className="text-blue-600 dark:text-blue-400 sm:hidden"
-          />
+          <Zap size={24} className="text-blue-600 dark:text-blue-400 sm:hidden" />
         ) : (
-          <ZapOff
-            size={24}
-            className="text-blue-600 dark:text-blue-400 sm:hidden"
-          />
+          <ZapOff size={24} className="text-blue-600 dark:text-blue-400 sm:hidden" />
         )}{" "}
       </div>{" "}
       <div className="text-center">

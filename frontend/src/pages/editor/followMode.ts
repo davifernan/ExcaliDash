@@ -42,9 +42,7 @@ type ExcalidrawApi = {
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
-export const parseFollowSceneBounds = (
-  value: unknown,
-): FollowSceneBounds | null => {
+export const parseFollowSceneBounds = (value: unknown): FollowSceneBounds | null => {
   if (!Array.isArray(value) || value.length !== 4) return null;
   if (!value.every(isFiniteNumber)) return null;
   const [x1, y1, x2, y2] = value;
@@ -175,10 +173,7 @@ export const bindFollowMode = ({
   let lastAppliedVisibleBounds: FollowSceneBounds | null = null;
   const viewportIndicator = createViewportIndicator(container);
 
-  const suppressServerFeedback = (
-    previousTargetId: string | null,
-    nextTargetId: string | null,
-  ) => {
+  const suppressServerFeedback = (previousTargetId: string | null, nextTargetId: string | null) => {
     suppressedServerActions = [];
     if (previousTargetId && previousTargetId !== nextTargetId) {
       suppressedServerActions.push({
@@ -208,22 +203,15 @@ export const bindFollowMode = ({
     });
   };
   const scheduleBounds = () => {
-    if (
-      applyingIncomingBounds ||
-      sendTimer !== null ||
-      followers.size === 0
-    ) {
+    if (applyingIncomingBounds || sendTimer !== null || followers.size === 0) {
       return;
     }
-    const visibleBounds = parseFollowSceneBounds(
-      getVisibleSceneBounds(api.getAppState()),
-    );
+    const visibleBounds = parseFollowSceneBounds(getVisibleSceneBounds(api.getAppState()));
     if (
       visibleBounds &&
       lastAppliedVisibleBounds &&
       visibleBounds.every(
-        (value, index) =>
-          Math.abs(value - lastAppliedVisibleBounds![index]) < 0.0001,
+        (value, index) => Math.abs(value - lastAppliedVisibleBounds![index]) < 0.0001,
       )
     ) {
       return;
@@ -238,14 +226,8 @@ export const bindFollowMode = ({
     applyingIncomingBounds = true;
     try {
       const fitted = fitFollowedBounds(api, lastReceivedBounds);
-      lastAppliedVisibleBounds = parseFollowSceneBounds(
-        getVisibleSceneBounds(fitted.appState),
-      );
-      viewportIndicator?.show(
-        lastReceivedBounds,
-        fitted.appState,
-        fitted.zoomClamped,
-      );
+      lastAppliedVisibleBounds = parseFollowSceneBounds(getVisibleSceneBounds(fitted.appState));
+      viewportIndicator?.show(lastReceivedBounds, fitted.appState, fitted.zoomClamped);
     } finally {
       applyingIncomingBounds = false;
     }
@@ -254,9 +236,7 @@ export const bindFollowMode = ({
   const unsubscribeFollow = api.onUserFollow((payload) => {
     const targetPresenceId = payload.userToFollow?.socketId || null;
     const suppressedIndex = suppressedServerActions.findIndex(
-      (action) =>
-        action.action === payload.action &&
-        action.targetPresenceId === targetPresenceId,
+      (action) => action.action === payload.action && action.targetPresenceId === targetPresenceId,
     );
     if (suppressedIndex >= 0) {
       suppressedServerActions.splice(suppressedIndex, 1);
@@ -285,10 +265,7 @@ export const bindFollowMode = ({
     }
     const next = new Map<string, Follower>();
     for (const follower of payload.followers) {
-      if (
-        typeof follower?.presenceId === "string" &&
-        typeof follower?.name === "string"
-      ) {
+      if (typeof follower?.presenceId === "string" && typeof follower?.name === "string") {
         next.set(follower.presenceId, {
           presenceId: follower.presenceId,
           name: follower.name,
@@ -306,9 +283,7 @@ export const bindFollowMode = ({
   const onFollowStatus = (payload: any) => {
     if (payload?.drawingId !== drawingId) return;
     const targetPresenceId =
-      typeof payload.followingPresenceId === "string"
-        ? payload.followingPresenceId
-        : null;
+      typeof payload.followingPresenceId === "string" ? payload.followingPresenceId : null;
     const appState = api.getAppState();
     if (typeof payload.reason === "string") {
       onFollowInterrupted?.(payload.reason);

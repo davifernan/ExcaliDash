@@ -19,7 +19,11 @@ export const validateProductionConfig = (config: ProductionValidationConfig): vo
   if (insecureJwtSecretPlaceholders.has(normalizedSecret)) {
     throw new Error("JWT_SECRET must be changed from placeholder/default value in production");
   }
-  if (config.oidc.enabled && config.oidc.redirectUri && !/^https:\/\//i.test(config.oidc.redirectUri)) {
+  if (
+    config.oidc.enabled &&
+    config.oidc.redirectUri &&
+    !/^https:\/\//i.test(config.oidc.redirectUri)
+  ) {
     throw new Error("OIDC_REDIRECT_URI must be HTTPS in production");
   }
 };

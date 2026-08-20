@@ -3,11 +3,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
-import {
-  cleanupExpiredAuthData,
-  createSqliteBackup,
-  startScheduledMaintenance,
-} from "./scheduler";
+import { cleanupExpiredAuthData, createSqliteBackup, startScheduledMaintenance } from "./scheduler";
 
 const Database = require("better-sqlite3") as any;
 const tempDirs: string[] = [];
@@ -50,7 +46,10 @@ describe("scheduled backups", () => {
     await fs.utimes(stalePartial, oldPartialTime, oldPartialTime);
     const db = new Database(databasePath);
     db.exec('CREATE TABLE "StoredBlob" ("storageKey" TEXT NOT NULL, "state" TEXT NOT NULL)');
-    db.prepare('INSERT INTO "StoredBlob" ("storageKey", "state") VALUES (?, ?)').run(storageKey, "READY");
+    db.prepare('INSERT INTO "StoredBlob" ("storageKey", "state") VALUES (?, ?)').run(
+      storageKey,
+      "READY",
+    );
     db.close();
 
     const target = await createSqliteBackup({
@@ -117,16 +116,18 @@ describe("scheduled backups", () => {
     db.exec('CREATE TABLE "StoredBlob" ("storageKey" TEXT NOT NULL, "state" TEXT NOT NULL)');
     db.close();
 
-    await expect(createSqliteBackup({
-      prisma: { $queryRawUnsafe: vi.fn().mockResolvedValue([]) } as any,
-      databaseUrl: `file:${databasePath}`,
-      backupDir,
-      assetStorageDir,
-      retentionDays: 14,
-      maxCount: 7,
-      maxTotalBytes: 1,
-      minFreeDiskPercent: 0,
-    })).rejects.toThrow(/BACKUP_MAX_TOTAL_MB/);
+    await expect(
+      createSqliteBackup({
+        prisma: { $queryRawUnsafe: vi.fn().mockResolvedValue([]) } as any,
+        databaseUrl: `file:${databasePath}`,
+        backupDir,
+        assetStorageDir,
+        retentionDays: 14,
+        maxCount: 7,
+        maxTotalBytes: 1,
+        minFreeDiskPercent: 0,
+      }),
+    ).rejects.toThrow(/BACKUP_MAX_TOTAL_MB/);
 
     expect((await fs.readdir(backupDir)).some((name) => name.endsWith(".part"))).toBe(false);
   });
@@ -143,16 +144,18 @@ describe("scheduled backups", () => {
     db.exec('CREATE TABLE "StoredBlob" ("storageKey" TEXT NOT NULL, "state" TEXT NOT NULL)');
     db.close();
 
-    await expect(createSqliteBackup({
-      prisma: { $queryRawUnsafe: vi.fn().mockResolvedValue([]) } as any,
-      databaseUrl: `file:${databasePath}`,
-      backupDir,
-      assetStorageDir,
-      retentionDays: 14,
-      maxCount: 7,
-      maxTotalBytes: 20 * 1024 * 1024,
-      minFreeDiskPercent: 100,
-    })).rejects.toThrow(/BACKUP_MIN_FREE_DISK_PERCENT=100/);
+    await expect(
+      createSqliteBackup({
+        prisma: { $queryRawUnsafe: vi.fn().mockResolvedValue([]) } as any,
+        databaseUrl: `file:${databasePath}`,
+        backupDir,
+        assetStorageDir,
+        retentionDays: 14,
+        maxCount: 7,
+        maxTotalBytes: 20 * 1024 * 1024,
+        minFreeDiskPercent: 100,
+      }),
+    ).rejects.toThrow(/BACKUP_MIN_FREE_DISK_PERCENT=100/);
 
     expect((await fs.readdir(backupDir)).some((name) => name.endsWith(".part"))).toBe(false);
   });

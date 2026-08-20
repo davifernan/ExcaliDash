@@ -18,9 +18,7 @@ const emptyStatus: DashboardDataStatus = {
 let status = emptyStatus;
 const listeners = new Set<() => void>();
 
-export const setDashboardDataStatus = (
-  update: Partial<DashboardDataStatus>,
-) => {
+export const setDashboardDataStatus = (update: Partial<DashboardDataStatus>) => {
   status = { ...status, ...update };
   listeners.forEach((listener) => listener());
 };

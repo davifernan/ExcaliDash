@@ -39,8 +39,9 @@ describe("socket room lifecycle", () => {
       targetPresenceId: "target-after-timeout",
       action: "FOLLOW",
     });
-    expect(socket.emit.mock.calls.filter(([event]: [string]) => event === "join-room"))
-      .toHaveLength(2);
+    expect(
+      socket.emit.mock.calls.filter(([event]: [string]) => event === "join-room"),
+    ).toHaveLength(2);
     expect(resetConnectionState).toHaveBeenCalledOnce();
     cleanup();
     vi.useRealTimers();

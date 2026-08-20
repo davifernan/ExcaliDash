@@ -1,11 +1,7 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { rewritePreviewForS3 } from "../../fileProcessing";
-import {
-  getUserTrashCollectionId,
-  isTrashCollectionId,
-  toPublicTrashCollectionId,
-} from "./trash";
+import { getUserTrashCollectionId, isTrashCollectionId, toPublicTrashCollectionId } from "./trash";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
 export const registerDrawingDeleteDuplicateRoutes = (
@@ -76,8 +72,7 @@ export const registerDrawingDeleteDuplicateRoutes = (
       const original = await prisma.drawing.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!original)
-        return res.status(404).json({ error: "Original drawing not found" });
+      if (!original) return res.status(404).json({ error: "Original drawing not found" });
       let duplicatedCollectionId = original.collectionId;
       if (isTrashCollectionId(original.collectionId, req.user.id)) {
         await ensureTrashCollection(prisma, req.user.id);
@@ -115,15 +110,11 @@ export const registerDrawingDeleteDuplicateRoutes = (
 
       return res.json({
         ...newDrawing,
-        collectionId: toPublicTrashCollectionId(
-          newDrawing.collectionId,
-          req.user.id,
-        ),
+        collectionId: toPublicTrashCollectionId(newDrawing.collectionId, req.user.id),
         elements: parseJsonField(newDrawing.elements, []),
         appState: parseJsonField(newDrawing.appState, {}),
         files: parseJsonField(newDrawing.files, {}),
       });
     }),
   );
-
 };

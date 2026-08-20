@@ -6,19 +6,14 @@ import { StringValue } from "ms";
 import { PrismaClient } from "../generated/client";
 import { config } from "../config";
 import { getTestPrisma, setupTestDb } from "./testUtils";
-import {
-  ACCESS_TOKEN_COOKIE_NAME,
-  REFRESH_TOKEN_COOKIE_NAME,
-} from "../auth/cookies";
+import { ACCESS_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME } from "../auth/cookies";
 
 describe("Link Sharing - Public By Drawing ID", () => {
   const userAgent = "vitest-link-sharing-public";
   const createRefreshToken = (user: { id: string; email: string }) =>
-    jwt.sign(
-      { userId: user.id, email: user.email, type: "refresh" },
-      config.jwtSecret,
-      { expiresIn: config.jwtRefreshExpiresIn as StringValue }
-    );
+    jwt.sign({ userId: user.id, email: user.email, type: "refresh" }, config.jwtSecret, {
+      expiresIn: config.jwtRefreshExpiresIn as StringValue,
+    });
 
   let prisma: PrismaClient;
   let app: any;
@@ -67,9 +62,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
 
   const createAnonymousAgentWithCsrf = async () => {
     const anonAgent = request.agent(app);
-    const anonCsrfRes = await anonAgent
-      .get("/csrf-token")
-      .set("User-Agent", userAgent);
+    const anonCsrfRes = await anonAgent.get("/csrf-token").set("User-Agent", userAgent);
 
     return {
       anonAgent,
@@ -115,13 +108,11 @@ describe("Link Sharing - Public By Drawing ID", () => {
     ownerToken = jwt.sign(
       { userId: ownerUser.id, email: ownerUser.email, type: "access" },
       config.jwtSecret,
-      signOptions
+      signOptions,
     );
 
     ownerAgent = request.agent(app);
-    const csrfRes = await ownerAgent
-      .get("/csrf-token")
-      .set("User-Agent", userAgent);
+    const csrfRes = await ownerAgent.get("/csrf-token").set("User-Agent", userAgent);
     ownerCsrfHeaderName = csrfRes.body.header;
     ownerCsrfToken = csrfRes.body.token;
   });
@@ -134,15 +125,12 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const drawing = await createDrawing();
     await createLinkShare(drawing.id, "view");
 
-    const anonGet = await request(app)
-      .get(`/drawings/${drawing.id}`)
-      .set("User-Agent", userAgent);
+    const anonGet = await request(app).get(`/drawings/${drawing.id}`).set("User-Agent", userAgent);
     expect(anonGet.status).toBe(200);
     expect(anonGet.body?.id).toBe(drawing.id);
     expect(anonGet.body?.accessLevel).toBe("view");
 
-    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } =
-      await createAnonymousAgentWithCsrf();
+    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } = await createAnonymousAgentWithCsrf();
 
     const anonPut = await anonAgent
       .put(`/drawings/${drawing.id}`)
@@ -159,10 +147,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const response = await request(app)
       .get(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      );
+      .set("Cookie", `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`);
 
     expect(response.status).toBe(200);
     expect(response.body?.id).toBe(drawing.id);
@@ -176,10 +161,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const response = await request(app)
       .get(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${REFRESH_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      );
+      .set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`);
 
     expect(response.status).toBe(200);
     expect(response.body?.id).toBe(drawing.id);
@@ -189,8 +171,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
   it("allows anonymous PUT when link-share policy is edit", async () => {
     const drawing = await createDrawing();
     await createLinkShare(drawing.id, "edit");
-    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } =
-      await createAnonymousAgentWithCsrf();
+    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } = await createAnonymousAgentWithCsrf();
 
     const anonPut = await anonAgent
       .put(`/drawings/${drawing.id}`)
@@ -205,16 +186,12 @@ describe("Link Sharing - Public By Drawing ID", () => {
   it("still allows anonymous PUT when edit link-share is active and a stale access-token cookie is present", async () => {
     const drawing = await createDrawing();
     await createLinkShare(drawing.id, "edit");
-    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } =
-      await createAnonymousAgentWithCsrf();
+    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } = await createAnonymousAgentWithCsrf();
 
     const response = await anonAgent
       .put(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      )
+      .set("Cookie", `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`)
       .set(anonCsrfHeaderName, anonCsrfToken)
       .send({ name: "Edited With Stale Cookie" });
 
@@ -226,16 +203,12 @@ describe("Link Sharing - Public By Drawing ID", () => {
   it("still allows anonymous PUT when only a refresh-token cookie is present", async () => {
     const drawing = await createDrawing();
     await createLinkShare(drawing.id, "edit");
-    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } =
-      await createAnonymousAgentWithCsrf();
+    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } = await createAnonymousAgentWithCsrf();
 
     const response = await anonAgent
       .put(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${REFRESH_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      )
+      .set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`)
       .set(anonCsrfHeaderName, anonCsrfToken)
       .send({ name: "Edited With Refresh Cookie" });
 
@@ -250,10 +223,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const response = await request(app)
       .get(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      );
+      .set("Cookie", `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`);
 
     expect(response.status).toBe(401);
     expect(response.body?.message).toBe("Invalid or expired token");
@@ -265,10 +235,7 @@ describe("Link Sharing - Public By Drawing ID", () => {
     const response = await request(app)
       .get(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${REFRESH_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      );
+      .set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`);
 
     expect(response.status).toBe(401);
     expect(response.body?.message).toBe("Invalid or expired token");
@@ -276,16 +243,12 @@ describe("Link Sharing - Public By Drawing ID", () => {
 
   it("returns 401 for a private drawing PUT when a stale access-token cookie is present", async () => {
     const drawing = await createDrawing();
-    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } =
-      await createAnonymousAgentWithCsrf();
+    const { anonAgent, anonCsrfHeaderName, anonCsrfToken } = await createAnonymousAgentWithCsrf();
 
     const response = await anonAgent
       .put(`/drawings/${drawing.id}`)
       .set("User-Agent", userAgent)
-      .set(
-        "Cookie",
-        `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`
-      )
+      .set("Cookie", `${ACCESS_TOKEN_COOKIE_NAME}=${createRefreshToken(ownerUser)}`)
       .set(anonCsrfHeaderName, anonCsrfToken)
       .send({ name: "Should Fail" });
 

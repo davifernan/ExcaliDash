@@ -51,9 +51,7 @@ export const useDashboardCollectionActions = ({
       if (previousName !== undefined) {
         setCollections((current) =>
           current.map((collection) =>
-            collection.id === id
-              ? { ...collection, name: previousName as string }
-              : collection,
+            collection.id === id ? { ...collection, name: previousName as string } : collection,
           ),
         );
       }

@@ -5,21 +5,14 @@ export type PasswordResetMailInput = {
 };
 
 const escapeHtml = (value: string): string =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
  * Plain, single-purpose template. Deliberately without images or tracking:
  * a transactional reset mail should render in any client and not look like
  * marketing, which is also what keeps it out of spam folders.
  */
-export const buildPasswordResetEmail = ({
-  resetUrl,
-  expiresInMinutes,
-}: PasswordResetMailInput) => {
+export const buildPasswordResetEmail = ({ resetUrl, expiresInMinutes }: PasswordResetMailInput) => {
   const safeUrl = escapeHtml(resetUrl);
 
   const text = [

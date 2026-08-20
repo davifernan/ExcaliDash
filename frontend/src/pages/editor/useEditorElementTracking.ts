@@ -10,9 +10,7 @@ export const useEditorElementTracking = () => {
       version: element.version ?? 0,
       versionNonce: element.versionNonce ?? 0,
       updated:
-        typeof element?.updated === "number"
-          ? element.updated
-          : Number(element?.updated) || 0,
+        typeof element?.updated === "number" ? element.updated : Number(element?.updated) || 0,
       contentSig: elementContentSignature(element),
     });
   }, []);
@@ -23,9 +21,7 @@ export const useEditorElementTracking = () => {
     const nextVersion = element.version ?? 0;
     const nextNonce = element.versionNonce ?? 0;
     const nextUpdated =
-      typeof element?.updated === "number"
-        ? element.updated
-        : Number(element?.updated) || 0;
+      typeof element?.updated === "number" ? element.updated : Number(element?.updated) || 0;
     const nextSig = elementContentSignature(element);
     return (
       previous.version !== nextVersion ||

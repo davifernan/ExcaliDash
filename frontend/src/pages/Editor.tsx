@@ -26,9 +26,7 @@ export const Editor: React.FC = () => {
   const location = useLocation();
   const { theme } = useTheme();
   const { user } = useAuth();
-  const [accessLevel, setAccessLevel] = useState<
-    "none" | "view" | "edit" | "owner"
-  >("none");
+  const [accessLevel, setAccessLevel] = useState<"none" | "view" | "edit" | "owner">("none");
   const canEdit = accessLevel === "edit" || accessLevel === "owner";
   const [drawingName, setDrawingName] = useState("Drawing Editor");
   const [isRenaming, setIsRenaming] = useState(false);
@@ -53,12 +51,8 @@ export const Editor: React.FC = () => {
   });
   const me: UserIdentity = useEditorIdentity(user);
   const [isReady, setIsReady] = useState(false);
-  const {
-    computeElementOrderSig,
-    elementVersionMap,
-    hasElementChanged,
-    recordElementVersion,
-  } = useEditorElementTracking();
+  const { computeElementOrderSig, elementVersionMap, hasElementChanged, recordElementVersion } =
+    useEditorElementTracking();
   const isBootstrappingScene = useRef(true);
   const hasHydratedInitialScene = useRef(false);
   const isUnmounting = useRef(false);
@@ -87,12 +81,11 @@ export const Editor: React.FC = () => {
   const lastLocalChangeAtRef = useRef<number>(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const excalidrawAPI = useRef<any>(null);
-  const { resolveSafeSnapshot, normalizeImageElementStatus } =
-    useEditorSnapshotGuards({
-      lastPersistedElementsRef,
-      initialSceneElementsRef,
-      latestElementsRef,
-    });
+  const { resolveSafeSnapshot, normalizeImageElementStatus } = useEditorSnapshotGuards({
+    lastPersistedElementsRef,
+    initialSceneElementsRef,
+    latestElementsRef,
+  });
   useEffect(() => {
     isUnmounting.current = false;
     return () => {
@@ -105,34 +98,24 @@ export const Editor: React.FC = () => {
       replace: true,
     });
   }, [id, location.hash, location.pathname, location.search, navigate]);
-  const {
-    peers,
-    followers,
-    socketRef,
-    isSyncing,
-    onPointerUpdate,
-  } =
-    useEditorCollaboration({
-      drawingId: id,
-      me,
-      isReady,
-      excalidrawAPI,
-      editorContainerRef,
-      lastSyncedFilesRef,
-      lastSyncedElementOrderSigRef,
-      latestElementsRef,
-      latestFilesRef,
-      computeElementOrderSig,
-      recordElementVersion,
-      onAccessDenied: handleSocketAccessDenied,
-    });
+  const { peers, followers, socketRef, isSyncing, onPointerUpdate } = useEditorCollaboration({
+    drawingId: id,
+    me,
+    isReady,
+    excalidrawAPI,
+    editorContainerRef,
+    lastSyncedFilesRef,
+    lastSyncedElementOrderSigRef,
+    latestElementsRef,
+    latestFilesRef,
+    computeElementOrderSig,
+    recordElementVersion,
+    onAccessDenied: handleSocketAccessDenied,
+  });
   const emitFilesDeltaIfNeeded = useCallback(
     (nextFiles: Record<string, any>) => {
       if (!socketRef.current || !id) return false;
-      const filesDelta = getFilesDelta(
-        lastSyncedFilesRef.current,
-        nextFiles || {},
-      );
+      const filesDelta = getFilesDelta(lastSyncedFilesRef.current, nextFiles || {});
       if (Object.keys(filesDelta).length === 0) return false;
       latestFilesRef.current = nextFiles;
       lastSyncedFilesRef.current = nextFiles;
@@ -166,12 +149,7 @@ export const Editor: React.FC = () => {
           if (isSyncing.current) return;
           const nextFiles = api.getFiles?.() || {};
           const didEmit = emitFilesDeltaIfNeeded(nextFiles);
-          if (
-            didEmit &&
-            id &&
-            latestAppStateRef.current &&
-            debouncedSaveRef.current
-          ) {
+          if (didEmit && id && latestAppStateRef.current && debouncedSaveRef.current) {
             hasSceneChangesSinceLoadRef.current = true;
             debouncedSaveRef.current(
               id,
@@ -292,24 +270,22 @@ export const Editor: React.FC = () => {
     }),
     [isSyncing],
   );
-  const { handleCanvasChange, handleCanvasDropCapture } =
-    useEditorCanvasHandlers({
-      canEdit,
-      debouncedSavePreview,
-      drawingId: id,
-      emitFilesDeltaIfNeeded,
-      isReady,
-      refs: canvasHandlerRefs,
-      resolveSafeSnapshot,
-      broadcastChanges,
-    });
-  const { stickyOverlay, onCanvasChange: handleChangeWithNotes } =
-    useStickyNotesFeature({
-      excalidrawAPI,
-      containerRef: editorContainerRef,
-      canEdit,
-      onCanvasChange: handleCanvasChange,
-    });
+  const { handleCanvasChange, handleCanvasDropCapture } = useEditorCanvasHandlers({
+    canEdit,
+    debouncedSavePreview,
+    drawingId: id,
+    emitFilesDeltaIfNeeded,
+    isReady,
+    refs: canvasHandlerRefs,
+    resolveSafeSnapshot,
+    broadcastChanges,
+  });
+  const { stickyOverlay, onCanvasChange: handleChangeWithNotes } = useStickyNotesFeature({
+    excalidrawAPI,
+    containerRef: editorContainerRef,
+    canEdit,
+    onCanvasChange: handleCanvasChange,
+  });
   const commandRefs = React.useMemo(
     () => ({
       excalidrawAPI,

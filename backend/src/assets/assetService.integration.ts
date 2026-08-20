@@ -31,13 +31,14 @@ describe("document bookkeeping", () => {
   let otherUserId: string;
   let drawingId: string;
 
-  const deps = (over: Partial<Record<string, unknown>> = {}) => ({
-    prisma,
-    storageDir,
-    maxUploadBytes: 1024 * 1024,
-    maxPerUserBytes: 4 * 1024 * 1024,
-    ...over,
-  }) as any;
+  const deps = (over: Partial<Record<string, unknown>> = {}) =>
+    ({
+      prisma,
+      storageDir,
+      maxUploadBytes: 1024 * 1024,
+      maxPerUserBytes: 4 * 1024 * 1024,
+      ...over,
+    }) as any;
 
   const upload = (text: string, over: Record<string, unknown> = {}) =>
     createAsset(deps(over.deps as object), {
@@ -104,8 +105,9 @@ describe("document bookkeeping", () => {
     await upload("shared bytes", { originalName: "meins.pdf" });
     await upload("shared bytes", { ownerUserId: otherUserId, originalName: "deins.pdf" });
 
-    const names = (await prisma.asset.findMany({ select: { originalName: true, ownerUserId: true } }))
-      .sort((a, b) => a.originalName.localeCompare(b.originalName));
+    const names = (
+      await prisma.asset.findMany({ select: { originalName: true, ownerUserId: true } })
+    ).sort((a, b) => a.originalName.localeCompare(b.originalName));
     expect(names.map((n) => n.originalName)).toEqual(["deins.pdf", "meins.pdf"]);
     expect(names[0].ownerUserId).not.toBe(names[1].ownerUserId);
   });
@@ -118,8 +120,9 @@ describe("document bookkeeping", () => {
 
   it("refuses an upload once the owner is out of room", async () => {
     await upload("x".repeat(100), { deps: { maxPerUserBytes: 100 } });
-    await expect(upload("y".repeat(100), { deps: { maxPerUserBytes: 100 } }))
-      .rejects.toBeInstanceOf(QuotaExceededError);
+    await expect(
+      upload("y".repeat(100), { deps: { maxPerUserBytes: 100 } }),
+    ).rejects.toBeInstanceOf(QuotaExceededError);
   });
 
   it("does not let an upload overshoot the remaining room", async () => {
@@ -150,8 +153,9 @@ describe("document bookkeeping", () => {
     });
 
     it("refuses an id this board never had", async () => {
-      await expect(syncDrawingAssets(prisma, drawingId, ["not-mine"]))
-        .rejects.toThrow(/does not have a document/);
+      await expect(syncDrawingAssets(prisma, drawingId, ["not-mine"])).rejects.toThrow(
+        /does not have a document/,
+      );
     });
 
     it("refuses a document belonging to another board", async () => {
@@ -160,44 +164,51 @@ describe("document bookkeeping", () => {
       });
       const { asset } = await upload("doc", { drawingId: otherBoard.id });
 
-      await expect(syncDrawingAssets(prisma, drawingId, [asset.id]))
-        .rejects.toThrow(/does not have a document/);
+      await expect(syncDrawingAssets(prisma, drawingId, [asset.id])).rejects.toThrow(
+        /does not have a document/,
+      );
     });
   });
 
   describe("reading document ids out of a board", () => {
     it("finds the ids the widgets name", () => {
-      expect(referencedAssetIds([
-        { id: "a", customData: { widgetKind: "pdf", assetId: "doc-1" } },
-        { id: "b", customData: { widgetKind: "pdf", assetId: "doc-2" } },
-      ])).toEqual(["doc-1", "doc-2"]);
+      expect(
+        referencedAssetIds([
+          { id: "a", customData: { widgetKind: "pdf", assetId: "doc-1" } },
+          { id: "b", customData: { widgetKind: "pdf", assetId: "doc-2" } },
+        ]),
+      ).toEqual(["doc-1", "doc-2"]);
     });
 
     it("ignores elements that name nothing", () => {
-      expect(referencedAssetIds([
-        { id: "a" },
-        { id: "b", customData: {} },
-        { id: "c", customData: { assetId: 42 } },
-      ])).toEqual([]);
+      expect(
+        referencedAssetIds([
+          { id: "a" },
+          { id: "b", customData: {} },
+          { id: "c", customData: { assetId: 42 } },
+        ]),
+      ).toEqual([]);
     });
 
     it("ignores a deleted widget, so removing one detaches its document", () => {
-      expect(referencedAssetIds([
-        { id: "a", isDeleted: true, customData: { assetId: "doc-1" } },
-      ])).toEqual([]);
+      expect(
+        referencedAssetIds([{ id: "a", isDeleted: true, customData: { assetId: "doc-1" } }]),
+      ).toEqual([]);
     });
 
     it("names each document once even when several widgets show it", () => {
-      expect(referencedAssetIds([
-        { id: "a", customData: { assetId: "doc-1" } },
-        { id: "b", customData: { assetId: "doc-1" } },
-      ])).toEqual(["doc-1"]);
+      expect(
+        referencedAssetIds([
+          { id: "a", customData: { assetId: "doc-1" } },
+          { id: "b", customData: { assetId: "doc-1" } },
+        ]),
+      ).toEqual(["doc-1"]);
     });
 
     it("refuses an id long enough to be an attack rather than a mistake", () => {
-      expect(referencedAssetIds([
-        { id: "a", customData: { assetId: "x".repeat(500) } },
-      ])).toEqual([]);
+      expect(referencedAssetIds([{ id: "a", customData: { assetId: "x".repeat(500) } }])).toEqual(
+        [],
+      );
     });
 
     it("survives anything that is not a list of elements", () => {

@@ -58,13 +58,19 @@ describe("system/update logic", () => {
 
   it("stable channel picks latest stable (ignores prereleases)", async () => {
     const releases = [
-      { tag_name: "v1.2.0-dev", prerelease: true, draft: false, html_url: "u1", published_at: "t1" },
+      {
+        tag_name: "v1.2.0-dev",
+        prerelease: true,
+        draft: false,
+        html_url: "u1",
+        published_at: "t1",
+      },
       { tag_name: "v1.1.9", prerelease: false, draft: false, html_url: "u2", published_at: "t2" },
       { tag_name: "v1.2.0", prerelease: false, draft: false, html_url: "u3", published_at: "t3" },
     ];
-    (globalThis as any).fetch = vi.fn().mockResolvedValue(
-      makeFetchResponse({ status: 200, json: releases, etag: "E1" })
-    );
+    (globalThis as any).fetch = vi
+      .fn()
+      .mockResolvedValue(makeFetchResponse({ status: 200, json: releases, etag: "E1" }));
 
     const mod = await import("./update");
     mod.__resetUpdateCacheForTests();
@@ -77,13 +83,25 @@ describe("system/update logic", () => {
 
   it("prerelease channel can pick prerelease when newer than stable", async () => {
     const releases = [
-      { tag_name: "v1.2.0-dev.2", prerelease: true, draft: false, html_url: "u1", published_at: "t1" },
+      {
+        tag_name: "v1.2.0-dev.2",
+        prerelease: true,
+        draft: false,
+        html_url: "u1",
+        published_at: "t1",
+      },
       { tag_name: "v1.1.9", prerelease: false, draft: false, html_url: "u2", published_at: "t2" },
-      { tag_name: "v1.2.0-dev.10", prerelease: true, draft: false, html_url: "u3", published_at: "t3" },
+      {
+        tag_name: "v1.2.0-dev.10",
+        prerelease: true,
+        draft: false,
+        html_url: "u3",
+        published_at: "t3",
+      },
     ];
-    (globalThis as any).fetch = vi.fn().mockResolvedValue(
-      makeFetchResponse({ status: 200, json: releases, etag: "E2" })
-    );
+    (globalThis as any).fetch = vi
+      .fn()
+      .mockResolvedValue(makeFetchResponse({ status: 200, json: releases, etag: "E2" }));
 
     const mod = await import("./update");
     mod.__resetUpdateCacheForTests();
@@ -100,9 +118,17 @@ describe("system/update logic", () => {
       .mockResolvedValueOnce(
         makeFetchResponse({
           status: 200,
-          json: [{ tag_name: "v2.0.0", prerelease: false, draft: false, html_url: "u", published_at: "t" }],
+          json: [
+            {
+              tag_name: "v2.0.0",
+              prerelease: false,
+              draft: false,
+              html_url: "u",
+              published_at: "t",
+            },
+          ],
           etag: "ETAG-1",
-        })
+        }),
       )
       .mockResolvedValueOnce(makeFetchResponse({ status: 304, json: null, etag: null }));
     (globalThis as any).fetch = fetchMock;

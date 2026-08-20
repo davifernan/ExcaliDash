@@ -123,9 +123,7 @@ describe("auth middleware", () => {
     const next = vi.fn() as NextFunction;
     await requireAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "MUST_RESET_PASSWORD" }),
-    );
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "MUST_RESET_PASSWORD" }));
     expect(next).not.toHaveBeenCalled();
   });
   it("allows /api/auth/me when password reset is required", async () => {

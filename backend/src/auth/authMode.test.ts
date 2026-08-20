@@ -1,10 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { PrismaClient } from "../generated/client";
-import {
-  BOOTSTRAP_USER_ID,
-  DEFAULT_SYSTEM_CONFIG_ID,
-  createAuthModeService,
-} from "./authMode";
+import { BOOTSTRAP_USER_ID, DEFAULT_SYSTEM_CONFIG_ID, createAuthModeService } from "./authMode";
 
 const createPrismaMock = () =>
   ({
@@ -105,7 +101,7 @@ describe("authMode service", () => {
           email: "bootstrap@excalidash.local",
           role: "ADMIN",
         }),
-      })
+      }),
     );
   });
 
@@ -125,7 +121,7 @@ describe("authMode service", () => {
           authEnabled: false,
           registrationEnabled: false,
         }),
-      })
+      }),
     );
   });
 });

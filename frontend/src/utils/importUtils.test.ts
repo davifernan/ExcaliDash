@@ -201,10 +201,10 @@ describe("importLegacyFiles", () => {
       throw new Error(`Unexpected POST ${url}`);
     });
 
-    const zipFile = ({
+    const zipFile = {
       name: "excalidraw-drawings-2026-02-17.zip",
       arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown) as File;
+    } as unknown as File;
 
     const result = await importLegacyFiles([zipFile], null);
     expect(result.failed).toBe(0);

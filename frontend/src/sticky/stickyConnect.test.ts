@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  HANDLE_OUTSET,
-  HANDLE_SIDES,
-  handlePoint,
-  noteAt,
-  startPoint,
-} from "./stickyConnect";
+import { HANDLE_OUTSET, HANDLE_SIDES, handlePoint, noteAt, startPoint } from "./stickyConnect";
 import { createStickyNote, isStickyNote } from "./stickyNote";
 
 const note = { x: 100, y: 200, width: 200, height: 200 };

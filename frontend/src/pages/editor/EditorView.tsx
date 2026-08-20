@@ -11,9 +11,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { Toaster } from "sonner";
-import {
-  LanguageSelector,
-} from "../../components/LanguageSelector";
+import { LanguageSelector } from "../../components/LanguageSelector";
 import type { UserIdentity } from "../../utils/identity";
 import { UIOptions } from "./shared";
 import { PdfWidget } from "./PdfWidget";
@@ -245,9 +243,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
               Unable to open drawing
             </h2>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              {loadError}
-            </p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{loadError}</p>
           </div>
           <button
             onClick={onNavigateHome}
@@ -258,42 +254,38 @@ export const EditorView: React.FC<EditorViewProps> = ({
         </div>
       ) : initialData ? (
         <>
-        <Excalidraw
-          key={id}
-          theme={theme === "dark" ? "dark" : "light"}
-          langCode={langCode}
-          initialData={initialData}
-          onChange={onCanvasChange}
-          onPointerUpdate={onPointerUpdate}
-          onLibraryChange={onLibraryChange}
-          excalidrawAPI={onSetExcalidrawAPI}
-          UIOptions={UIOptions}
-          viewModeEnabled={!canEdit}
-          validateEmbeddable={isPdfWidgetLink}
-          renderEmbeddable={(element, appState) => {
-            const assetId = getPdfWidgetAssetId(element);
-            return assetId && id ? (
-              <PdfWidget
-                assetId={assetId}
-                drawingId={id}
-                theme={appState.theme}
-              />
-            ) : null;
-          }}
-        >
-          <MainMenu>
-            <MainMenu.DefaultItems.ToggleTheme />
-            <MainMenu.DefaultItems.SaveAsImage />
-            <MainMenu.DefaultItems.ClearCanvas />
-            <MainMenu.DefaultItems.ChangeCanvasBackground />
-            <MainMenu.DefaultItems.Help />
-            <MainMenu.Separator />
-            <MainMenu.ItemCustom>
-              <LanguageSelector langCode={langCode} onChange={onSetLangCode} />
-            </MainMenu.ItemCustom>
-          </MainMenu>
-        </Excalidraw>
-        {stickyOverlay}
+          <Excalidraw
+            key={id}
+            theme={theme === "dark" ? "dark" : "light"}
+            langCode={langCode}
+            initialData={initialData}
+            onChange={onCanvasChange}
+            onPointerUpdate={onPointerUpdate}
+            onLibraryChange={onLibraryChange}
+            excalidrawAPI={onSetExcalidrawAPI}
+            UIOptions={UIOptions}
+            viewModeEnabled={!canEdit}
+            validateEmbeddable={isPdfWidgetLink}
+            renderEmbeddable={(element, appState) => {
+              const assetId = getPdfWidgetAssetId(element);
+              return assetId && id ? (
+                <PdfWidget assetId={assetId} drawingId={id} theme={appState.theme} />
+              ) : null;
+            }}
+          >
+            <MainMenu>
+              <MainMenu.DefaultItems.ToggleTheme />
+              <MainMenu.DefaultItems.SaveAsImage />
+              <MainMenu.DefaultItems.ClearCanvas />
+              <MainMenu.DefaultItems.ChangeCanvasBackground />
+              <MainMenu.DefaultItems.Help />
+              <MainMenu.Separator />
+              <MainMenu.ItemCustom>
+                <LanguageSelector langCode={langCode} onChange={onSetLangCode} />
+              </MainMenu.ItemCustom>
+            </MainMenu>
+          </Excalidraw>
+          {stickyOverlay}
         </>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">

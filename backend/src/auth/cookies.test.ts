@@ -2,11 +2,7 @@ import type { Request, Response } from "express";
 import ms, { type StringValue } from "ms";
 import { describe, expect, it, vi } from "vitest";
 import { config } from "../config";
-import {
-  ACCESS_TOKEN_COOKIE_NAME,
-  REFRESH_TOKEN_COOKIE_NAME,
-  setAuthCookies,
-} from "./cookies";
+import { ACCESS_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME, setAuthCookies } from "./cookies";
 
 const createRequest = (): Request =>
   ({
@@ -35,10 +31,10 @@ describe("auth cookies", () => {
     expect(res.cookie).toHaveBeenCalledTimes(2);
 
     const accessCall = (res.cookie as any).mock.calls.find(
-      (call: unknown[]) => call[0] === ACCESS_TOKEN_COOKIE_NAME
+      (call: unknown[]) => call[0] === ACCESS_TOKEN_COOKIE_NAME,
     );
     const refreshCall = (res.cookie as any).mock.calls.find(
-      (call: unknown[]) => call[0] === REFRESH_TOKEN_COOKIE_NAME
+      (call: unknown[]) => call[0] === REFRESH_TOKEN_COOKIE_NAME,
     );
 
     expect(accessCall).toBeTruthy();

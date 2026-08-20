@@ -6,10 +6,7 @@ const USER_KEY = "excalidash-user";
 const AUTH_ENABLED_CACHE_KEY = "excalidash-auth-enabled";
 const AUTH_STATUS_TTL_MS = 5000;
 
-const publicAuthEndpoints = [
-  "/auth/password-reset-request",
-  "/auth/password-reset-confirm",
-];
+const publicAuthEndpoints = ["/auth/password-reset-request", "/auth/password-reset-confirm"];
 
 type RetriableRequestConfig = {
   _retry?: boolean;
@@ -92,10 +89,9 @@ export const API_KEY_SCOPES = [
 ] as const;
 
 export const fetchCsrfToken = async (): Promise<void> => {
-  const response = await axios.get<{ token: string; header: string }>(
-    `${API_URL}/csrf-token`,
-    { withCredentials: true },
-  );
+  const response = await axios.get<{ token: string; header: string }>(`${API_URL}/csrf-token`, {
+    withCredentials: true,
+  });
   csrfToken = response.data.token;
   csrfHeaderName = response.data.header || "x-csrf-token";
 };
@@ -115,9 +111,7 @@ export const authStatus = async (): Promise<AuthStatusResponse> => {
 export const startOidcSignIn = (returnTo?: string): void => {
   const fallbackPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const requestedPath =
-    typeof returnTo === "string" && returnTo.startsWith("/")
-      ? returnTo
-      : fallbackPath;
+    typeof returnTo === "string" && returnTo.startsWith("/") ? returnTo : fallbackPath;
   const safeReturnTo = requestedPath.startsWith("/") ? requestedPath : "/";
   window.location.href = `/api/auth/oidc/start?returnTo=${encodeURIComponent(safeReturnTo)}`;
 };
@@ -216,17 +210,10 @@ export const authOnboardingChoice = async (
 };
 
 export const authPasswordResetRequest = async (email: string): Promise<void> => {
-  await axios.post(
-    `${API_URL}/auth/password-reset-request`,
-    { email },
-    { withCredentials: true },
-  );
+  await axios.post(`${API_URL}/auth/password-reset-request`, { email }, { withCredentials: true });
 };
 
-export const authPasswordResetConfirm = async (
-  token: string,
-  password: string,
-): Promise<void> => {
+export const authPasswordResetConfirm = async (token: string, password: string): Promise<void> => {
   await axios.post(
     `${API_URL}/auth/password-reset-confirm`,
     { token, password },

@@ -96,9 +96,7 @@ const hashString = (input: string): number => {
 };
 
 const getCryptoObject = (): Crypto | undefined =>
-  typeof globalThis !== "undefined"
-    ? globalThis.crypto || (globalThis as any).msCrypto
-    : undefined;
+  typeof globalThis !== "undefined" ? globalThis.crypto || (globalThis as any).msCrypto : undefined;
 
 const getSecureRandomInt = (maxExclusive: number): number => {
   if (maxExclusive <= 1) return 0;

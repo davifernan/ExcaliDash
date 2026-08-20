@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  buildPasswordPolicyMessage,
-  config,
-  validatePasswordAgainstPolicy,
-} from "../config";
+import { buildPasswordPolicyMessage, config, validatePasswordAgainstPolicy } from "../config";
 
 const passwordPolicyMessage = () => buildPasswordPolicyMessage(config.passwordPolicy);
 
@@ -56,28 +52,30 @@ export const authOnboardingChoiceSchema = z.object({
   enableAuth: z.boolean(),
 });
 
-export const adminCreateUserSchema = z.object({
-  username: z.string().trim().min(3).max(50).optional(),
-  email: z.string().email().toLowerCase().trim(),
-  password: passwordSchema.optional(),
-  oidcOnly: z.boolean().optional(),
-  /** Email the new user a link to choose their own password. */
-  sendInvite: z.boolean().optional(),
-  name: z.string().trim().min(1).max(100),
-  role: z.enum(["ADMIN", "USER"]).optional(),
-  mustResetPassword: z.boolean().optional(),
-  isActive: z.boolean().optional(),
-}).superRefine((data, ctx) => {
-  // An invitation lets the user choose their own password, so the admin does
-  // not have to invent one they would then have to pass on.
-  if (!data.oidcOnly && !data.sendInvite && !data.password) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["password"],
-      message: passwordPolicyMessage(),
-    });
-  }
-});
+export const adminCreateUserSchema = z
+  .object({
+    username: z.string().trim().min(3).max(50).optional(),
+    email: z.string().email().toLowerCase().trim(),
+    password: passwordSchema.optional(),
+    oidcOnly: z.boolean().optional(),
+    /** Email the new user a link to choose their own password. */
+    sendInvite: z.boolean().optional(),
+    name: z.string().trim().min(1).max(100),
+    role: z.enum(["ADMIN", "USER"]).optional(),
+    mustResetPassword: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    // An invitation lets the user choose their own password, so the admin does
+    // not have to invent one they would then have to pass on.
+    if (!data.oidcOnly && !data.sendInvite && !data.password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["password"],
+        message: passwordPolicyMessage(),
+      });
+    }
+  });
 
 export const adminUpdateUserSchema = z.object({
   username: z.string().trim().min(3).max(50).nullable().optional(),
@@ -98,7 +96,11 @@ export const impersonateSchema = z
 
 export const loginRateLimitUpdateSchema = z.object({
   enabled: z.boolean(),
-  windowMs: z.number().int().min(10_000).max(24 * 60 * 60 * 1000),
+  windowMs: z
+    .number()
+    .int()
+    .min(10_000)
+    .max(24 * 60 * 60 * 1000),
   max: z.number().int().min(1).max(10_000),
 });
 
@@ -138,9 +140,10 @@ export const apiKeyCreateSchema = z.object({
   scopes: z.array(z.string()).optional(),
 });
 
-
-export const userPreferencesSchema = z.object({
-  theme: z.enum(["light", "dark"]).optional(),
-  dashboardSortField: z.enum(["name", "createdAt", "updatedAt"]).optional(),
-  dashboardSortDirection: z.enum(["asc", "desc"]).optional(),
-}).strict();
+export const userPreferencesSchema = z
+  .object({
+    theme: z.enum(["light", "dark"]).optional(),
+    dashboardSortField: z.enum(["name", "createdAt", "updatedAt"]).optional(),
+    dashboardSortDirection: z.enum(["asc", "desc"]).optional(),
+  })
+  .strict();

@@ -1,0 +1,7 @@
+# Generated: reformatting these would fight the generator.
+backend/src/generated/
+backend/prisma/migrations/
+dist/
+build/
+node_modules/
+*.min.js

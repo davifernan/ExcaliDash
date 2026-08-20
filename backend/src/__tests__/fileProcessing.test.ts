@@ -5,12 +5,8 @@ vi.mock("../s3", () => ({
   getS3Config: vi.fn(),
   uploadBuffer: vi.fn(),
   getPublicUrl: vi.fn(),
-  buildS3Key: (
-    userId: string,
-    drawingId: string,
-    fileId: string,
-    ext: string,
-  ) => `excalidash/${userId}/${drawingId}/${fileId}.${ext}`,
+  buildS3Key: (userId: string, drawingId: string, fileId: string, ext: string) =>
+    `excalidash/${userId}/${drawingId}/${fileId}.${ext}`,
 }));
 
 import { processFilesForS3, decodeDataURL } from "../fileProcessing";
@@ -205,16 +201,9 @@ describe("processFilesForS3", () => {
     };
 
     mockUploadBuffer.mockResolvedValue(undefined);
-    mockGetPublicUrl.mockImplementation(
-      (key: string) => `https://cdn.example.com/${key}`,
-    );
+    mockGetPublicUrl.mockImplementation((key: string) => `https://cdn.example.com/${key}`);
 
-    const result = await processFilesForS3(
-      files,
-      "user-1",
-      "drawing-1",
-      prisma as any,
-    );
+    const result = await processFilesForS3(files, "user-1", "drawing-1", prisma as any);
 
     // Bad id is dropped from the output entirely.
     expect(result["../../etc/passwd"]).toBeUndefined();
@@ -238,9 +227,7 @@ describe("processFilesForS3", () => {
       publicUrl: "https://cdn.example.com",
     });
     mockUploadBuffer.mockResolvedValue(undefined);
-    mockGetPublicUrl.mockImplementation(
-      (key: string) => `https://cdn.example.com/${key}`,
-    );
+    mockGetPublicUrl.mockImplementation((key: string) => `https://cdn.example.com/${key}`);
     const prisma = makePrisma();
 
     const files = {

@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   authStatus,
   authMe,
@@ -9,7 +9,7 @@ import {
   authLogin,
   authRegister,
   isAxiosError,
-} from '../api';
+} from "../api";
 
 interface User {
   id: string;
@@ -27,18 +27,14 @@ interface AuthContextType {
   registrationEnabled: boolean;
   passwordResetEnabled: boolean;
   authStatusError: string | null;
-  authMode: 'local' | 'hybrid' | 'oidc_enforced';
+  authMode: "local" | "hybrid" | "oidc_enforced";
   oidcEnabled: boolean;
   oidcEnforced: boolean;
   oidcProvider: string | null;
   bootstrapRequired: boolean;
   authOnboardingRequired: boolean;
-  authOnboardingMode: 'migration' | 'fresh' | null;
-  login: (
-    email: string,
-    password: string,
-    rememberMe?: boolean,
-  ) => Promise<void>;
+  authOnboardingMode: "migration" | "fresh" | null;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, name: string, setupCode?: string) => Promise<void>;
   logout: () => void;
   retryAuthStatus: () => Promise<void>;
@@ -47,7 +43,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USER_KEY = 'excalidash-user';
+const USER_KEY = "excalidash-user";
 const AUTH_ENABLED_CACHE_KEY = "excalidash-auth-enabled";
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -57,13 +53,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [passwordResetEnabled, setPasswordResetEnabled] = useState(false);
   const [authStatusError, setAuthStatusError] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<'local' | 'hybrid' | 'oidc_enforced'>('local');
+  const [authMode, setAuthMode] = useState<"local" | "hybrid" | "oidc_enforced">("local");
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [oidcEnforced, setOidcEnforced] = useState(false);
   const [oidcProvider, setOidcProvider] = useState<string | null>(null);
   const [bootstrapRequired, setBootstrapRequired] = useState(false);
   const [authOnboardingRequired, setAuthOnboardingRequired] = useState(false);
-  const [authOnboardingMode, setAuthOnboardingMode] = useState<'migration' | 'fresh' | null>(null);
+  const [authOnboardingMode, setAuthOnboardingMode] = useState<"migration" | "fresh" | null>(null);
   const navigate = useNavigate();
 
   const loadUser = useCallback(async () => {
@@ -85,19 +81,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setRegistrationEnabled(Boolean(statusResponse?.registrationEnabled));
         setPasswordResetEnabled(Boolean(statusResponse?.passwordResetEnabled));
         const nextAuthMode =
-          statusResponse?.authMode === 'hybrid' || statusResponse?.authMode === 'oidc_enforced'
+          statusResponse?.authMode === "hybrid" || statusResponse?.authMode === "oidc_enforced"
             ? statusResponse.authMode
-            : 'local';
+            : "local";
         setAuthMode(nextAuthMode);
         setOidcEnabled(Boolean(statusResponse?.oidcEnabled));
         setOidcEnforced(Boolean(statusResponse?.oidcEnforced));
-        setOidcProvider(typeof statusResponse?.oidcProvider === 'string' ? statusResponse.oidcProvider : null);
+        setOidcProvider(
+          typeof statusResponse?.oidcProvider === "string" ? statusResponse.oidcProvider : null,
+        );
         setBootstrapRequired(Boolean(statusResponse?.bootstrapRequired));
         setAuthOnboardingRequired(Boolean(statusResponse?.authOnboardingRequired));
         setAuthOnboardingMode(
-          statusResponse?.authOnboardingMode === 'migration' || statusResponse?.authOnboardingMode === 'fresh'
+          statusResponse?.authOnboardingMode === "migration" ||
+            statusResponse?.authOnboardingMode === "fresh"
             ? statusResponse.authOnboardingMode
-            : null
+            : null,
         );
 
         if (!enabled) {
@@ -111,7 +110,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setAuthStatusError(null);
           setAuthEnabled(false);
           setRegistrationEnabled(false);
-          setAuthMode('local');
+          setAuthMode("local");
           setOidcEnabled(false);
           setOidcEnforced(false);
           setOidcProvider(null);
@@ -123,11 +122,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return;
         }
         setAuthStatusError(
-          "Unable to reach the backend API. Check BACKEND_URL, FRONTEND_URL, and your reverse proxy configuration."
+          "Unable to reach the backend API. Check BACKEND_URL, FRONTEND_URL, and your reverse proxy configuration.",
         );
         setAuthEnabled(null);
         setRegistrationEnabled(false);
-        setAuthMode('local');
+        setAuthMode("local");
         setOidcEnabled(false);
         setOidcEnforced(false);
         setOidcProvider(null);
@@ -176,9 +175,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
     } catch (error) {
-      console.error('Failed to load user:', error);
+      console.error("Failed to load user:", error);
       setAuthStatusError(
-        "Unable to initialize authentication state. Check backend/API connectivity and refresh."
+        "Unable to initialize authentication state. Check backend/API connectivity and refresh.",
       );
       localStorage.removeItem(USER_KEY);
       setUser(null);
@@ -191,11 +190,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadUser();
   }, [loadUser]);
 
-  const login = async (
-    email: string,
-    password: string,
-    rememberMe = false,
-  ) => {
+  const login = async (email: string, password: string, rememberMe = false) => {
     try {
       if (authEnabled === false) {
         throw new Error("Authentication is disabled");
@@ -212,15 +207,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error: unknown) {
       if (isAxiosError(error)) {
         const message =
-          typeof error.response?.data === 'object' &&
+          typeof error.response?.data === "object" &&
           error.response.data !== null &&
-          'message' in error.response.data &&
-          typeof error.response.data.message === 'string'
+          "message" in error.response.data &&
+          typeof error.response.data.message === "string"
             ? error.response.data.message
-            : 'Login failed';
+            : "Login failed";
         throw new Error(message);
       }
-      throw error instanceof Error ? error : new Error('Login failed');
+      throw error instanceof Error ? error : new Error("Login failed");
     }
   };
 
@@ -241,15 +236,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error: unknown) {
       if (isAxiosError(error)) {
         const message =
-          typeof error.response?.data === 'object' &&
+          typeof error.response?.data === "object" &&
           error.response.data !== null &&
-          'message' in error.response.data &&
-          typeof error.response.data.message === 'string'
+          "message" in error.response.data &&
+          typeof error.response.data.message === "string"
             ? error.response.data.message
-            : 'Registration failed';
+            : "Registration failed";
         throw new Error(message);
       }
-      throw error instanceof Error ? error : new Error('Registration failed');
+      throw error instanceof Error ? error : new Error("Registration failed");
     }
   };
 
@@ -258,7 +253,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem(USER_KEY);
     setUser(null);
     setTimeout(() => {
-      navigate('/login');
+      navigate("/login");
     }, 0);
   };
 
@@ -293,7 +288,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

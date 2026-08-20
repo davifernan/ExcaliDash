@@ -110,7 +110,7 @@ describe("Drawings - Shared With Me", () => {
     const tokenA = jwt.sign(
       { userId: userA.id, email: userA.email, type: "access" },
       config.jwtSecret,
-      signOptions
+      signOptions,
     );
 
     const response = await request(app)
@@ -125,4 +125,3 @@ describe("Drawings - Shared With Me", () => {
     expect(ids).not.toContain(drawingOwnedByA.id);
   });
 });
-

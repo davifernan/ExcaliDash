@@ -26,8 +26,7 @@ export function useToolbarElement(containerRef: React.RefObject<HTMLElement>): H
       // children vertically, so a button appended there lands on a second row
       // underneath the tools rather than beside them.
       const toolbar = container.querySelector<HTMLElement>(".App-toolbar");
-      const found =
-        toolbar?.querySelector<HTMLElement>(".Stack_horizontal") ?? toolbar ?? null;
+      const found = toolbar?.querySelector<HTMLElement>(".Stack_horizontal") ?? toolbar ?? null;
       setToolbar((current) => (current === found ? current : found));
     };
 

@@ -2,8 +2,7 @@ import crypto from "crypto";
 import type { Prisma, PrismaClient } from "../generated/client";
 import { revokeUserCredentials } from "./userCredentialRevocation";
 
-export const COMPANY_ARCHIVE_USER_EMAIL =
-  "deleted-boards@placeholder.excalidash.invalid";
+export const COMPANY_ARCHIVE_USER_EMAIL = "deleted-boards@placeholder.excalidash.invalid";
 export const COMPANY_ARCHIVE_USER_NAME = "Deleted user boards";
 
 export class UserOffboardingError extends Error {
@@ -17,9 +16,7 @@ export class UserOffboardingError extends Error {
 
 type TransactionClient = Prisma.TransactionClient;
 
-const resolveCompanyArchiveUser = async (
-  tx: TransactionClient,
-): Promise<string> => {
+const resolveCompanyArchiveUser = async (tx: TransactionClient): Promise<string> => {
   const existing = await tx.user.findUnique({
     where: { email: COMPANY_ARCHIVE_USER_EMAIL },
     select: { id: true, name: true, isActive: true, role: true },
@@ -30,10 +27,7 @@ const resolveCompanyArchiveUser = async (
       existing.isActive ||
       existing.role !== "USER"
     ) {
-      throw new UserOffboardingError(
-        409,
-        "The reserved company archive account is already in use",
-      );
+      throw new UserOffboardingError(409, "The reserved company archive account is already in use");
     }
     return existing.id;
   }
@@ -94,10 +88,7 @@ export const offboardUserAndTransferBoards = async (params: {
         select: { id: true, isActive: true },
       });
       if (!successor?.isActive) {
-        throw new UserOffboardingError(
-          409,
-          "The selected successor must be an active user",
-        );
+        throw new UserOffboardingError(409, "The selected successor must be an active user");
       }
     }
 
@@ -106,11 +97,7 @@ export const offboardUserAndTransferBoards = async (params: {
       where: { id: params.userId },
       data: { isActive: false },
     });
-    const revokedApiKeyIds = await revokeUserCredentials(
-      tx,
-      params.userId,
-      now,
-    );
+    const revokedApiKeyIds = await revokeUserCredentials(tx, params.userId, now);
 
     // Collections are personal organization. Boards are retained, detached
     // from those collections, and assigned to the chosen company custodian.
@@ -118,8 +105,9 @@ export const offboardUserAndTransferBoards = async (params: {
       where: { userId: params.userId },
       data: { userId: successorUserId, collectionId: null },
     });
-    const auditIdentifiers = [params.userId, target.email, target.username]
-      .filter((value): value is string => Boolean(value));
+    const auditIdentifiers = [params.userId, target.email, target.username].filter(
+      (value): value is string => Boolean(value),
+    );
     const personalAuditClauses: Prisma.AuditLogWhereInput[] = [
       { userId: params.userId },
       ...auditIdentifiers.flatMap((identifier) => [

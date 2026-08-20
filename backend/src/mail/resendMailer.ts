@@ -16,11 +16,7 @@ export type ResendMailerOptions = {
  * so every failure has to be read off the result. Network faults still reject,
  * which is why the call is wrapped as well.
  */
-export const createResendMailer = ({
-  apiKey,
-  from,
-  replyTo,
-}: ResendMailerOptions): Mailer => {
+export const createResendMailer = ({ apiKey, from, replyTo }: ResendMailerOptions): Mailer => {
   const client = new Resend(apiKey);
 
   return {
@@ -34,9 +30,7 @@ export const createResendMailer = ({
           html: message.html,
           text: message.text,
           ...(replyTo ? { replyTo } : {}),
-          ...(message.idempotencyKey
-            ? { idempotencyKey: message.idempotencyKey }
-            : {}),
+          ...(message.idempotencyKey ? { idempotencyKey: message.idempotencyKey } : {}),
         });
 
         if (error) {

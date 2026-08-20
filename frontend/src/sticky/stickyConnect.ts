@@ -97,11 +97,7 @@ export type DragOrigin = {
   pointerType: string;
 };
 
-export function beginArrowDrag(
-  api: any,
-  container: HTMLElement | null,
-  origin: DragOrigin,
-): void {
+export function beginArrowDrag(api: any, container: HTMLElement | null, origin: DragOrigin): void {
   const canvas = container?.querySelector<HTMLCanvasElement>(
     "canvas.excalidraw__canvas.interactive",
   );

@@ -27,7 +27,10 @@ const showTemporaryViewerError = (
 
 const quoteNames = (ids: string[], drawings: DrawingSummary[]): string => {
   const names = ids.map((id) => drawings.find((drawing) => drawing.id === id)?.name || id);
-  const visible = names.slice(0, 3).map((name) => `“${name}”`).join(", ");
+  const visible = names
+    .slice(0, 3)
+    .map((name) => `“${name}”`)
+    .join(", ");
   return names.length > 3 ? `${visible} and ${names.length - 3} more` : visible;
 };
 
@@ -63,9 +66,7 @@ export const useDashboardDrawingActions = ({
     isOpen: boolean;
     message: string;
   }>({ isOpen: false, message: "" });
-  const [viewerActionError, setViewerActionError] = useState<string | null>(
-    null,
-  );
+  const [viewerActionError, setViewerActionError] = useState<string | null>(null);
   const [potentialDragId, setPotentialDragId] = useState<string | null>(null);
   const [isCreatingDrawing, setIsCreatingDrawing] = useState(false);
   const isCreatingDrawingRef = useRef(false);
@@ -75,9 +76,7 @@ export const useDashboardDrawingActions = ({
   const currentCollection = collections.find(
     (collection) => collection.id === selectedCollectionId,
   );
-  const isSharedCollection = !!(
-    currentCollection && currentCollection.isOwner === false
-  );
+  const isSharedCollection = !!(currentCollection && currentCollection.isOwner === false);
 
   const handleViewerActionError = (message: string) =>
     showTemporaryViewerError(message, setViewerActionError);
@@ -94,12 +93,8 @@ export const useDashboardDrawingActions = ({
     const toastId = "create-drawing";
     toast.loading("Creating drawing...", { id: toastId });
     try {
-      const targetCollectionId =
-        selectedCollectionId === undefined ? null : selectedCollectionId;
-      const { id } = await api.createDrawing(
-        "Untitled Drawing",
-        targetCollectionId,
-      );
+      const targetCollectionId = selectedCollectionId === undefined ? null : selectedCollectionId;
+      const { id } = await api.createDrawing("Untitled Drawing", targetCollectionId);
       toast.success("Drawing created. Opening editor...", { id: toastId });
       navigate(`/editor/${id}`);
     } catch (err) {
@@ -120,16 +115,13 @@ export const useDashboardDrawingActions = ({
       handleViewerActionError("Viewers can't import drawings");
       return;
     }
-    const targetCollectionId =
-      selectedCollectionId === undefined ? null : selectedCollectionId;
+    const targetCollectionId = selectedCollectionId === undefined ? null : selectedCollectionId;
     uploadFiles(Array.from(files), targetCollectionId).finally(refreshData);
   };
 
   const handleRenameDrawing = async (id: string, name: string) => {
     setDrawings((current) =>
-      current.map((drawing) =>
-        drawing.id === id ? { ...drawing, name } : drawing,
-      ),
+      current.map((drawing) => (drawing.id === id ? { ...drawing, name } : drawing)),
     );
     try {
       await api.updateDrawing(id, { name });
@@ -211,9 +203,8 @@ export const useDashboardDrawingActions = ({
       return next;
     });
     setSelectedIds(new Set());
-    const { succeeded, failed } = await runAll(
-      ids,
-      (id) => api.updateDrawing(id, { collectionId: "trash" }),
+    const { succeeded, failed } = await runAll(ids, (id) =>
+      api.updateDrawing(id, { collectionId: "trash" }),
     );
     if (failed.length > 0) {
       refreshData();
@@ -255,8 +246,7 @@ export const useDashboardDrawingActions = ({
     if (selectedIds.size === 0) return;
     const idsToMove = Array.from(selectedIds);
     moveOutOfCurrentView(
-      (drawing) =>
-        selectedIds.has(drawing.id) ? { ...drawing, collectionId } : drawing,
+      (drawing) => (selectedIds.has(drawing.id) ? { ...drawing, collectionId } : drawing),
       (drawing) => {
         if (selectedCollectionId === undefined) return true;
         if (selectedCollectionId === null) return drawing.collectionId === null;
@@ -264,9 +254,8 @@ export const useDashboardDrawingActions = ({
       },
     );
     setSelectedIds(new Set());
-    const { succeeded, failed } = await runAll(
-      idsToMove,
-      (id) => api.updateDrawing(id, { collectionId }),
+    const { succeeded, failed } = await runAll(idsToMove, (id) =>
+      api.updateDrawing(id, { collectionId }),
     );
     if (failed.length > 0) {
       refreshData();
@@ -302,10 +291,7 @@ export const useDashboardDrawingActions = ({
     }
   };
 
-  const handleMoveToCollection = async (
-    id: string,
-    collectionId: string | null,
-  ) => {
+  const handleMoveToCollection = async (id: string, collectionId: string | null) => {
     moveOutOfCurrentView(
       (drawing) => (drawing.id === id ? { ...drawing, collectionId } : drawing),
       (drawing) => {
@@ -325,18 +311,13 @@ export const useDashboardDrawingActions = ({
     }
   };
 
-  const handleDrop = async (
-    event: React.DragEvent,
-    targetCollectionId: string | null,
-  ) => {
+  const handleDrop = async (event: React.DragEvent, targetCollectionId: string | null) => {
     event.preventDefault();
     event.stopPropagation();
     if (isSharedView) return;
     if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
       const files = Array.from(event.dataTransfer.files);
-      const libFiles = files.filter((file) =>
-        file.name.endsWith(".excalidrawlib"),
-      );
+      const libFiles = files.filter((file) => file.name.endsWith(".excalidrawlib"));
       if (libFiles.length > 0) {
         setShowImportError({
           isOpen: true,
@@ -344,9 +325,7 @@ export const useDashboardDrawingActions = ({
             "Library (.excalidrawlib) imports are not supported in this build. Please import drawings (.excalidraw/.json) instead.",
         });
       }
-      const drawingFiles = files.filter(
-        (file) => !file.name.endsWith(".excalidrawlib"),
-      );
+      const drawingFiles = files.filter((file) => !file.name.endsWith(".excalidrawlib"));
       if (drawingFiles.length > 0) {
         uploadFiles(drawingFiles, targetCollectionId).finally(refreshData);
       }
@@ -359,9 +338,7 @@ export const useDashboardDrawingActions = ({
       : new Set([draggedDrawingId]);
     moveOutOfCurrentView(
       (drawing) =>
-        idsToMove.has(drawing.id)
-          ? { ...drawing, collectionId: targetCollectionId }
-          : drawing,
+        idsToMove.has(drawing.id) ? { ...drawing, collectionId: targetCollectionId } : drawing,
       (drawing) => {
         if (selectedCollectionId === undefined) return true;
         if (selectedCollectionId === null) return drawing.collectionId === null;
@@ -370,9 +347,8 @@ export const useDashboardDrawingActions = ({
     );
     if (selectedIds.has(draggedDrawingId)) setSelectedIds(new Set());
     const ids = Array.from(idsToMove);
-    const { succeeded, failed } = await runAll(
-      ids,
-      (id) => api.updateDrawing(id, { collectionId: targetCollectionId }),
+    const { succeeded, failed } = await runAll(ids, (id) =>
+      api.updateDrawing(id, { collectionId: targetCollectionId }),
     );
     if (failed.length > 0) {
       refreshData();
@@ -403,9 +379,7 @@ export const useDashboardDrawingActions = ({
 
   const handlePreviewGenerated = (id: string, preview: string) => {
     setDrawings((current) =>
-      current.map((drawing) =>
-        drawing.id === id ? { ...drawing, preview } : drawing,
-      ),
+      current.map((drawing) => (drawing.id === id ? { ...drawing, preview } : drawing)),
     );
   };
 

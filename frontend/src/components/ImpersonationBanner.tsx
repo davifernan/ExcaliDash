@@ -1,14 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { LogIn, RefreshCw, XCircle } from 'lucide-react';
-import { api, isAxiosError } from '../api';
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useMemo, useState } from "react";
+import { LogIn, RefreshCw, XCircle } from "lucide-react";
+import { api, isAxiosError } from "../api";
+import { useAuth } from "../context/AuthContext";
 import {
   IMPERSONATION_KEY,
   USER_KEY,
   readImpersonationState,
   stopImpersonation as restoreImpersonation,
   type ImpersonationState,
-} from '../utils/impersonation';
+} from "../utils/impersonation";
 
 type ImpersonationTarget = {
   id: string;
@@ -37,11 +37,11 @@ type ImpersonateResponse = {
   };
 };
 
-const normalizeTarget = (target: ImpersonationState['target']): ImpersonationTarget => ({
+const normalizeTarget = (target: ImpersonationState["target"]): ImpersonationTarget => ({
   id: target.id,
   email: target.email,
   name: target.name,
-  role: 'USER',
+  role: "USER",
   isActive: true,
 });
 
@@ -50,7 +50,7 @@ export const ImpersonationBanner: React.FC = () => {
   const [impersonation, setImpersonation] = useState<ImpersonationState | null>(null);
   const [targets, setTargets] = useState<ImpersonationTarget[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const clearLocalImpersonation = () => {
@@ -67,34 +67,36 @@ export const ImpersonationBanner: React.FC = () => {
     const sync = () => setImpersonation(readImpersonationState());
     sync();
 
-      const verifyServerImpersonationState = async () => {
-        try {
-          const response = await api.get<AuthStatusResponse>('/auth/status');
-          const serverImpersonating = Boolean(response.data?.authenticated && response.data?.user?.impersonatorId);
-          if (!serverImpersonating && readImpersonationState()) {
-            clearLocalImpersonation();
-          }
-        } catch {
-          // Ignore transient auth-status failures; the next poll/storage event will resync.
+    const verifyServerImpersonationState = async () => {
+      try {
+        const response = await api.get<AuthStatusResponse>("/auth/status");
+        const serverImpersonating = Boolean(
+          response.data?.authenticated && response.data?.user?.impersonatorId,
+        );
+        if (!serverImpersonating && readImpersonationState()) {
+          clearLocalImpersonation();
         }
-      };
+      } catch {
+        // Ignore transient auth-status failures; the next poll/storage event will resync.
+      }
+    };
 
     void verifyServerImpersonationState();
-    window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, [authEnabled]);
 
   const loadTargets = async () => {
     if (!authEnabled || !impersonation) return;
 
     setLoadingTargets(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await api.get<ImpersonationTargetsResponse>('/auth/impersonation-targets');
+      const response = await api.get<ImpersonationTargetsResponse>("/auth/impersonation-targets");
       setTargets(response.data.users || []);
     } catch (err: unknown) {
-      let message = 'Failed to load impersonation targets';
+      let message = "Failed to load impersonation targets";
       if (isAxiosError(err)) {
         message = err.response?.data?.message || err.response?.data?.error || message;
       }
@@ -120,32 +122,31 @@ export const ImpersonationBanner: React.FC = () => {
       targetMap.set(user.id, user);
     }
     return Array.from(targetMap.values()).sort((a, b) => {
-      const byName = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
       if (byName !== 0) return byName;
-      return a.email.localeCompare(b.email, undefined, { sensitivity: 'base' });
+      return a.email.localeCompare(b.email, undefined, { sensitivity: "base" });
     });
   }, [impersonation, targets]);
 
   const stop = async () => {
     if (!impersonation || busy) return;
     setBusy(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await api.post<{ user?: { id: string; email: string; name: string } }>('/auth/stop-impersonation');
+      const response = await api.post<{ user?: { id: string; email: string; name: string } }>(
+        "/auth/stop-impersonation",
+      );
       restoreImpersonation();
       if (response.data?.user) {
         localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
       }
       window.location.reload();
     } catch (err: unknown) {
-      let message = 'Failed to stop impersonation';
+      let message = "Failed to stop impersonation";
       if (isAxiosError(err)) {
         message = err.response?.data?.message || err.response?.data?.error || message;
-        if (
-          err.response?.status === 409 &&
-          /not currently impersonating/i.test(message)
-        ) {
+        if (err.response?.status === 409 && /not currently impersonating/i.test(message)) {
           clearLocalImpersonation();
           window.location.reload();
           return;
@@ -160,10 +161,10 @@ export const ImpersonationBanner: React.FC = () => {
     if (!impersonation || busy || userId === impersonation.target.id) return;
 
     setBusy(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await api.post<ImpersonateResponse>('/auth/impersonate', { userId });
+      const response = await api.post<ImpersonateResponse>("/auth/impersonate", { userId });
       const latest = readImpersonationState() || impersonation;
       const nextState: ImpersonationState = {
         ...latest,
@@ -179,7 +180,7 @@ export const ImpersonationBanner: React.FC = () => {
       localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
       window.location.reload();
     } catch (err: unknown) {
-      let message = 'Failed to switch impersonation user';
+      let message = "Failed to switch impersonation user";
       if (isAxiosError(err)) {
         message = err.response?.data?.message || err.response?.data?.error || message;
       }

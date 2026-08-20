@@ -52,7 +52,10 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
             onBlur={onEditBlur}
           />
           {isEditPending && (
-            <span aria-live="polite" className="mt-1 block text-xs font-bold text-indigo-600 dark:text-indigo-300">
+            <span
+              aria-live="polite"
+              className="mt-1 block text-xs font-bold text-indigo-600 dark:text-indigo-300"
+            >
               Renaming collection...
             </span>
           )}
@@ -99,9 +102,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
           </span>
           <span className="min-w-0 flex-1 text-left font-bold">{label}</span>
           {extraAction && (
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {extraAction}
-            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">{extraAction}</div>
           )}
         </div>
       )}

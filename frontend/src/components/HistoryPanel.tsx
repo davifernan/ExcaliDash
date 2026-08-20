@@ -14,9 +14,7 @@ type Props = {
 };
 
 function timeAgo(dateStr: string): string {
-  const seconds = Math.floor(
-    (Date.now() - new Date(dateStr).getTime()) / 1000
-  );
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -131,10 +129,7 @@ export const HistoryPanel: React.FC<Props> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex justify-end">
-      <div
-        className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-sm bg-white dark:bg-neutral-900 border-l-2 border-black dark:border-neutral-700 shadow-[-4px_0px_0px_0px_rgba(0,0,0,1)] dark:shadow-[-4px_0px_0px_0px_rgba(255,255,255,0.08)] animate-in slide-in-from-right duration-200 flex flex-col h-full">
         {/* Header */}
@@ -166,7 +161,10 @@ export const HistoryPanel: React.FC<Props> = ({
               <span className="text-sm font-bold">Loading history...</span>
             </div>
           ) : loadError && snapshots.length === 0 ? (
-            <div role="alert" className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <div
+              role="alert"
+              className="flex flex-col items-center justify-center py-12 gap-3 text-center"
+            >
               <span className="text-sm font-bold text-rose-700 dark:text-rose-300">
                 {loadError}
               </span>
@@ -189,9 +187,16 @@ export const HistoryPanel: React.FC<Props> = ({
           ) : (
             <div className="space-y-3">
               {loadError && (
-                <div role="alert" className="rounded-lg border-2 border-amber-500 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs font-bold text-amber-900 dark:text-amber-100">
+                <div
+                  role="alert"
+                  className="rounded-lg border-2 border-amber-500 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs font-bold text-amber-900 dark:text-amber-100"
+                >
                   {loadError} Existing versions are still shown below.
-                  <button type="button" onClick={() => void loadHistory()} className="ml-2 underline">
+                  <button
+                    type="button"
+                    onClick={() => void loadHistory()}
+                    className="ml-2 underline"
+                  >
                     Try again
                   </button>
                 </div>
@@ -203,7 +208,7 @@ export const HistoryPanel: React.FC<Props> = ({
                     "rounded-xl border-2 transition-all duration-200 flex flex-col overflow-hidden",
                     previewId === snap.id
                       ? "border-indigo-600 dark:border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10 shadow-[2px_2px_0px_0px_rgba(79,70,229,1)]"
-                      : "border-black dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                      : "border-black dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.05)] hover:-translate-y-0.5 hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
                   )}
                 >
                   <div className="p-3">
@@ -226,7 +231,7 @@ export const HistoryPanel: React.FC<Props> = ({
                           "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border-2 transition-all duration-200 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none",
                           previewId === snap.id
                             ? "bg-indigo-600 text-white border-indigo-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,0.15)]"
-                            : "bg-white dark:bg-neutral-900 text-slate-700 dark:text-neutral-300 border-black dark:border-neutral-600 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5"
+                            : "bg-white dark:bg-neutral-900 text-slate-700 dark:text-neutral-300 border-black dark:border-neutral-600 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5",
                         )}
                       >
                         <Eye size={12} strokeWidth={2.5} />
@@ -244,21 +249,24 @@ export const HistoryPanel: React.FC<Props> = ({
                           "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:translate-x-[1px] active:translate-y-[1px] active:shadow-none",
                           confirmRestore === snap.id
                             ? "bg-amber-500 text-white border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] animate-pulse"
-                            : "bg-white dark:bg-neutral-900 text-slate-700 dark:text-neutral-300 border-black dark:border-neutral-600 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5"
+                            : "bg-white dark:bg-neutral-900 text-slate-700 dark:text-neutral-300 border-black dark:border-neutral-600 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5",
                         )}
                       >
                         <RotateCcw size={12} strokeWidth={2.5} />
                         {restoring === snap.id
                           ? "Restoring..."
                           : confirmRestore === snap.id
-                          ? "Confirm restore"
-                          : "Restore"}
+                            ? "Confirm restore"
+                            : "Restore"}
                       </button>
                     </div>
                   </div>
 
                   {restoreError?.snapshotId === snap.id && (
-                    <div role="alert" className="border-t-2 border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs font-bold text-rose-700 dark:text-rose-300">
+                    <div
+                      role="alert"
+                      className="border-t-2 border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs font-bold text-rose-700 dark:text-rose-300"
+                    >
                       {restoreError.message}
                     </div>
                   )}
@@ -273,10 +281,12 @@ export const HistoryPanel: React.FC<Props> = ({
                       ) : previewData ? (
                         <div className="text-[11px] text-neutral-500 dark:text-neutral-400 space-y-1 font-semibold">
                           <div>
-                            <span className="font-bold text-neutral-600 dark:text-neutral-300">Active Elements:</span>{" "}
+                            <span className="font-bold text-neutral-600 dark:text-neutral-300">
+                              Active Elements:
+                            </span>{" "}
                             {Array.isArray(previewData.elements)
                               ? previewData.elements.filter(
-                                  (e) => !(e as Record<string, unknown>).isDeleted
+                                  (e) => !(e as Record<string, unknown>).isDeleted,
                                 ).length
                               : 0}
                           </div>
@@ -302,6 +312,6 @@ export const HistoryPanel: React.FC<Props> = ({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 };

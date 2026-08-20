@@ -51,11 +51,7 @@ export const useLibraryImportFromUrl = ({
             return;
           }
         }
-        if (
-          !import.meta.env.DEV &&
-          parsedUrl.protocol === "http:" &&
-          !isLocalhost
-        ) {
+        if (!import.meta.env.DEV && parsedUrl.protocol === "http:" && !isLocalhost) {
           throw new Error("Insecure http:// library URL is not allowed");
         }
         toast.loading("Importing library...", { id: "library-import" });
@@ -75,19 +71,14 @@ export const useLibraryImportFromUrl = ({
           defaultStatus: "published",
           openLibraryMenu: true,
         });
-        const updatedItems =
-          excalidrawAPIRef.current.getAppState().libraryItems || [];
+        const updatedItems = excalidrawAPIRef.current.getAppState().libraryItems || [];
         if (user) {
           await api.updateLibrary([...updatedItems]);
         }
         toast.success("Library imported successfully", {
           id: "library-import",
         });
-        window.history.replaceState(
-          null,
-          "",
-          window.location.pathname + window.location.search,
-        );
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
       } catch (err) {
         console.error("[Editor] Failed to import library:", err);
         toast.error("Failed to import library", { id: "library-import" });

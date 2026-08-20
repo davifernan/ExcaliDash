@@ -11,11 +11,7 @@ export const createOidcClientFactory = (config: RegisterOidcRoutesDeps["config"]
   }): string => {
     const supported = opts.supported?.filter(Boolean);
     if (opts.configured) {
-      if (
-        supported &&
-        supported.length > 0 &&
-        !supported.includes(opts.configured)
-      ) {
+      if (supported && supported.length > 0 && !supported.includes(opts.configured)) {
         throw new Error(
           `OIDC_TOKEN_ENDPOINT_AUTH_METHOD=${opts.configured} is configured, but provider does not advertise support for it. ` +
             `Supported methods: ${supported.join(", ")}`,
@@ -35,11 +31,7 @@ export const createOidcClientFactory = (config: RegisterOidcRoutesDeps["config"]
     }
     const preferred = ["client_secret_basic", "client_secret_post"];
     for (const candidate of preferred) {
-      if (
-        !supported ||
-        supported.length === 0 ||
-        supported.includes(candidate)
-      ) {
+      if (!supported || supported.length === 0 || supported.includes(candidate)) {
         return candidate;
       }
     }
@@ -48,24 +40,13 @@ export const createOidcClientFactory = (config: RegisterOidcRoutesDeps["config"]
         `If your provider requires JWT-based client auth (private_key_jwt/client_secret_jwt), ExcaliDash currently does not expose configuration for that.`,
     );
   };
-  const buildOidcClient = async (
-    idTokenSignedResponseAlgOverride: string | null = null,
-  ) => {
-    if (
-      !config.oidc.issuerUrl ||
-      !config.oidc.clientId ||
-      !config.oidc.redirectUri
-    ) {
-      throw new Error(
-        "OIDC is enabled but provider configuration is incomplete",
-      );
+  const buildOidcClient = async (idTokenSignedResponseAlgOverride: string | null = null) => {
+    if (!config.oidc.issuerUrl || !config.oidc.clientId || !config.oidc.redirectUri) {
+      throw new Error("OIDC is enabled but provider configuration is incomplete");
     }
-    const discoveryUrl =
-      config.oidc.discoveryUrl || (config.oidc.issuerUrl as string);
+    const discoveryUrl = config.oidc.discoveryUrl || (config.oidc.issuerUrl as string);
     const clientIssuer = await Issuer.discover(discoveryUrl);
-    const expectedIssuer = canonicalizeIssuerUrl(
-      config.oidc.issuerUrl as string,
-    );
+    const expectedIssuer = canonicalizeIssuerUrl(config.oidc.issuerUrl as string);
     const discoveredIssuerRaw =
       typeof (clientIssuer as any)?.issuer === "string"
         ? ((clientIssuer as any).issuer as string)
@@ -90,10 +71,7 @@ export const createOidcClientFactory = (config: RegisterOidcRoutesDeps["config"]
         } else {
           (clientIssuer as any).metadata = { issuer: expectedIssuer };
         }
-        const issuerDescriptor = Object.getOwnPropertyDescriptor(
-          clientIssuer,
-          "issuer",
-        );
+        const issuerDescriptor = Object.getOwnPropertyDescriptor(clientIssuer, "issuer");
         if (!issuerDescriptor || issuerDescriptor.writable) {
           (clientIssuer as any).issuer = expectedIssuer;
         }
@@ -111,8 +89,7 @@ export const createOidcClientFactory = (config: RegisterOidcRoutesDeps["config"]
       Boolean(config.oidc.clientSecret),
       (clientIssuer as any)?.metadata ?? {},
     );
-    const idTokenSignedResponseAlg =
-      idTokenSignedResponseAlgOverride || defaultIdTokenAlg;
+    const idTokenSignedResponseAlg = idTokenSignedResponseAlgOverride || defaultIdTokenAlg;
     const clientConfig: Record<string, unknown> = {
       client_id: config.oidc.clientId as string,
       redirect_uris: [config.oidc.redirectUri as string],

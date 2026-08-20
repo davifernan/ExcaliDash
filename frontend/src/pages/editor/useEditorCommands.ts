@@ -20,12 +20,7 @@ type EditorCommandRefs = {
     | null
   >;
   savePreview: MutableRefObject<
-    | ((
-        drawingId: string,
-        elements: readonly any[],
-        appState: any,
-        files: any,
-      ) => Promise<void>)
+    | ((drawingId: string, elements: readonly any[], appState: any, files: any) => Promise<void>)
     | null
   >;
   suspiciousBlankLoad: MutableRefObject<boolean>;
@@ -88,18 +83,11 @@ export const useEditorCommands = ({
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         if (!canEdit) return;
-        if (
-          !(
-            refs.excalidrawAPI.current &&
-            refs.saveData.current &&
-            refs.savePreview.current
-          )
-        ) {
+        if (!(refs.excalidrawAPI.current && refs.saveData.current && refs.savePreview.current)) {
           return;
         }
         if (!drawingId) return;
-        const elements =
-          refs.excalidrawAPI.current.getSceneElementsIncludingDeleted();
+        const elements = refs.excalidrawAPI.current.getSceneElementsIncludingDeleted();
         const { snapshot: safeElements } = resolveSafeSnapshot(elements);
         const appState = refs.excalidrawAPI.current.getAppState();
         const files = refs.excalidrawAPI.current.getFiles() || {};
@@ -143,32 +131,20 @@ export const useEditorCommands = ({
     setIsSavingOnLeave(true);
     let shouldNavigate = false;
     try {
-      if (
-        !(
-          refs.excalidrawAPI.current &&
-          refs.saveData.current &&
-          refs.savePreview.current
-        )
-      ) {
+      if (!(refs.excalidrawAPI.current && refs.saveData.current && refs.savePreview.current)) {
         shouldNavigate = true;
       } else if (!canEdit || !refs.hasSceneChangesSinceLoad.current) {
         shouldNavigate = true;
       } else if (!drawingId) {
         shouldNavigate = true;
       } else {
-        const elements =
-          refs.excalidrawAPI.current.getSceneElementsIncludingDeleted();
+        const elements = refs.excalidrawAPI.current.getSceneElementsIncludingDeleted();
         const { snapshot: safeElements } = resolveSafeSnapshot(elements);
         const appState = refs.excalidrawAPI.current.getAppState();
         const files = refs.excalidrawAPI.current.getFiles() || {};
         refs.latestFiles.current = files;
-        if (
-          refs.suspiciousBlankLoad.current &&
-          !hasRenderableElements(safeElements)
-        ) {
-          toast.warning(
-            "Blank scene detected on load. Skipping save to protect existing data.",
-          );
+        if (refs.suspiciousBlankLoad.current && !hasRenderableElements(safeElements)) {
+          toast.warning("Blank scene detected on load. Skipping save to protect existing data.");
           shouldNavigate = true;
         } else {
           await Promise.all([
@@ -200,8 +176,7 @@ export const useEditorCommands = ({
 
   const handleExportClick = useCallback(() => {
     if (!refs.excalidrawAPI.current) return;
-    const elements =
-      refs.excalidrawAPI.current.getSceneElementsIncludingDeleted();
+    const elements = refs.excalidrawAPI.current.getSceneElementsIncludingDeleted();
     const appState = refs.excalidrawAPI.current.getAppState();
     const files = refs.excalidrawAPI.current.getFiles() || {};
     exportFromEditor(drawingName, elements, appState, files);

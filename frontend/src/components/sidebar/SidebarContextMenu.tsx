@@ -54,9 +54,7 @@ export const SidebarContextMenu: React.FC<SidebarContextMenuProps> = ({
           </button>
           <button
             onClick={() => {
-              const collection = collections.find(
-                (c) => c.id === contextMenu.id,
-              );
+              const collection = collections.find((c) => c.id === contextMenu.id);
               if (collection) onRenameCollection(collection);
               onClose();
             }}

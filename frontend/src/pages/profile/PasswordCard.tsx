@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PasswordInput } from '../../components/PasswordInput';
+import { PasswordInput } from "../../components/PasswordInput";
 import { useNavigate } from "react-router-dom";
 import { Lock, X } from "lucide-react";
 import * as api from "../../api";
@@ -99,7 +99,10 @@ export const PasswordCard: React.FC<Props> = ({
       {showPasswordForm && (
         <div className="space-y-4">
           <div>
-            <label htmlFor="currentPassword" className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2">
+            <label
+              htmlFor="currentPassword"
+              className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2"
+            >
               Current Password
             </label>
             <PasswordInput
@@ -112,7 +115,10 @@ export const PasswordCard: React.FC<Props> = ({
           </div>
 
           <div>
-            <label htmlFor="newPassword" className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2">
+            <label
+              htmlFor="newPassword"
+              className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2"
+            >
               New Password
             </label>
             <PasswordInput
@@ -133,7 +139,10 @@ export const PasswordCard: React.FC<Props> = ({
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2"
+            >
               Confirm New Password
             </label>
             <PasswordInput

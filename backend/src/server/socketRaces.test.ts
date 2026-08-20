@@ -66,9 +66,7 @@ class FakeIo {
   async connect(id: string) {
     const socket = new FakeSocket(id, this.emissions);
     await new Promise<void>((resolve, reject) => {
-      this.middleware?.(socket, (error?: Error) =>
-        error ? reject(error) : resolve(),
-      );
+      this.middleware?.(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });
     this.connectionHandler?.(socket);
     return socket;
@@ -88,8 +86,7 @@ describe("socket collaboration races", () => {
     io = new FakeIo();
     allowed = true;
     accessLookups = 0;
-    drawingLookup = async () =>
-      allowed ? { userId: BOOTSTRAP_USER_ID } : null;
+    drawingLookup = async () => (allowed ? { userId: BOOTSTRAP_USER_ID } : null);
     controller = registerSocketHandlers({
       io: io as any,
       prisma: {
@@ -112,9 +109,7 @@ describe("socket collaboration races", () => {
       user: { name: "Local User", color: "#123456" },
     });
   const lastEmission = (event: string, scope?: string) =>
-    io.emissions
-      .filter((item) => item.event === event && (!scope || item.scope === scope))
-      .at(-1);
+    io.emissions.filter((item) => item.event === event && (!scope || item.scope === scope)).at(-1);
 
   it("evicts passive sockets and their follow edges immediately after a revoke", async () => {
     const target = await io.connect("socket-target");
@@ -141,7 +136,10 @@ describe("socket collaboration races", () => {
 
   it("does not create ghost presence when disconnect overtakes an awaited join", async () => {
     let release: ((value: { userId: string }) => void) | null = null;
-    drawingLookup = () => new Promise((resolve) => { release = resolve; });
+    drawingLookup = () =>
+      new Promise((resolve) => {
+        release = resolve;
+      });
     const stale = await io.connect("socket-stale");
     const pendingJoin = join(stale);
     await Promise.resolve();
@@ -164,7 +162,9 @@ describe("socket collaboration races", () => {
     drawingLookup = async () => {
       lookupNumber += 1;
       return lookupNumber === 1
-        ? new Promise((resolve) => { release = resolve; })
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
         : { userId: BOOTSTRAP_USER_ID };
     };
     const socket = await io.connect("socket-switching");
@@ -181,7 +181,10 @@ describe("socket collaboration races", () => {
 
   it("cancels an awaited join when leave-room overtakes it", async () => {
     let release: ((value: { userId: string }) => void) | null = null;
-    drawingLookup = () => new Promise((resolve) => { release = resolve; });
+    drawingLookup = () =>
+      new Promise((resolve) => {
+        release = resolve;
+      });
     const socket = await io.connect("socket-leaving");
     const pendingJoin = join(socket);
     await Promise.resolve();
@@ -196,7 +199,10 @@ describe("socket collaboration races", () => {
 
   it("bounds a flooded join queue while the database is blocked", async () => {
     let release: ((value: { userId: string }) => void) | null = null;
-    drawingLookup = () => new Promise((resolve) => { release = resolve; });
+    drawingLookup = () =>
+      new Promise((resolve) => {
+        release = resolve;
+      });
     const socket = await io.connect("socket-flood");
     const acknowledgements: any[] = [];
     const requests = Array.from({ length: 40 }, (_, index) =>
@@ -207,12 +213,10 @@ describe("socket collaboration races", () => {
       ),
     );
     await vi.waitFor(() => expect(accessLookups).toBe(1));
-    expect(
-      acknowledgements.filter((value) => value?.error?.code === "queue-full"),
-    ).toHaveLength(2);
-    expect(
-      acknowledgements.filter((value) => value?.error?.code === "rate-limited"),
-    ).toHaveLength(30);
+    expect(acknowledgements.filter((value) => value?.error?.code === "queue-full")).toHaveLength(2);
+    expect(acknowledgements.filter((value) => value?.error?.code === "rate-limited")).toHaveLength(
+      30,
+    );
 
     release?.({ userId: BOOTSTRAP_USER_ID });
     drawingLookup = async () => ({ userId: BOOTSTRAP_USER_ID });
@@ -231,7 +235,9 @@ describe("socket collaboration races", () => {
     const normalLookup = drawingLookup;
     drawingLookup = async () => {
       if (accessLookups === blockAt) {
-        await new Promise<void>((resolve) => { release = resolve; });
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
       }
       return normalLookup();
     };
@@ -245,12 +251,15 @@ describe("socket collaboration races", () => {
     await follower.trigger(
       "follow-user",
       { drawingId: "drawing-1", action: "UNFOLLOW" },
-      (value: any) => { unfollowAck = value; },
+      (value: any) => {
+        unfollowAck = value;
+      },
     );
 
     expect(unfollowAck).toEqual({ ok: true });
-    expect(lastEmission("follow-status", "socket-follower")?.payload)
-      .toMatchObject({ followingPresenceId: null });
+    expect(lastEmission("follow-status", "socket-follower")?.payload).toMatchObject({
+      followingPresenceId: null,
+    });
     expect(lastEmission("followed-by-update", "socket-target")).toBeUndefined();
 
     release();
@@ -266,7 +275,9 @@ describe("socket collaboration races", () => {
     let release: (() => void) | null = null;
     const normalLookup = drawingLookup;
     drawingLookup = async () => {
-      await new Promise<void>((resolve) => { release = resolve; });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
       return normalLookup();
     };
 
@@ -293,23 +304,32 @@ describe("socket collaboration races", () => {
     drawingLookup = normalLookup;
     release?.();
     await Promise.all(commands);
-    expect(lastEmission("followed-by-update", "flood-target")?.payload.followers)
-      .toEqual([{ presenceId: "flood-follower", name: "Local User" }]);
+    expect(lastEmission("followed-by-update", "flood-target")?.payload.followers).toEqual([
+      { presenceId: "flood-follower", name: "Local User" },
+    ]);
   });
 
   it("rejects a three-person follow cycle without changing existing edges", async () => {
     const sockets = await Promise.all([
-      io.connect("alice"), io.connect("bob"), io.connect("carol"),
+      io.connect("alice"),
+      io.connect("bob"),
+      io.connect("carol"),
     ]);
     await Promise.all(sockets.map((socket) => join(socket)));
     await sockets[0].trigger("follow-user", {
-      drawingId: "drawing-1", targetPresenceId: "bob", action: "FOLLOW",
+      drawingId: "drawing-1",
+      targetPresenceId: "bob",
+      action: "FOLLOW",
     });
     await sockets[1].trigger("follow-user", {
-      drawingId: "drawing-1", targetPresenceId: "carol", action: "FOLLOW",
+      drawingId: "drawing-1",
+      targetPresenceId: "carol",
+      action: "FOLLOW",
     });
     await sockets[2].trigger("follow-user", {
-      drawingId: "drawing-1", targetPresenceId: "alice", action: "FOLLOW",
+      drawingId: "drawing-1",
+      targetPresenceId: "alice",
+      action: "FOLLOW",
     });
 
     expect(lastEmission("follow-status", "carol")?.payload).toEqual({
@@ -327,19 +347,21 @@ describe("socket collaboration races", () => {
     await join(follower);
     for (let index = 0; index < 12; index += 1) {
       await follower.trigger("follow-user", {
-        drawingId: "drawing-1", targetPresenceId: "target", action: "FOLLOW",
+        drawingId: "drawing-1",
+        targetPresenceId: "target",
+        action: "FOLLOW",
       });
     }
     await follower.trigger("follow-user", {
-      drawingId: "drawing-1", action: "UNFOLLOW",
+      drawingId: "drawing-1",
+      action: "UNFOLLOW",
     });
 
     expect(lastEmission("follow-status", "follower")?.payload).toEqual({
       drawingId: "drawing-1",
       followingPresenceId: null,
     });
-    expect(lastEmission("followed-by-update", "target")?.payload.followers)
-      .toEqual([]);
+    expect(lastEmission("followed-by-update", "target")?.payload.followers).toEqual([]);
   });
 
   it("delivers no cached viewport after an explicit access revocation", async () => {
@@ -348,10 +370,13 @@ describe("socket collaboration races", () => {
     await join(target);
     await join(follower);
     await follower.trigger("follow-user", {
-      drawingId: "drawing-1", targetPresenceId: "cache-target", action: "FOLLOW",
+      drawingId: "drawing-1",
+      targetPresenceId: "cache-target",
+      action: "FOLLOW",
     });
     await target.trigger("viewport-bounds", {
-      drawingId: "drawing-1", sceneBounds: [0, 0, 100, 100],
+      drawingId: "drawing-1",
+      sceneBounds: [0, 0, 100, 100],
     });
     const deliveredBeforeRevoke = io.emissions.filter(
       (item) => item.event === "viewport-bounds" && item.scope === "cache-follower",
@@ -361,7 +386,8 @@ describe("socket collaboration races", () => {
     allowed = false;
     await controller.recheckDrawingAccess("drawing-1");
     await target.trigger("viewport-bounds", {
-      drawingId: "drawing-1", sceneBounds: [20, 20, 120, 120],
+      drawingId: "drawing-1",
+      sceneBounds: [20, 20, 120, 120],
     });
     expect(
       io.emissions.filter(
@@ -370,5 +396,4 @@ describe("socket collaboration races", () => {
     ).toHaveLength(1);
     expect(follower.rooms.has(room("drawing-1"))).toBe(false);
   });
-
 });

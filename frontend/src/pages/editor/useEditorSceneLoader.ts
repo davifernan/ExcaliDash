@@ -106,22 +106,16 @@ export const useEditorSceneLoader = ({
               return [];
             })
           : Promise.resolve([]);
-        const [data, libraryItems] = await Promise.all([
-          api.getDrawing(id),
-          libraryItemsPromise,
-        ]);
+        const [data, libraryItems] = await Promise.all([api.getDrawing(id), libraryItemsPromise]);
         setDrawingName(data.name);
         setAccessLevel(
-          data.accessLevel === "view" ||
-            data.accessLevel === "edit" ||
-            data.accessLevel === "owner"
+          data.accessLevel === "view" || data.accessLevel === "edit" || data.accessLevel === "owner"
             ? data.accessLevel
             : "owner",
         );
         const elements = data.elements || [];
         const files = data.files || {};
-        const hasPreview =
-          typeof data.preview === "string" && data.preview.trim().length > 0;
+        const hasPreview = typeof data.preview === "string" && data.preview.trim().length > 0;
         const loadedRenderable = hasRenderableElements(elements);
         refs.suspiciousBlankLoad.current = !loadedRenderable && hasPreview;
         refs.hasSceneChangesSinceLoad.current = false;
@@ -140,8 +134,7 @@ export const useEditorSceneLoader = ({
         refs.latestFiles.current = files;
         refs.lastSyncedFiles.current = files;
         refs.lastPersistedFiles.current = files;
-        refs.currentDrawingVersion.current =
-          typeof data.version === "number" ? data.version : null;
+        refs.currentDrawingVersion.current = typeof data.version === "number" ? data.version : null;
         refs.lastPersistedElements.current = elements;
         elements.forEach((element: any) => recordElementVersion(element));
         const persistedAppState = getPersistedAppState(data.appState || {});
@@ -162,9 +155,7 @@ export const useEditorSceneLoader = ({
         let message = "Failed to load drawing";
         if (api.isAxiosError(err)) {
           const responseMessage =
-            typeof err.response?.data?.message === "string"
-              ? err.response.data.message
-              : null;
+            typeof err.response?.data?.message === "string" ? err.response.data.message : null;
           if (responseMessage) {
             message = responseMessage;
           } else if (err.response?.status === 403) {
@@ -172,11 +163,7 @@ export const useEditorSceneLoader = ({
           } else if (err.response?.status === 404) {
             message = "Drawing not found";
           }
-          if (
-            err.response?.status === 403 &&
-            id &&
-            location.pathname.startsWith("/editor/")
-          ) {
+          if (err.response?.status === 403 && id && location.pathname.startsWith("/editor/")) {
             navigate(`/shared/${id}${location.search}${location.hash}`, {
               replace: true,
             });

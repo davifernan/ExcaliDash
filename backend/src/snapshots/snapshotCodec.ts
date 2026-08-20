@@ -16,17 +16,13 @@ const PREFIX = "br1:";
 /** Quality 11 is ~170x slower for ~2% more; the write path cannot afford it. */
 const QUALITY = 5;
 
-export const isEncodedSnapshotField = (value: string): boolean =>
-  value.startsWith(PREFIX);
+export const isEncodedSnapshotField = (value: string): boolean => value.startsWith(PREFIX);
 
 /**
  * Compress a snapshot payload. Returns the value unchanged when compression is
  * disabled or would not pay off, so callers can always store what they get.
  */
-export const encodeSnapshotField = (
-  value: string,
-  enabled: boolean = true,
-): string => {
+export const encodeSnapshotField = (value: string, enabled: boolean = true): string => {
   if (!enabled || !value) return value;
   // Already encoded: never wrap twice.
   if (isEncodedSnapshotField(value)) return value;

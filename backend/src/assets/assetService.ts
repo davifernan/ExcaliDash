@@ -34,7 +34,7 @@ export class QuotaExceededError extends Error {
   constructor(usedBytes: number, limitBytes: number) {
     super(
       `Storage limit reached: ${Math.round(usedBytes / 1024 / 1024)} MB of ` +
-      `${Math.round(limitBytes / 1024 / 1024)} MB in use. Delete a document to free space.`,
+        `${Math.round(limitBytes / 1024 / 1024)} MB in use. Delete a document to free space.`,
     );
     this.name = "QuotaExceededError";
   }
@@ -201,7 +201,7 @@ export async function syncDrawingAssets(
   if (unknown.length) {
     throw new Error(
       `This board does not have ${unknown.length === 1 ? "a document" : "documents"} ` +
-      `with id ${unknown.map((id) => `"${id}"`).join(", ")}. Upload the file to this board first.`,
+        `with id ${unknown.map((id) => `"${id}"`).join(", ")}. Upload the file to this board first.`,
     );
   }
 

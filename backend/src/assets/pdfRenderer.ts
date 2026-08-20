@@ -131,10 +131,7 @@ export async function inspectPdf(
       `This PDF has ${info.pageCount} pages; the limit is ${limits.maxPages}.`,
     );
   }
-  if (
-    info.maxPageWidth > limits.maxPagePoints ||
-    info.maxPageHeight > limits.maxPagePoints
-  ) {
+  if (info.maxPageWidth > limits.maxPagePoints || info.maxPageHeight > limits.maxPagePoints) {
     throw new PdfRejectedError("This PDF has pages far larger than any printable size.");
   }
   return info;

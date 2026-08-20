@@ -30,9 +30,7 @@ const deserializeDrawingSummary = (drawing: unknown): DrawingSummary => {
   return deserializeTimestamps({
     ...parsed,
     preview:
-      typeof parsed.preview === "string"
-        ? normalizePreviewSvg(parsed.preview)
-        : parsed.preview,
+      typeof parsed.preview === "string" ? normalizePreviewSvg(parsed.preview) : parsed.preview,
   });
 };
 
@@ -42,9 +40,7 @@ const deserializeDrawing = (drawing: unknown): Drawing => {
   return deserializeTimestamps({
     ...parsed,
     preview:
-      typeof parsed.preview === "string"
-        ? normalizePreviewSvg(parsed.preview)
-        : parsed.preview,
+      typeof parsed.preview === "string" ? normalizePreviewSvg(parsed.preview) : parsed.preview,
   });
 };
 
@@ -74,7 +70,8 @@ const buildDrawingParams = (
 ): Record<string, string | number> => {
   const params: Record<string, string | number> = {};
   if (search) params.search = search;
-  if (collectionId !== undefined) params.collectionId = collectionId === null ? "null" : collectionId;
+  if (collectionId !== undefined)
+    params.collectionId = collectionId === null ? "null" : collectionId;
   if (options?.includePreview) params.includePreview = "true";
   if (options?.limit !== undefined) params.limit = options.limit;
   if (options?.offset !== undefined) params.offset = options.offset;
@@ -159,9 +156,10 @@ export type DrawingLinkShareRow = {
 export const getDrawingSharing = async (
   drawingId: string,
 ): Promise<{ permissions: DrawingPermissionRow[]; linkShares: DrawingLinkShareRow[] }> => {
-  const response = await api.get<{ permissions: DrawingPermissionRow[]; linkShares: DrawingLinkShareRow[] }>(
-    `/drawings/${drawingId}/sharing`,
-  );
+  const response = await api.get<{
+    permissions: DrawingPermissionRow[];
+    linkShares: DrawingLinkShareRow[];
+  }>(`/drawings/${drawingId}/sharing`);
   return response.data;
 };
 

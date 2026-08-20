@@ -49,7 +49,8 @@ export const parseManifest = async (
 
 export const requireEntry = (archive: StreamingZipArchive, filePath: string): StreamingZipEntry => {
   const entry = archive.get(filePath);
-  if (!entry || entry.directory) throw new ImportValidationError(`Missing archive file: ${filePath}`);
+  if (!entry || entry.directory)
+    throw new ImportValidationError(`Missing archive file: ${filePath}`);
   return entry;
 };
 
@@ -65,11 +66,14 @@ export const validateManifestReferences = (
     throw new ImportValidationError(`Too many drawings (max ${limits.MAX_IMPORT_DRAWINGS})`);
   }
   const duplicateCollectionId = findFirstDuplicate(manifest.collections.map((item) => item.id));
-  if (duplicateCollectionId) throw new ImportValidationError(`Duplicate collection id: ${duplicateCollectionId}`);
+  if (duplicateCollectionId)
+    throw new ImportValidationError(`Duplicate collection id: ${duplicateCollectionId}`);
   const duplicateDrawingId = findFirstDuplicate(manifest.drawings.map((item) => item.id));
-  if (duplicateDrawingId) throw new ImportValidationError(`Duplicate drawing id: ${duplicateDrawingId}`);
+  if (duplicateDrawingId)
+    throw new ImportValidationError(`Duplicate drawing id: ${duplicateDrawingId}`);
   const duplicateDrawingPath = findFirstDuplicate(manifest.drawings.map((item) => item.filePath));
-  if (duplicateDrawingPath) throw new ImportValidationError(`Duplicate drawing path: ${duplicateDrawingPath}`);
+  if (duplicateDrawingPath)
+    throw new ImportValidationError(`Duplicate drawing path: ${duplicateDrawingPath}`);
   for (const drawing of manifest.drawings) requireEntry(archive, drawing.filePath);
 
   if (manifest.formatVersion === 1) return;
@@ -80,11 +84,15 @@ export const validateManifestReferences = (
   const duplicateSnapshotId = findFirstDuplicate(manifest.snapshots.map((item) => item.id));
   const duplicateSnapshotPath = findFirstDuplicate(manifest.snapshots.map((item) => item.filePath));
   if (duplicateBlobId) throw new ImportValidationError(`Duplicate blob id: ${duplicateBlobId}`);
-  if (duplicateBlobHash) throw new ImportValidationError(`Duplicate blob sha256: ${duplicateBlobHash}`);
-  if (duplicateBlobPath) throw new ImportValidationError(`Duplicate blob path: ${duplicateBlobPath}`);
+  if (duplicateBlobHash)
+    throw new ImportValidationError(`Duplicate blob sha256: ${duplicateBlobHash}`);
+  if (duplicateBlobPath)
+    throw new ImportValidationError(`Duplicate blob path: ${duplicateBlobPath}`);
   if (duplicateAssetId) throw new ImportValidationError(`Duplicate asset id: ${duplicateAssetId}`);
-  if (duplicateSnapshotId) throw new ImportValidationError(`Duplicate snapshot id: ${duplicateSnapshotId}`);
-  if (duplicateSnapshotPath) throw new ImportValidationError(`Duplicate snapshot path: ${duplicateSnapshotPath}`);
+  if (duplicateSnapshotId)
+    throw new ImportValidationError(`Duplicate snapshot id: ${duplicateSnapshotId}`);
+  if (duplicateSnapshotPath)
+    throw new ImportValidationError(`Duplicate snapshot path: ${duplicateSnapshotPath}`);
 
   const drawingIds = new Set(manifest.drawings.map((item) => item.id));
   const blobIds = new Set(manifest.blobs.map((item) => item.id));
@@ -96,7 +104,8 @@ export const validateManifestReferences = (
     }
   }
   for (const asset of manifest.assets) {
-    if (!blobIds.has(asset.blobId)) throw new ImportValidationError(`Asset references unknown blob: ${asset.id}`);
+    if (!blobIds.has(asset.blobId))
+      throw new ImportValidationError(`Asset references unknown blob: ${asset.id}`);
   }
   const drawingAssetKeys = new Set<string>();
   for (const link of manifest.drawingAssets) {
@@ -135,12 +144,14 @@ export const parseScene = (
   const imported = {
     name: meta.name,
     elements: Array.isArray(parsed?.elements) ? parsed.elements : [],
-    appState: typeof parsed?.appState === "object" && parsed.appState !== null ? parsed.appState : {},
+    appState:
+      typeof parsed?.appState === "object" && parsed.appState !== null ? parsed.appState : {},
     files: typeof parsed?.files === "object" && parsed.files !== null ? parsed.files : {},
     preview: null as string | null,
     collectionId: meta.collectionId ?? null,
   };
-  if (!validateImportedDrawing(imported)) throw new ImportValidationError("Drawing failed validation");
+  if (!validateImportedDrawing(imported))
+    throw new ImportValidationError("Drawing failed validation");
   return sanitizeDrawingData(imported);
 };
 

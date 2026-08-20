@@ -1,5 +1,5 @@
-import React from 'react';
-import { Settings as SettingsIcon } from 'lucide-react';
+import React from "react";
+import { Settings as SettingsIcon } from "lucide-react";
 
 type LoginRateLimitCardProps = {
   loading: boolean;
@@ -20,8 +20,8 @@ type LoginRateLimitCardProps = {
 };
 
 const getSaveStatusLabel = (saving: boolean, autoSaveQueued: boolean, dirty: boolean) => {
-  if (saving || autoSaveQueued) return 'Saving changes…';
-  return dirty ? 'Unsaved changes' : 'All changes saved';
+  if (saving || autoSaveQueued) return "Saving changes…";
+  return dirty ? "Unsaved changes" : "All changes saved";
 };
 
 export const LoginRateLimitCard: React.FC<LoginRateLimitCardProps> = ({
@@ -70,11 +70,11 @@ export const LoginRateLimitCard: React.FC<LoginRateLimitCardProps> = ({
           onClick={onToggleEnabled}
           className={`w-full px-4 py-3 rounded-xl border-2 font-bold transition-all text-sm ${
             enabled
-              ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
-              : 'border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-slate-600 dark:text-neutral-300'
+              ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"
+              : "border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-slate-600 dark:text-neutral-300"
           }`}
         >
-          {enabled ? 'Enabled' : 'Disabled'}
+          {enabled ? "Enabled" : "Disabled"}
         </button>
       </div>
       <div>
@@ -130,7 +130,7 @@ export const LoginRateLimitCard: React.FC<LoginRateLimitCardProps> = ({
           disabled={resetLoading}
           className="px-4 py-2 text-sm font-bold rounded-xl border-2 border-black dark:border-neutral-700 bg-white dark:bg-neutral-900 text-slate-900 dark:text-neutral-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)] hover:-translate-y-0.5 transition-all disabled:opacity-60"
         >
-          {resetLoading ? 'Resetting…' : 'Reset'}
+          {resetLoading ? "Resetting…" : "Reset"}
         </button>
       </div>
     </div>

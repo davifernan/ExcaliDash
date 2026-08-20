@@ -12,10 +12,7 @@ export interface ExportData {
 /**
  * Export a drawing to a .excalidraw file and trigger download
  */
-export const exportDrawingToFile = (
-  drawing: Drawing,
-  filename?: string
-): void => {
+export const exportDrawingToFile = (drawing: Drawing, filename?: string): void => {
   const exportData: ExportData = {
     type: "excalidraw",
     version: 2,
@@ -24,7 +21,9 @@ export const exportDrawingToFile = (
     appState: {
       gridSize: drawing.appState?.gridSize ?? null,
       ...(drawing.appState?.gridStep != null && { gridStep: drawing.appState.gridStep }),
-      ...(drawing.appState?.gridModeEnabled != null && { gridModeEnabled: drawing.appState.gridModeEnabled }),
+      ...(drawing.appState?.gridModeEnabled != null && {
+        gridModeEnabled: drawing.appState.gridModeEnabled,
+      }),
       viewBackgroundColor: drawing.appState?.viewBackgroundColor ?? "#ffffff",
     },
     files: drawing.files || {},
@@ -51,7 +50,7 @@ export const exportFromEditor = (
   name: string,
   elements: readonly any[],
   appState: any,
-  files: Record<string, any>
+  files: Record<string, any>,
 ): void => {
   const exportData: ExportData = {
     type: "excalidraw",

@@ -98,11 +98,7 @@ export const useDashboardSelection = ({
   }, [drawings, searchInputRef, setSelectedIds]);
 
   const handleMouseDown = (event: React.MouseEvent) => {
-    if (
-      (event.target as HTMLElement).closest(
-        "button, a, input, textarea, .drawing-card",
-      )
-    ) {
+    if ((event.target as HTMLElement).closest("button, a, input, textarea, .drawing-card")) {
       return;
     }
     if (
@@ -128,9 +124,7 @@ export const useDashboardSelection = ({
         drawings.some((drawing) => drawing.id === lastSelectedId)
       ) {
         const currentIndex = drawings.findIndex((drawing) => drawing.id === id);
-        const lastIndex = drawings.findIndex(
-          (drawing) => drawing.id === lastSelectedId,
-        );
+        const lastIndex = drawings.findIndex((drawing) => drawing.id === lastSelectedId);
         if (currentIndex !== -1 && lastIndex !== -1) {
           const start = Math.min(currentIndex, lastIndex);
           const end = Math.max(currentIndex, lastIndex);
@@ -151,8 +145,7 @@ export const useDashboardSelection = ({
     });
   };
 
-  const allSelected =
-    drawings.length > 0 && selectedIds.size === drawings.length;
+  const allSelected = drawings.length > 0 && selectedIds.size === drawings.length;
 
   const handleSelectAll = () => {
     if (allSelected) {

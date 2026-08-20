@@ -28,7 +28,8 @@ const baseAuthState = {
   register: vi.fn(),
   authEnabled: true,
   registrationEnabled: true,
-  authStatusError: "Unable to reach the backend API. Check BACKEND_URL and reverse proxy settings, then retry.",
+  authStatusError:
+    "Unable to reach the backend API. Check BACKEND_URL and reverse proxy settings, then retry.",
   retryAuthStatus: vi.fn(),
   oidcEnabled: false,
   oidcEnforced: false,
@@ -51,7 +52,7 @@ describe("auth pages block on auth status failures", () => {
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <Login />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText(/Unable to reach the backend API/i)).toBeInTheDocument();
@@ -65,7 +66,7 @@ describe("auth pages block on auth status failures", () => {
     render(
       <MemoryRouter initialEntries={["/register"]}>
         <Register />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText(/Unable to reach the backend API/i)).toBeInTheDocument();

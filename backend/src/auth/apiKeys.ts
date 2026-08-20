@@ -83,9 +83,7 @@ export const parseApiKeyScopes = (raw: string | null | undefined): string[] =>
     .filter((scope) => scope.length > 0);
 
 export const hasBearerApiKey = (authorizationHeader: unknown): boolean => {
-  const header = Array.isArray(authorizationHeader)
-    ? authorizationHeader[0]
-    : authorizationHeader;
+  const header = Array.isArray(authorizationHeader) ? authorizationHeader[0] : authorizationHeader;
   if (typeof header !== "string") return false;
   const [scheme, token] = header.split(" ");
   return scheme === "Bearer" && typeof token === "string" && isApiKeyToken(token);

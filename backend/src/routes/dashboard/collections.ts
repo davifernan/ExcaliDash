@@ -2,10 +2,7 @@ import express from "express";
 import { DashboardRouteDeps } from "./types";
 import { getUserTrashCollectionId, isTrashCollectionId } from "./trash";
 
-export const registerCollectionRoutes = (
-  app: express.Express,
-  deps: DashboardRouteDeps,
-) => {
+export const registerCollectionRoutes = (app: express.Express, deps: DashboardRouteDeps) => {
   const {
     prisma,
     requireAuth,
@@ -32,9 +29,7 @@ export const registerCollectionRoutes = (
         where: { userId: req.user.id },
         orderBy: { createdAt: "desc" },
       });
-      const hasInternalTrash = rawCollections.some(
-        (c) => c.id === trashCollectionId,
-      );
+      const hasInternalTrash = rawCollections.some((c) => c.id === trashCollectionId);
       const shareCountMap = await prisma.collectionShare.groupBy({
         by: ["collectionId"],
         where: {
@@ -44,9 +39,7 @@ export const registerCollectionRoutes = (
         },
         _count: { collectionId: true },
       });
-      const sharedCollectionIds = new Set(
-        shareCountMap.map((s) => s.collectionId),
-      );
+      const sharedCollectionIds = new Set(shareCountMap.map((s) => s.collectionId));
 
       const ownedCollections = rawCollections
         .filter((c) => !(hasInternalTrash && c.id === "trash"))
@@ -129,8 +122,7 @@ export const registerCollectionRoutes = (
       const existing = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!existing)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!existing) return res.status(404).json({ error: "Collection not found" });
 
       const parsed = collectionNameSchema.safeParse(req.body.name);
       if (!parsed.success) {
@@ -148,8 +140,7 @@ export const registerCollectionRoutes = (
       const updated = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!updated)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!updated) return res.status(404).json({ error: "Collection not found" });
       return res.json(updated);
     }),
   );
@@ -171,8 +162,7 @@ export const registerCollectionRoutes = (
       const collection = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!collection)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!collection) return res.status(404).json({ error: "Collection not found" });
 
       const affectedShares = await prisma.collectionShare.findMany({
         where: { collectionId: id },
@@ -189,8 +179,9 @@ export const registerCollectionRoutes = (
       ]);
       invalidateDrawingsCache();
       await Promise.all(
-        Array.from(new Set(affectedShares.map((share) => share.granteeUserId)))
-          .map((userId) => collaborationAccess.recheckUserAccess(userId)),
+        Array.from(new Set(affectedShares.map((share) => share.granteeUserId))).map((userId) =>
+          collaborationAccess.recheckUserAccess(userId),
+        ),
       );
 
       if (config.enableAuditLogging) {
@@ -220,8 +211,7 @@ export const registerCollectionRoutes = (
       const collection = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!collection)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!collection) return res.status(404).json({ error: "Collection not found" });
 
       const shares = await prisma.collectionShare.findMany({
         where: { collectionId: id },
@@ -248,26 +238,19 @@ export const registerCollectionRoutes = (
       };
 
       if (!identifier || !["view", "edit"].includes(role)) {
-        return res
-          .status(400)
-          .json({ error: "identifier and role (view|edit) are required" });
+        return res.status(400).json({ error: "identifier and role (view|edit) are required" });
       }
 
       const collection = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!collection)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!collection) return res.status(404).json({ error: "Collection not found" });
 
       // Resolve user by email or username
       const grantee = await prisma.user.findFirst({
         where: {
           isActive: true,
-          OR: [
-            { email: identifier.toLowerCase() },
-            { username: identifier },
-            { name: identifier },
-          ],
+          OR: [{ email: identifier.toLowerCase() }, { username: identifier }, { name: identifier }],
         },
         select: { id: true, name: true, email: true },
       });
@@ -315,15 +298,13 @@ export const registerCollectionRoutes = (
       const collection = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!collection)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!collection) return res.status(404).json({ error: "Collection not found" });
 
       const share = await prisma.collectionShare.updateMany({
         where: { collectionId: id, granteeUserId: userId },
         data: { role, updatedAt: new Date() },
       });
-      if (share.count === 0)
-        return res.status(404).json({ error: "Share not found" });
+      if (share.count === 0) return res.status(404).json({ error: "Share not found" });
       invalidateDrawingsCache();
 
       return res.json({ success: true });
@@ -341,8 +322,7 @@ export const registerCollectionRoutes = (
       const collection = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!collection)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!collection) return res.status(404).json({ error: "Collection not found" });
 
       const deleted = await prisma.collectionShare.deleteMany({
         where: { collectionId: id, granteeUserId: userId },
@@ -369,8 +349,7 @@ export const registerCollectionRoutes = (
       const collection = await prisma.collection.findFirst({
         where: { id, userId: req.user.id },
       });
-      if (!collection)
-        return res.status(404).json({ error: "Collection not found" });
+      if (!collection) return res.status(404).json({ error: "Collection not found" });
 
       // Get already-shared user IDs to exclude them
       const existing = await prisma.collectionShare.findMany({

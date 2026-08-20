@@ -236,8 +236,7 @@ export const Dashboard: React.FC = () => {
         onDrop={(e) => {
           setIsDraggingFile(false);
           dragCounter.current = 0;
-          const target =
-            selectedCollectionId === undefined ? null : selectedCollectionId;
+          const target = selectedCollectionId === undefined ? null : selectedCollectionId;
           if (actions.isSharedView) return;
           actions.handleDrop(e, target);
         }}
@@ -266,16 +265,12 @@ export const Dashboard: React.FC = () => {
           onDragStart={actions.handleCardDragStart}
           onPreviewGenerated={actions.handlePreviewGenerated}
         />{" "}
-        <div
-          ref={loaderRef}
-          className="py-8 flex justify-center items-center h-20"
-        >
+        <div ref={loaderRef} className="py-8 flex justify-center items-center h-20">
           {" "}
           {isFetchingMore && (
             <div className="flex items-center gap-2 text-indigo-600 font-bold animate-in fade-in slide-in-from-bottom-2">
               {" "}
-              <Loader2 size={24} className="animate-spin" />{" "}
-              <span>Loading more...</span>{" "}
+              <Loader2 size={24} className="animate-spin" /> <span>Loading more...</span>{" "}
             </div>
           )}{" "}
         </div>{" "}
@@ -286,8 +281,7 @@ export const Dashboard: React.FC = () => {
         message="Are you sure you want to permanently delete this drawing? This action cannot be undone."
         confirmText="Delete Permanently"
         onConfirm={() =>
-          actions.drawingToDelete &&
-          actions.executePermanentDelete(actions.drawingToDelete)
+          actions.drawingToDelete && actions.executePermanentDelete(actions.drawingToDelete)
         }
         onCancel={() => actions.setDrawingToDelete(null)}
       />{" "}
@@ -306,12 +300,8 @@ export const Dashboard: React.FC = () => {
         confirmText="OK"
         showCancel={false}
         isDangerous={false}
-        onConfirm={() =>
-          actions.setShowImportError({ isOpen: false, message: "" })
-        }
-        onCancel={() =>
-          actions.setShowImportError({ isOpen: false, message: "" })
-        }
+        onConfirm={() => actions.setShowImportError({ isOpen: false, message: "" })}
+        onCancel={() => actions.setShowImportError({ isOpen: false, message: "" })}
       />{" "}
     </Layout>
   );

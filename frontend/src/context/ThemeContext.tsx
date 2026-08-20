@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import * as api from '../api';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import * as api from "../api";
 
-type Theme = 'light' | 'dark';
+type Theme = "light" | "dark";
 
 interface ThemeContextType {
   theme: Theme;
@@ -12,16 +12,17 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<Theme>(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'light';
+    const savedTheme = localStorage.getItem("theme");
+    return savedTheme === "dark" || savedTheme === "light" ? savedTheme : "light";
   });
 
   useEffect(() => {
     let cancelled = false;
-    api.getUserPreferences()
+    api
+      .getUserPreferences()
       .then((preferences) => {
         if (cancelled) return;
-        if (preferences.theme === 'dark' || preferences.theme === 'light') {
+        if (preferences.theme === "dark" || preferences.theme === "light") {
           setTheme(preferences.theme);
         }
       })
@@ -34,23 +35,23 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('theme', theme);
+    localStorage.setItem("theme", theme);
 
     const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
     if (link) {
-      link.href = theme === 'dark' ? '/favicon-dark.svg' : '/favicon-light.svg';
+      link.href = theme === "dark" ? "/favicon-dark.svg" : "/favicon-light.svg";
     }
 
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, [theme]);
 
   const toggleTheme = () => {
     setTheme((prev) => {
-      const next = prev === 'light' ? 'dark' : 'light';
+      const next = prev === "light" ? "dark" : "light";
       api.updateUserPreferences({ theme: next }).catch(() => {
         // Keep local preference even when the user is anonymous/offline.
       });
@@ -58,17 +59,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    throw new Error("useTheme must be used within a ThemeProvider");
   }
   return context;
 };

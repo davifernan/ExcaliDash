@@ -58,8 +58,10 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
-  const { previewSvg, hasEmbeddedImages, buildExportDrawing } =
-    useDrawingPreview(drawing, onPreviewGenerated);
+  const { previewSvg, hasEmbeddedImages, buildExportDrawing } = useDrawingPreview(
+    drawing,
+    onPreviewGenerated,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -211,11 +213,7 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
             />
           ) : (
             <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm flex items-center justify-center text-neutral-300 dark:text-neutral-400 border border-neutral-100 dark:border-neutral-800 transform group-hover:scale-105 group-hover:rotate-1 transition-all duration-500">
-              <PenTool
-                size={32}
-                strokeWidth={1.5}
-                className="sm:w-9 sm:h-9 lg:w-10 lg:h-10"
-              />
+              <PenTool size={32} strokeWidth={1.5} className="sm:w-9 sm:h-9 lg:w-10 lg:h-10" />
             </div>
           )}
         </button>
@@ -273,9 +271,7 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
                 isShared={isShared}
                 isSharedCollection={isSharedCollection}
                 isOpen={showCollectionDropdown}
-                onToggle={() =>
-                  setShowCollectionDropdown(!showCollectionDropdown)
-                }
+                onToggle={() => setShowCollectionDropdown(!showCollectionDropdown)}
                 onClose={() => setShowCollectionDropdown(false)}
                 onMoveToCollection={onMoveToCollection}
               />

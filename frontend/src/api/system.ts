@@ -13,9 +13,7 @@ export type UpdateInfo = {
   error?: string;
 };
 
-export const getUpdateInfo = async (
-  channel: UpdateChannel,
-): Promise<UpdateInfo> => {
+export const getUpdateInfo = async (channel: UpdateChannel): Promise<UpdateInfo> => {
   const response = await api.get<UpdateInfo>("/system/update", {
     params: { channel },
   });

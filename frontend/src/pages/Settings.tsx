@@ -39,11 +39,10 @@ export const Settings: React.FC = () => {
     isOpen: boolean;
     nextEnabled: boolean | null;
   }>({ isOpen: false, nextEnabled: null });
-  const [authDisableFinalConfirmOpen, setAuthDisableFinalConfirmOpen] =
-    useState(false);
-  const [backupExportExt, setBackupExportExt] = useState<
-    "excalidash" | "excalidash.zip"
-  >("excalidash");
+  const [authDisableFinalConfirmOpen, setAuthDisableFinalConfirmOpen] = useState(false);
+  const [backupExportExt, setBackupExportExt] = useState<"excalidash" | "excalidash.zip">(
+    "excalidash",
+  );
   const [backupImportConfirmation, setBackupImportConfirmation] = useState<{
     isOpen: boolean;
     file: File | null;
@@ -111,18 +110,14 @@ export const Settings: React.FC = () => {
       const info = await api.getUpdateInfo(channel);
       setUpdateInfo(info);
       try {
-        window.localStorage?.setItem?.(
-          `${UPDATE_INFO_KEY}:${channel}`,
-          JSON.stringify(info),
-        );
+        window.localStorage?.setItem?.(`${UPDATE_INFO_KEY}:${channel}`, JSON.stringify(info));
       } catch {
         // Ignore unavailable storage in private/embedded contexts.
       }
     } catch (err: unknown) {
       let message = "Failed to check for updates";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setUpdateError(message);
     } finally {
@@ -141,17 +136,14 @@ export const Settings: React.FC = () => {
         bootstrapRequired?: boolean;
       }>("/auth/auth-enabled", { enabled });
       if (response.data.authEnabled) {
-        window.location.href = response.data.bootstrapRequired
-          ? "/register"
-          : "/login";
+        window.location.href = response.data.bootstrapRequired ? "/register" : "/login";
         return;
       }
       window.location.reload();
     } catch (err: unknown) {
       let message = "Failed to update authentication setting";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setAuthToggleError(message);
     } finally {
@@ -211,8 +203,7 @@ export const Settings: React.FC = () => {
         info: {
           formatVersion: response.data.formatVersion,
           exportedAt: response.data.exportedAt,
-          excalidashBackendVersion:
-            response.data.excalidashBackendVersion ?? null,
+          excalidashBackendVersion: response.data.excalidashBackendVersion ?? null,
           collections: response.data.collections,
           drawings: response.data.drawings,
         },
@@ -221,8 +212,7 @@ export const Settings: React.FC = () => {
       console.error("Backup verify failed:", err);
       let message = "Failed to verify backup file.";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setBackupImportError({ isOpen: true, message });
     } finally {
@@ -257,8 +247,7 @@ export const Settings: React.FC = () => {
       console.error("Legacy DB verify failed:", err);
       let message = "Failed to verify legacy database file.";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setImportError({ isOpen: true, message });
     } finally {
@@ -271,9 +260,7 @@ export const Settings: React.FC = () => {
     setCollections(newCollections);
   };
   const handleEditCollection = async (id: string, name: string) => {
-    setCollections((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, name } : c)),
-    );
+    setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
     await api.updateCollection(id, name);
   };
   const handleDeleteCollection = async (id: string) => {
@@ -305,9 +292,7 @@ export const Settings: React.FC = () => {
       {authToggleError && (
         <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-xl">
           {" "}
-          <p className="text-red-800 dark:text-red-200 font-medium">
-            {authToggleError}
-          </p>{" "}
+          <p className="text-red-800 dark:text-red-200 font-medium">{authToggleError}</p>{" "}
         </div>
       )}{" "}
       <SettingsMainGrid

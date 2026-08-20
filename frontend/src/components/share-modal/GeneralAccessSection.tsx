@@ -48,11 +48,7 @@ export const GeneralAccessSection: React.FC<Props> = ({
             : "bg-slate-50 dark:bg-neutral-800 text-slate-400 dark:text-neutral-500 border-slate-400 dark:border-neutral-600",
         )}
       >
-        {activeLink ? (
-          <Globe size={18} strokeWidth={3} />
-        ) : (
-          <Lock size={18} strokeWidth={3} />
-        )}
+        {activeLink ? <Globe size={18} strokeWidth={3} /> : <Lock size={18} strokeWidth={3} />}
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col gap-0">
@@ -81,8 +77,8 @@ export const GeneralAccessSection: React.FC<Props> = ({
         {activeLink && (
           <div className="pt-3.5 space-y-3.5 animate-in fade-in slide-in-from-top-1 duration-200">
             <p className="text-[9px] font-black text-slate-500 dark:text-neutral-400 px-0.5">
-              {formatAutoDisableText(activeLink.expiresAt)} When it disables,
-              General access switches back to Restricted.
+              {formatAutoDisableText(activeLink.expiresAt)} When it disables, General access
+              switches back to Restricted.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <CustomSelect
@@ -92,13 +88,7 @@ export const GeneralAccessSection: React.FC<Props> = ({
                   { label: "Viewer", value: "view" },
                   { label: "Editor", value: "edit" },
                 ]}
-                icon={
-                  <Shield
-                    size={12}
-                    strokeWidth={2.5}
-                    className="text-slate-400"
-                  />
-                }
+                icon={<Shield size={12} strokeWidth={2.5} className="text-slate-400" />}
                 variant="bordered"
               />
 
@@ -109,18 +99,8 @@ export const GeneralAccessSection: React.FC<Props> = ({
                   if (value !== "custom")
                     void handleUpdateLink(undefined, calculateExpiresAt(value));
                 }}
-                options={
-                  linkPermission === "edit"
-                    ? EXPIRY_OPTIONS_FOR_EDIT
-                    : EXPIRY_OPTIONS
-                }
-                icon={
-                  <Calendar
-                    size={12}
-                    strokeWidth={2.5}
-                    className="text-slate-400"
-                  />
-                }
+                options={linkPermission === "edit" ? EXPIRY_OPTIONS_FOR_EDIT : EXPIRY_OPTIONS}
+                icon={<Calendar size={12} strokeWidth={2.5} className="text-slate-400" />}
                 variant="bordered"
               />
             </div>
@@ -144,9 +124,7 @@ export const GeneralAccessSection: React.FC<Props> = ({
                     className="text-amber-600 shrink-0 mt-0.5"
                   />
                   <div className="text-[10px] text-amber-900 dark:text-amber-200 font-black leading-relaxed">
-                    <span className="uppercase tracking-[0.1em] text-[8px]">
-                      Security Warning
-                    </span>
+                    <span className="uppercase tracking-[0.1em] text-[8px]">Security Warning</span>
                     <br />
                     Edit access via link is sensitive.
                   </div>

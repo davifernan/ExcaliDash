@@ -13,7 +13,7 @@ export type AuthModeService = ReturnType<typeof createAuthModeService>;
 
 export const createAuthModeService = (
   prisma: PrismaClient,
-  options?: { authEnabledTtlMs?: number }
+  options?: { authEnabledTtlMs?: number },
 ) => {
   const authEnabledTtlMs = options?.authEnabledTtlMs ?? 5000;
   let authEnabledCache: AuthEnabledCache | null = null;

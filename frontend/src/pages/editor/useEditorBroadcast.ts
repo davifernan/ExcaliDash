@@ -47,22 +47,16 @@ export const useEditorBroadcast = ({
 }: UseEditorBroadcastParams) => {
   const timeoutRef = useRef<number | null>(null);
   const lastRunAtRef = useRef(0);
-  const trailingArgsRef = useRef<
-    [readonly any[], Record<string, any> | undefined] | null
-  >(null);
+  const trailingArgsRef = useRef<[readonly any[], Record<string, any> | undefined] | null>(null);
 
   const emitChanges = useCallback(
     (elements: readonly any[], currentFiles?: Record<string, any>) => {
       if (!socketRef.current || !drawingId) return;
       const changes: any[] = [];
       const nextFiles = currentFiles || excalidrawAPI.current?.getFiles() || {};
-      const normalizedElements = normalizeImageElementStatus(
-        elements,
-        nextFiles,
-      );
+      const normalizedElements = normalizeImageElementStatus(elements, nextFiles);
       const nextOrderSig = computeElementOrderSig(normalizedElements);
-      const shouldSyncOrder =
-        nextOrderSig !== lastSyncedElementOrderSigRef.current;
+      const shouldSyncOrder = nextOrderSig !== lastSyncedElementOrderSigRef.current;
       if (shouldSyncOrder) {
         lastSyncedElementOrderSigRef.current = nextOrderSig;
       }

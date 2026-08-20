@@ -3,7 +3,18 @@ import { Prisma } from "../generated/client";
 import { logAuditEvent } from "../utils/audit";
 import type { RegisterOidcRoutesDeps } from "./oidcRoutes";
 import { hashTokenForStorage } from "./tokenSecurity";
-import { canUseIdTokenSigningAlg, decodeFlowPayload, normalizeClaimGroups, normalizeEmail, OIDC_FLOW_COOKIE_NAME, OIDC_PROVIDER_KEY, parseJwtAlgMismatchError, readBooleanClaim, readClaimByPath, readStringClaim } from "./oidcRouteHelpers";
+import {
+  canUseIdTokenSigningAlg,
+  decodeFlowPayload,
+  normalizeClaimGroups,
+  normalizeEmail,
+  OIDC_FLOW_COOKIE_NAME,
+  OIDC_PROVIDER_KEY,
+  parseJwtAlgMismatchError,
+  readBooleanClaim,
+  readClaimByPath,
+  readStringClaim,
+} from "./oidcRouteHelpers";
 
 type OidcUser = {
   id: string;
@@ -17,13 +28,33 @@ type OidcUser = {
 
 type RegisterOidcCallbackRouteDeps = RegisterOidcRoutesDeps & {
   clearOidcFlowCookie: (req: Request, res: Response) => void;
-  redirectToLoginWithError: (req: Request, res: Response, errorCode: string, returnTo?: string) => void;
+  redirectToLoginWithError: (
+    req: Request,
+    res: Response,
+    errorCode: string,
+    returnTo?: string,
+  ) => void;
   getOidcClient: () => Promise<any>;
   buildOidcClient: (idTokenSignedResponseAlgOverride?: string | null) => Promise<any>;
 };
 
 export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) => {
-  const { router, prisma, ensureAuthEnabled, ensureSystemConfig, sanitizeText, generateTokens, setAuthCookies, getRefreshTokenExpiresAt, isMissingRefreshTokenTableError, config, clearOidcFlowCookie, redirectToLoginWithError, getOidcClient, buildOidcClient } = deps;
+  const {
+    router,
+    prisma,
+    ensureAuthEnabled,
+    ensureSystemConfig,
+    sanitizeText,
+    generateTokens,
+    setAuthCookies,
+    getRefreshTokenExpiresAt,
+    isMissingRefreshTokenTableError,
+    config,
+    clearOidcFlowCookie,
+    redirectToLoginWithError,
+    getOidcClient,
+    buildOidcClient,
+  } = deps;
   const userSelect = {
     id: true,
     username: true,
@@ -33,10 +64,7 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
     mustResetPassword: true,
     isActive: true,
   } as const;
-  const ensureTrashCollection = async (
-    tx: Prisma.TransactionClient,
-    userId: string,
-  ) => {
+  const ensureTrashCollection = async (tx: Prisma.TransactionClient, userId: string) => {
     const trashCollectionId = `trash:${userId}`;
     const existingTrash = await tx.collection.findFirst({
       where: { id: trashCollectionId, userId },
@@ -73,12 +101,7 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
     try {
       if (!(await ensureAuthEnabled(res))) return;
       if (typeof req.query.error === "string") {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "provider_error",
-          flow.returnTo,
-        );
+        return redirectToLoginWithError(req, res, "provider_error", flow.returnTo);
       }
       const client = await getOidcClient();
       const params = client.callbackParams(req);
@@ -89,23 +112,14 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
       };
       let tokenSet;
       try {
-        tokenSet = await client.callback(
-          config.oidc.redirectUri as string,
-          params,
-          checks,
-        );
+        tokenSet = await client.callback(config.oidc.redirectUri as string, params, checks);
       } catch (error) {
         const mismatch = parseJwtAlgMismatchError(error);
-        const hasExplicitAlgOverride = Boolean(
-          config.oidc.idTokenSignedResponseAlg,
-        );
+        const hasExplicitAlgOverride = Boolean(config.oidc.idTokenSignedResponseAlg);
         const canRetryWithObservedAlg =
           !hasExplicitAlgOverride &&
           mismatch !== null &&
-          canUseIdTokenSigningAlg(
-            mismatch.got,
-            Boolean(config.oidc.clientSecret),
-          );
+          canUseIdTokenSigningAlg(mismatch.got, Boolean(config.oidc.clientSecret));
         if (!canRetryWithObservedAlg) {
           throw error;
         }
@@ -113,11 +127,7 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
           `OIDC callback id_token alg mismatch (expected ${mismatch.expected}, got ${mismatch.got}); retrying once with ${mismatch.got}.`,
         );
         const retryClient = await buildOidcClient(mismatch.got);
-        tokenSet = await retryClient.callback(
-          config.oidc.redirectUri as string,
-          params,
-          checks,
-        );
+        tokenSet = await retryClient.callback(config.oidc.redirectUri as string, params, checks);
       }
       const idTokenClaims = tokenSet.claims() as Record<string, unknown>;
       let userinfoClaims: Record<string, unknown> = {};
@@ -126,10 +136,7 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
         !readStringClaim(idTokenClaims, "email");
       if (emailMissingFromIdToken) {
         try {
-          userinfoClaims = (await client.userinfo(tokenSet)) as Record<
-            string,
-            unknown
-          >;
+          userinfoClaims = (await client.userinfo(tokenSet)) as Record<string, unknown>;
         } catch (userinfoError) {
           console.error(
             "OIDC: userinfo request failed, falling back to ID token claims only:",
@@ -144,23 +151,12 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
       const issuer = client.issuer.issuer;
       const subject = readStringClaim(claims, "sub");
       if (!subject) {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "missing_subject",
-          flow.returnTo,
-        );
+        return redirectToLoginWithError(req, res, "missing_subject", flow.returnTo);
       }
       const rawEmail =
-        readStringClaim(claims, config.oidc.emailClaim) ??
-        readStringClaim(claims, "email");
+        readStringClaim(claims, config.oidc.emailClaim) ?? readStringClaim(claims, "email");
       if (!rawEmail) {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "missing_email",
-          flow.returnTo,
-        );
+        return redirectToLoginWithError(req, res, "missing_email", flow.returnTo);
       }
       const normalizedEmail = normalizeEmail(rawEmail);
       const systemConfig = await ensureSystemConfig();
@@ -171,29 +167,16 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
       // Trust email verification only from the signed ID token, never from the
       // unsigned UserInfo response — otherwise a provider/tenant that lets a
       // user assert email_verified could match an existing account by email.
-      const emailVerified = readBooleanClaim(
-        idTokenClaims,
-        config.oidc.emailVerifiedClaim,
-      );
+      const emailVerified = readBooleanClaim(idTokenClaims, config.oidc.emailVerifiedClaim);
       if (config.oidc.requireEmailVerified && emailVerified !== true) {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "unverified_email",
-          flow.returnTo,
-        );
+        return redirectToLoginWithError(req, res, "unverified_email", flow.returnTo);
       }
       const oidcGroups = Array.from(
-        new Set(
-          normalizeClaimGroups(
-            readClaimByPath(claims, config.oidc.groupsClaim),
-          ),
-        ),
+        new Set(normalizeClaimGroups(readClaimByPath(claims, config.oidc.groupsClaim))),
       );
       const adminGroups = new Set(config.oidc.adminGroups);
       const shouldBeAdmin =
-        adminGroups.size > 0 &&
-        oidcGroups.some((group) => adminGroups.has(group));
+        adminGroups.size > 0 && oidcGroups.some((group) => adminGroups.has(group));
       const user = await prisma.$transaction(async (tx) => {
         const linkedIdentity = await tx.authIdentity.findUnique({
           where: { issuer_subject: { issuer, subject } },
@@ -229,8 +212,7 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
             normalizedEmail.split("@")[0] ??
             "User";
           const sanitizedName = sanitizeText(defaultName, 100) || "User";
-          const role =
-            activeUsers === 0 && config.oidc.firstUserAdmin ? "ADMIN" : "USER";
+          const role = activeUsers === 0 && config.oidc.firstUserAdmin ? "ADMIN" : "USER";
           resolvedUser = await tx.user.create({
             data: {
               email: normalizedEmail,
@@ -289,18 +271,12 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
         return resolvedUser;
       });
       if (!user.isActive) {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "account_inactive",
-          flow.returnTo,
-        );
+        return redirectToLoginWithError(req, res, "account_inactive", flow.returnTo);
       }
-      const { accessToken, refreshToken } = generateTokens(
-        user.id,
-        user.email,
-        { authProvider: "oidc", oidcGroups },
-      );
+      const { accessToken, refreshToken } = generateTokens(user.id, user.email, {
+        authProvider: "oidc",
+        oidcGroups,
+      });
       setAuthCookies(req, res, { accessToken, refreshToken });
       if (config.enableRefreshTokenRotation) {
         const expiresAt = getRefreshTokenExpiresAt();
@@ -314,12 +290,7 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
           });
         } catch (error) {
           if (isMissingRefreshTokenTableError(error)) {
-            return redirectToLoginWithError(
-              req,
-              res,
-              "callback_failed",
-              flow.returnTo,
-            );
+            return redirectToLoginWithError(req, res, "callback_failed", flow.returnTo);
           }
           throw error;
         }
@@ -335,34 +306,14 @@ export const registerOidcCallbackRoute = (deps: RegisterOidcCallbackRouteDeps) =
       }
       return res.redirect(flow.returnTo || "/");
     } catch (error) {
-      if (
-        error instanceof Error &&
-        /OIDC provisioning disabled/i.test(error.message)
-      ) {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "provisioning_disabled",
-          flow.returnTo,
-        );
+      if (error instanceof Error && /OIDC provisioning disabled/i.test(error.message)) {
+        return redirectToLoginWithError(req, res, "provisioning_disabled", flow.returnTo);
       }
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
-      ) {
-        return redirectToLoginWithError(
-          req,
-          res,
-          "callback_failed",
-          flow.returnTo,
-        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return redirectToLoginWithError(req, res, "callback_failed", flow.returnTo);
       }
       console.error("OIDC callback error:", error);
-      return redirectToLoginWithError(
-        req,
-        res,
-        "callback_failed",
-        flow.returnTo,
-      );
+      return redirectToLoginWithError(req, res, "callback_failed", flow.returnTo);
     }
-  });};
+  });
+};

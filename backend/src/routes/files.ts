@@ -6,10 +6,7 @@
  */
 import express from "express";
 import { PrismaClient } from "../generated/client";
-import {
-  isS3Enabled,
-  generatePresignedDownloadUrl,
-} from "../s3";
+import { isS3Enabled, generatePresignedDownloadUrl } from "../s3";
 import { canViewDrawing, getDrawingAccess } from "../authz/sharing";
 
 const DOWNLOAD_EXPIRES_IN = 3600; // 1 hour   – cached by browser
@@ -23,14 +20,11 @@ export type FileRouteDeps = {
   requireAuth: express.RequestHandler;
   optionalAuth: express.RequestHandler;
   asyncHandler: <T = void>(
-    fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<T>
+    fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<T>,
   ) => express.RequestHandler;
 };
 
-export const registerFileRoutes = (
-  app: express.Express,
-  deps: FileRouteDeps
-): void => {
+export const registerFileRoutes = (app: express.Express, deps: FileRouteDeps): void => {
   const { prisma, requireAuth, optionalAuth, asyncHandler } = deps;
 
   // ------------------------------------------------------------------
@@ -43,7 +37,7 @@ export const registerFileRoutes = (
     requireAuth,
     asyncHandler(async (_req, res) => {
       return res.json({ s3Enabled: isS3Enabled() });
-    })
+    }),
   );
 
   // ------------------------------------------------------------------
@@ -73,8 +67,7 @@ export const registerFileRoutes = (
         principal:
           req.user?.authCredentialType === "bootstrap" && req.user.id
             ? { kind: "user", userId: req.user.id, allowInactive: true }
-            : req.principal ??
-              (req.user?.id ? { kind: "user", userId: req.user.id } : null),
+            : (req.principal ?? (req.user?.id ? { kind: "user", userId: req.user.id } : null)),
         drawingId,
       });
       if (!canViewDrawing(access)) {
@@ -88,12 +81,9 @@ export const registerFileRoutes = (
         return res.status(404).json({ error: "File not found" });
       }
 
-      const downloadUrl = await generatePresignedDownloadUrl(
-        fileRecord.s3Key,
-        DOWNLOAD_EXPIRES_IN
-      );
+      const downloadUrl = await generatePresignedDownloadUrl(fileRecord.s3Key, DOWNLOAD_EXPIRES_IN);
 
       return res.redirect(302, downloadUrl);
-    })
+    }),
   );
 };

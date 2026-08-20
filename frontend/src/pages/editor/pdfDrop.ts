@@ -24,9 +24,7 @@ export const getPdfUploadErrorMessage = (error: unknown): string => {
   const serverMessage = responseMessage(error);
   if (status === 413) {
     const limit = serverMessage?.match(/(\d+(?:\.\d+)?)\s*MB/i)?.[1];
-    return limit
-      ? `The file is too large (max ${limit} MB).`
-      : "The file is too large.";
+    return limit ? `The file is too large (max ${limit} MB).` : "The file is too large.";
   }
   if (status === 507) return "No storage space is available.";
   if (status === 422) return serverMessage || "The PDF could not be read.";
@@ -83,9 +81,7 @@ export const addDroppedPdfWidgets = async ({
   canvasApi.updateScene({
     elements: [...canvasApi.getSceneElementsIncludingDeleted(), ...elements],
     appState: {
-      selectedElementIds: Object.fromEntries(
-        elements.map((element) => [element.id, true]),
-      ),
+      selectedElementIds: Object.fromEntries(elements.map((element) => [element.id, true])),
     },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });

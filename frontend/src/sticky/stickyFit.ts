@@ -90,11 +90,7 @@ function layoutAt(container: any, text: any, fontSize: number): StickyFit | null
  * Walks down rather than binary-searching: the ladder is a handful of entries,
  * and a walk cannot pick a size that the step above would also have passed.
  */
-export function fitTextToNote(
-  container: any,
-  text: any,
-  baseFontSize: number,
-): StickyFit | null {
+export function fitTextToNote(container: any, text: any, baseFontSize: number): StickyFit | null {
   if (!container || !text) return null;
 
   const available = container.height - BOUND_TEXT_PADDING * 2;

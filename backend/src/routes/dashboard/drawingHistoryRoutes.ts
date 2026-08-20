@@ -1,9 +1,6 @@
 import express from "express";
 import { canEditDrawing, canViewDrawing, getDrawingAccess } from "../../authz/sharing";
-import {
-  decodeSnapshotField,
-  encodeSnapshotField,
-} from "../../snapshots/snapshotCodec";
+import { decodeSnapshotField, encodeSnapshotField } from "../../snapshots/snapshotCodec";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
 export const registerDrawingHistoryRoutes = (
@@ -79,8 +76,7 @@ export const registerDrawingHistoryRoutes = (
       const snapshot = await prisma.drawingSnapshot.findFirst({
         where: { id: snapshotId, drawingId: id },
       });
-      if (!snapshot)
-        return res.status(404).json({ error: "Snapshot not found" });
+      if (!snapshot) return res.status(404).json({ error: "Snapshot not found" });
 
       return res.json({
         ...snapshot,
@@ -115,8 +111,7 @@ export const registerDrawingHistoryRoutes = (
         }),
       ]);
       if (!drawing) return res.status(404).json({ error: "Drawing not found" });
-      if (!snapshot)
-        return res.status(404).json({ error: "Snapshot not found" });
+      if (!snapshot) return res.status(404).json({ error: "Snapshot not found" });
 
       // Snapshot current state before restoring (so restore is reversible)
       const compress = config.enableSnapshotCompression;

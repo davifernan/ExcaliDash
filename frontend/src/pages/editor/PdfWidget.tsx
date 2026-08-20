@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
-import {
-  getPdfAsset,
-  getPdfOriginalUrl,
-  getPdfPageUrl,
-  type PdfAsset,
-} from "../../api";
+import { getPdfAsset, getPdfOriginalUrl, getPdfPageUrl, type PdfAsset } from "../../api";
 import "./PdfWidget.css";
 
 type PdfWidgetProps = {
@@ -58,17 +53,11 @@ export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
     if (!asset) return;
     directionRef.current = direction;
     setPageError(null);
-    setRequestedPage((current) =>
-      Math.min(asset.pageCount, Math.max(1, current + direction)),
-    );
+    setRequestedPage((current) => Math.min(asset.pageCount, Math.max(1, current + direction)));
   };
 
-  const requestedPageUrl = asset
-    ? getPdfPageUrl(drawingId, assetId, requestedPage)
-    : null;
-  const displayedPageUrl = displayedPage
-    ? getPdfPageUrl(drawingId, assetId, displayedPage)
-    : null;
+  const requestedPageUrl = asset ? getPdfPageUrl(drawingId, assetId, requestedPage) : null;
+  const displayedPageUrl = displayedPage ? getPdfPageUrl(drawingId, assetId, displayedPage) : null;
 
   return (
     <div

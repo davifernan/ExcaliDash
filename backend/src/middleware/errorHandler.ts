@@ -18,7 +18,7 @@ export const errorHandler = (
   err: AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   const statusCode = err.statusCode || 500;
   const isDevelopment = config.nodeEnv === "development";
@@ -60,7 +60,7 @@ export const errorHandler = (
  * Wraps async route handlers to catch errors
  */
 export const asyncHandler = <T = void>(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<T>
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<T>,
 ) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch(next);
@@ -70,10 +70,7 @@ export const asyncHandler = <T = void>(
 /**
  * Create an operational error (known error that can be safely shown to client)
  */
-export const createError = (
-  message: string,
-  statusCode: number = 400
-): AppError => {
+export const createError = (message: string, statusCode: number = 400): AppError => {
   const error: AppError = new Error(message);
   error.statusCode = statusCode;
   error.isOperational = true;

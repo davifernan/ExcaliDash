@@ -2,10 +2,7 @@ import type { PrismaClient } from "../generated/client";
 import type { DrawingPrincipal } from "../authz/sharing";
 
 export type CollaborationAccessController = {
-  recheckDrawingAccess: (
-    drawingId: string,
-    affectedUserId?: string,
-  ) => Promise<void>;
+  recheckDrawingAccess: (drawingId: string, affectedUserId?: string) => Promise<void>;
   recheckUserAccess: (affectedUserId: string) => Promise<void>;
   disconnectApiKey: (apiKeyId: string) => Promise<void>;
 };
@@ -19,9 +16,7 @@ export const createCollaborationAccessController = ({
 }: {
   prisma: PrismaClient;
   principals: Map<string, DrawingPrincipal>;
-  recheckSockets: (
-    matches: (socketId: string, drawingId: string) => boolean,
-  ) => Promise<void>;
+  recheckSockets: (matches: (socketId: string, drawingId: string) => boolean) => Promise<void>;
   disconnectInactiveUserSockets: (userId: string) => Promise<void>;
   disconnectApiKey: (apiKeyId: string) => Promise<void>;
 }): CollaborationAccessController => ({
@@ -40,9 +35,7 @@ export const createCollaborationAccessController = ({
       await disconnectInactiveUserSockets(affectedUserId);
       return;
     }
-    await recheckSockets(
-      (socketId) => principals.get(socketId)?.userId === affectedUserId,
-    );
+    await recheckSockets((socketId) => principals.get(socketId)?.userId === affectedUserId);
   },
   disconnectApiKey,
 });

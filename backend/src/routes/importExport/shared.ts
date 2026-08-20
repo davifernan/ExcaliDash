@@ -29,7 +29,7 @@ export const excalidashManifestSchemaV1 = z.object({
       folder: z.string().min(1),
       createdAt: z.string().optional(),
       updatedAt: z.string().optional(),
-    })
+    }),
   ),
   drawings: z.array(
     z.object({
@@ -40,7 +40,7 @@ export const excalidashManifestSchemaV1 = z.object({
       version: z.number().int().optional(),
       createdAt: z.string().optional(),
       updatedAt: z.string().optional(),
-    })
+    }),
   ),
 });
 
@@ -56,36 +56,44 @@ export const excalidashManifestSchemaV2 = z.object({
   unorganizedFolder: z.string().min(1),
   collections: z.array(manifestCollectionSchema),
   drawings: z.array(manifestDrawingSchema),
-  blobs: z.array(z.object({
-    id: z.string().min(1),
-    filePath: z.string().min(1),
-    sha256: z.string().regex(/^[a-f0-9]{64}$/),
-    sizeBytes: z.number().int().nonnegative(),
-    contentEncoding: z.enum(["br"]).nullable(),
-  })),
-  assets: z.array(z.object({
-    id: z.string().min(1),
-    blobId: z.string().min(1),
-    kind: z.enum(["PDF", "MARKDOWN", "TEXT"]),
-    originalName: z.string(),
-    mimeType: z.string().min(1),
-    pageCount: z.number().int().positive().nullable(),
-    status: z.string().min(1),
-  })),
-  drawingAssets: z.array(z.object({
-    drawingId: z.string().min(1),
-    assetId: z.string().min(1),
-    state: z.enum(["PENDING", "ACTIVE"]),
-    expiresAt: z.iso.datetime().nullable(),
-  })),
-  snapshots: z.array(z.object({
-    id: z.string().min(1),
-    drawingId: z.string().min(1),
-    filePath: z.string().min(1),
-    version: z.number().int(),
-    createdAt: z.iso.datetime().optional(),
-    assetIds: z.array(z.string().min(1)),
-  })),
+  blobs: z.array(
+    z.object({
+      id: z.string().min(1),
+      filePath: z.string().min(1),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/),
+      sizeBytes: z.number().int().nonnegative(),
+      contentEncoding: z.enum(["br"]).nullable(),
+    }),
+  ),
+  assets: z.array(
+    z.object({
+      id: z.string().min(1),
+      blobId: z.string().min(1),
+      kind: z.enum(["PDF", "MARKDOWN", "TEXT"]),
+      originalName: z.string(),
+      mimeType: z.string().min(1),
+      pageCount: z.number().int().positive().nullable(),
+      status: z.string().min(1),
+    }),
+  ),
+  drawingAssets: z.array(
+    z.object({
+      drawingId: z.string().min(1),
+      assetId: z.string().min(1),
+      state: z.enum(["PENDING", "ACTIVE"]),
+      expiresAt: z.iso.datetime().nullable(),
+    }),
+  ),
+  snapshots: z.array(
+    z.object({
+      id: z.string().min(1),
+      drawingId: z.string().min(1),
+      filePath: z.string().min(1),
+      version: z.number().int(),
+      createdAt: z.iso.datetime().optional(),
+      assetIds: z.array(z.string().min(1)),
+    }),
+  ),
 });
 
 export const excalidashManifestSchema = z.discriminatedUnion("formatVersion", [
@@ -100,7 +108,7 @@ export type RegisterImportExportDeps = {
   prisma: PrismaClient;
   requireAuth: express.RequestHandler;
   asyncHandler: <T = void>(
-    fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<T>
+    fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<T>,
   ) => express.RequestHandler;
   upload: any;
   uploadDir: string;
@@ -112,7 +120,7 @@ export type RegisterImportExportDeps = {
   validateImportedDrawing: (data: unknown) => boolean;
   ensureTrashCollection: (
     db: Prisma.TransactionClient | PrismaClient,
-    userId: string
+    userId: string,
   ) => Promise<void>;
   invalidateDrawingsCache: () => void;
   removeFileIfExists: (filePath?: string) => Promise<void>;
@@ -147,7 +155,6 @@ export const assertSafeArchivePath = (filePath: string) => {
     throw new ImportValidationError(`Unsafe archive path: ${filePath}`);
   }
 };
-
 
 export const sanitizePathSegment = (input: string, fallback: string): string => {
   const value = typeof input === "string" ? input.trim() : "";
@@ -192,16 +199,15 @@ export const getUserTrashCollectionId = (userId: string): string => `trash:${use
 
 export const isTrashCollectionId = (
   collectionId: string | null | undefined,
-  userId: string
+  userId: string,
 ): boolean =>
   Boolean(collectionId) &&
   (collectionId === "trash" || collectionId === getUserTrashCollectionId(userId));
 
 export const toPublicTrashCollectionId = (
   collectionId: string | null | undefined,
-  userId: string
-): string | null =>
-  isTrashCollectionId(collectionId, userId) ? "trash" : collectionId ?? null;
+  userId: string,
+): string | null => (isTrashCollectionId(collectionId, userId) ? "trash" : (collectionId ?? null));
 
 export const findSqliteTable = (tables: string[], candidates: string[]): string | null => {
   const byLower = new Map(tables.map((t) => [t.toLowerCase(), t]));
@@ -228,18 +234,14 @@ export const parseOptionalJson = <T>(raw: unknown, fallback: T): T => {
 
 const isPathInsideDirectory = (candidatePath: string, rootDir: string): boolean => {
   const relativePath = path.relative(rootDir, candidatePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 };
 
-const isSafeMulterTempFilename = (value: string): boolean =>
-  /^[a-f0-9]{32}$/.test(value);
+const isSafeMulterTempFilename = (value: string): boolean => /^[a-f0-9]{32}$/.test(value);
 
 export const resolveSafeUploadedFilePath = async (
   fileMeta: { filename?: unknown },
-  uploadRoot: string
+  uploadRoot: string,
 ): Promise<string> => {
   const absoluteUploadRoot = path.resolve(uploadRoot);
   let canonicalUploadRoot = absoluteUploadRoot;
@@ -279,7 +281,7 @@ export const openReadonlySqliteDb = (filePath: string): any => {
 };
 
 export const getCurrentLatestPrismaMigrationName = async (
-  backendRoot: string
+  backendRoot: string,
 ): Promise<string | null> => {
   const readMigrationDirs = async (migrationsDir: string): Promise<string[]> => {
     const entries = await fsPromises.readdir(migrationsDir, { withFileTypes: true });

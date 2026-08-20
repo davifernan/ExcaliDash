@@ -37,7 +37,7 @@ describe("Layout", () => {
         >
           <div>content</div>
         </Layout>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     fireEvent.mouseDown(screen.getByTitle("Drag to resize sidebar"));
@@ -52,13 +52,13 @@ describe("Layout", () => {
 
     expect(
       removeSpy.mock.calls.some(
-        ([event, handler]) => event === "mousemove" && handler === mouseMoveAdd?.[1]
-      )
+        ([event, handler]) => event === "mousemove" && handler === mouseMoveAdd?.[1],
+      ),
     ).toBe(true);
     expect(
       removeSpy.mock.calls.some(
-        ([event, handler]) => event === "mouseup" && handler === mouseUpAdd?.[1]
-      )
+        ([event, handler]) => event === "mouseup" && handler === mouseUpAdd?.[1],
+      ),
     ).toBe(true);
   });
 });

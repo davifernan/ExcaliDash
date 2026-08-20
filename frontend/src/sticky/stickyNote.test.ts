@@ -68,8 +68,9 @@ describe("recognising a note", () => {
       ...note,
       customData: { ...note.customData, somethingElse: { keep: true } },
     };
-    expect(recolourSticky(withNeighbour, STICKY_COLORS[2]).customData.somethingElse)
-      .toEqual({ keep: true });
+    expect(recolourSticky(withNeighbour, STICKY_COLORS[2]).customData.somethingElse).toEqual({
+      keep: true,
+    });
   });
 });
 

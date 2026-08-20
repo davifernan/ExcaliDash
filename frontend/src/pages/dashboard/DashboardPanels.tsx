@@ -54,9 +54,7 @@ type ViewerActionToastProps = {
   message: string | null;
 };
 
-export const ViewerActionToast: React.FC<ViewerActionToastProps> = ({
-  message,
-}) => {
+export const ViewerActionToast: React.FC<ViewerActionToastProps> = ({ message }) => {
   if (!message) return null;
 
   return (
@@ -67,9 +65,7 @@ export const ViewerActionToast: React.FC<ViewerActionToastProps> = ({
           className="text-amber-600 dark:text-amber-400 shrink-0"
           strokeWidth={3}
         />
-        <span className="text-sm font-black text-amber-900 dark:text-amber-200">
-          {message}
-        </span>
+        <span className="text-sm font-black text-amber-900 dark:text-amber-200">{message}</span>
       </div>
     </div>
   );
@@ -79,9 +75,7 @@ type FileDropOverlayProps = {
   viewTitle: string;
 };
 
-export const FileDropOverlay: React.FC<FileDropOverlayProps> = ({
-  viewTitle,
-}) => (
+export const FileDropOverlay: React.FC<FileDropOverlayProps> = ({ viewTitle }) => (
   <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm border-4 border-dashed border-indigo-400 rounded-3xl flex flex-col items-center justify-center animate-in fade-in duration-200">
     <div className="bg-indigo-50 p-6 sm:p-8 rounded-full mb-5 sm:mb-6 shadow-sm">
       <Inbox size={56} className="text-indigo-600 hidden sm:block" />
@@ -153,10 +147,7 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
   }
 
   const errorNotice = dataStatus.drawingsError ? (
-    <DataFailureNotice
-      message={dataStatus.drawingsError}
-      onRetry={dataStatus.retryDrawings}
-    />
+    <DataFailureNotice message={dataStatus.drawingsError} onRetry={dataStatus.retryDrawings} />
   ) : null;
 
   if (dataStatus.drawingsError && drawings.length === 0) {
@@ -180,78 +171,66 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
         )}
         style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
       >
-      {drawings.length === 0 ? (
-        <div className="col-span-full flex flex-col items-center justify-center py-16 sm:py-32 text-slate-400 dark:text-neutral-500 border-2 border-dashed border-slate-200 dark:border-neutral-700 rounded-3xl bg-slate-50/50 dark:bg-neutral-800/50">
-          <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mb-6">
-            {isTrashView ? (
-              <Trash2
-                size={32}
-                className="text-slate-300 dark:text-slate-600"
-              />
-            ) : (
-              <Inbox size={32} className="text-slate-300 dark:text-slate-600" />
+        {drawings.length === 0 ? (
+          <div className="col-span-full flex flex-col items-center justify-center py-16 sm:py-32 text-slate-400 dark:text-neutral-500 border-2 border-dashed border-slate-200 dark:border-neutral-700 rounded-3xl bg-slate-50/50 dark:bg-neutral-800/50">
+            <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mb-6">
+              {isTrashView ? (
+                <Trash2 size={32} className="text-slate-300 dark:text-slate-600" />
+              ) : (
+                <Inbox size={32} className="text-slate-300 dark:text-slate-600" />
+              )}
+            </div>
+            <p className="text-lg font-semibold text-slate-600 dark:text-slate-400">
+              {isTrashView ? "Your trash is empty" : "No drawings found"}
+            </p>
+            {!isTrashView && (
+              <p className="text-sm mt-2 text-slate-400 dark:text-neutral-500 max-w-xs text-center">
+                {search ? `No results for "${search}"` : "Create a new drawing to get started!"}
+              </p>
+            )}
+            {search && (
+              <button
+                onClick={onClearSearch}
+                className="mt-4 text-indigo-600 dark:text-indigo-400 font-medium hover:underline text-sm"
+              >
+                Clear search
+              </button>
             )}
           </div>
-          <p className="text-lg font-semibold text-slate-600 dark:text-slate-400">
-            {isTrashView ? "Your trash is empty" : "No drawings found"}
-          </p>
-          {!isTrashView && (
-            <p className="text-sm mt-2 text-slate-400 dark:text-neutral-500 max-w-xs text-center">
-              {search
-                ? `No results for "${search}"`
-                : "Create a new drawing to get started!"}
-            </p>
-          )}
-          {search && (
-            <button
-              onClick={onClearSearch}
-              className="mt-4 text-indigo-600 dark:text-indigo-400 font-medium hover:underline text-sm"
-            >
-              Clear search
-            </button>
-          )}
-        </div>
-      ) : (
-        drawings.map((drawing) => {
-          const cardDrawing =
-            isSharedCollection && currentCollection?.sharedRole
-              ? { ...drawing, accessLevel: currentCollection.sharedRole }
-              : drawing;
-          return (
-            <DrawingCard
-              key={drawing.id}
-              drawing={cardDrawing}
-              collections={collections}
-              isSelected={selectedIds.has(drawing.id)}
-              isTrash={isTrashView}
-              isSharedCollection={isSharedCollection}
-              isShared={isSharedView || isSharedCollection}
-              onToggleSelection={(event) =>
-                onToggleSelection(drawing.id, event)
-              }
-              onRename={onRename}
-              onDelete={onDelete}
-              onDuplicate={onDuplicate}
-              onMoveToCollection={onMoveToCollection}
-              onClick={(id, event) => {
-                if (
-                  selectedIds.size > 0 ||
-                  event.shiftKey ||
-                  event.metaKey ||
-                  event.ctrlKey
-                ) {
-                  onToggleSelection(id, event);
-                } else {
-                  onOpenDrawing(id);
-                }
-              }}
-              onMouseDown={onMouseDown}
-              onDragStart={onDragStart}
-              onPreviewGenerated={onPreviewGenerated}
-            />
-          );
-        })
-      )}
+        ) : (
+          drawings.map((drawing) => {
+            const cardDrawing =
+              isSharedCollection && currentCollection?.sharedRole
+                ? { ...drawing, accessLevel: currentCollection.sharedRole }
+                : drawing;
+            return (
+              <DrawingCard
+                key={drawing.id}
+                drawing={cardDrawing}
+                collections={collections}
+                isSelected={selectedIds.has(drawing.id)}
+                isTrash={isTrashView}
+                isSharedCollection={isSharedCollection}
+                isShared={isSharedView || isSharedCollection}
+                onToggleSelection={(event) => onToggleSelection(drawing.id, event)}
+                onRename={onRename}
+                onDelete={onDelete}
+                onDuplicate={onDuplicate}
+                onMoveToCollection={onMoveToCollection}
+                onClick={(id, event) => {
+                  if (selectedIds.size > 0 || event.shiftKey || event.metaKey || event.ctrlKey) {
+                    onToggleSelection(id, event);
+                  } else {
+                    onOpenDrawing(id);
+                  }
+                }}
+                onMouseDown={onMouseDown}
+                onDragStart={onDragStart}
+                onPreviewGenerated={onPreviewGenerated}
+              />
+            );
+          })
+        )}
         {dataStatus.loadMoreError && (
           <div className="col-span-full">
             <DataFailureNotice
@@ -279,10 +258,7 @@ const DataFailureNotice: React.FC<{
     )}
   >
     <div className="flex items-start gap-3">
-      <AlertTriangle
-        size={20}
-        className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
-      />
+      <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
       <span className="text-sm font-bold">{message}</span>
     </div>
     {onRetry && (

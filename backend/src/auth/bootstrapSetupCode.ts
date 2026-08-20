@@ -36,7 +36,7 @@ const generateBootstrapSetupCode = (): string => {
 
 const getBootstrapState = async (
   prisma: PrismaClient,
-  options: { authMode: "local" | "hybrid" | "oidc_enforced" }
+  options: { authMode: "local" | "hybrid" | "oidc_enforced" },
 ) => {
   const [systemConfig, bootstrapUser, activeUsers] = await Promise.all([
     prisma.systemConfig.upsert({
@@ -65,7 +65,7 @@ const getBootstrapState = async (
 
 export const shouldRequireBootstrapSetupCode = async (
   prisma: PrismaClient,
-  options: { authMode: "local" | "hybrid" | "oidc_enforced" }
+  options: { authMode: "local" | "hybrid" | "oidc_enforced" },
 ): Promise<boolean> => {
   if (options.authMode === "oidc_enforced") return false;
 
@@ -84,15 +84,11 @@ type IssueBootstrapSetupCodeParams = {
   prisma: PrismaClient;
   ttlMs: number;
   authMode: "local" | "hybrid" | "oidc_enforced";
-  reason:
-    | "startup"
-    | "onboarding_enabled"
-    | "auth_enabled_toggle"
-    | "bootstrap_register_reissue";
+  reason: "startup" | "onboarding_enabled" | "auth_enabled_toggle" | "bootstrap_register_reissue";
 };
 
 export const issueBootstrapSetupCodeIfRequired = async (
-  params: IssueBootstrapSetupCodeParams
+  params: IssueBootstrapSetupCodeParams,
 ): Promise<{ issued: boolean; code?: string; expiresAt?: Date }> => {
   const { prisma, ttlMs, authMode, reason } = params;
   if (authMode === "oidc_enforced") {
@@ -120,7 +116,7 @@ export const issueBootstrapSetupCodeIfRequired = async (
   });
 
   console.log(
-    `[BOOTSTRAP SETUP] One-time admin setup code (${reason}): ${code} (expires ${expiresAt.toISOString()})`
+    `[BOOTSTRAP SETUP] One-time admin setup code (${reason}): ${code} (expires ${expiresAt.toISOString()})`,
   );
 
   return { issued: true, code, expiresAt };
@@ -133,10 +129,9 @@ type VerifyBootstrapSetupCodeParams = {
 };
 
 export const verifyBootstrapSetupCode = async (
-  params: VerifyBootstrapSetupCodeParams
+  params: VerifyBootstrapSetupCodeParams,
 ): Promise<
-  | { ok: true }
-  | { ok: false; reason: "missing" | "unavailable" | "expired" | "invalid" | "locked" }
+  { ok: true } | { ok: false; reason: "missing" | "unavailable" | "expired" | "invalid" | "locked" }
 > => {
   const { prisma, providedCode, maxAttempts } = params;
   const systemConfig = await prisma.systemConfig.findUnique({

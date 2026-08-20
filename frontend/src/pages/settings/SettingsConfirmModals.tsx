@@ -31,9 +31,7 @@ type AuthToggleConfirm = { isOpen: boolean; nextEnabled: boolean | null };
 
 type SettingsConfirmModalsProps = {
   legacyDbImportConfirmation: LegacyDbImportConfirmation;
-  setLegacyDbImportConfirmation: React.Dispatch<
-    React.SetStateAction<LegacyDbImportConfirmation>
-  >;
+  setLegacyDbImportConfirmation: React.Dispatch<React.SetStateAction<LegacyDbImportConfirmation>>;
   importError: DialogState;
   setImportError: React.Dispatch<React.SetStateAction<DialogState>>;
   importSuccess: SuccessDialogState;
@@ -44,9 +42,7 @@ type SettingsConfirmModalsProps = {
   setAuthDisableFinalConfirmOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setAuthEnabled: (enabled: boolean) => Promise<void>;
   backupImportConfirmation: BackupImportConfirmation;
-  setBackupImportConfirmation: React.Dispatch<
-    React.SetStateAction<BackupImportConfirmation>
-  >;
+  setBackupImportConfirmation: React.Dispatch<React.SetStateAction<BackupImportConfirmation>>;
   backupImportSuccess: boolean;
   setBackupImportSuccess: React.Dispatch<React.SetStateAction<boolean>>;
   backupImportError: DialogState;
@@ -81,24 +77,19 @@ export const SettingsConfirmModals = ({
       message={
         <div className="space-y-2">
           <div>
-            This will merge legacy data into your account (it will not replace
-            the server database).
+            This will merge legacy data into your account (it will not replace the server database).
           </div>
           {legacyDbImportConfirmation.info && (
             <div className="text-sm text-slate-700 dark:text-neutral-200 space-y-1">
               <div>Drawings: {legacyDbImportConfirmation.info.drawings}</div>
-              <div>
-                Collections: {legacyDbImportConfirmation.info.collections}
-              </div>
+              <div>Collections: {legacyDbImportConfirmation.info.collections}</div>
               <div>
                 Legacy migration:{" "}
-                {legacyDbImportConfirmation.info.legacyLatestMigration ||
-                  "Unknown"}
+                {legacyDbImportConfirmation.info.legacyLatestMigration || "Unknown"}
               </div>
               <div>
                 Current migration:{" "}
-                {legacyDbImportConfirmation.info.currentLatestMigration ||
-                  "Unknown"}
+                {legacyDbImportConfirmation.info.currentLatestMigration || "Unknown"}
               </div>
             </div>
           )}
@@ -136,17 +127,12 @@ export const SettingsConfirmModals = ({
           console.error(err);
           let message = "Failed to import legacy database.";
           if (api.isAxiosError(err)) {
-            message =
-              err.response?.data?.message ||
-              err.response?.data?.error ||
-              message;
+            message = err.response?.data?.message || err.response?.data?.error || message;
           }
           setImportError({ isOpen: true, message });
         }
       }}
-      onCancel={() =>
-        setLegacyDbImportConfirmation({ isOpen: false, file: null, info: null })
-      }
+      onCancel={() => setLegacyDbImportConfirmation({ isOpen: false, file: null, info: null })}
     />
     <ConfirmModal
       isOpen={importError.isOpen}
@@ -172,22 +158,15 @@ export const SettingsConfirmModals = ({
     />
     <ConfirmModal
       isOpen={authToggleConfirm.isOpen}
-      title={
-        authToggleConfirm.nextEnabled
-          ? "Enable authentication?"
-          : "Disable authentication?"
-      }
+      title={authToggleConfirm.nextEnabled ? "Enable authentication?" : "Disable authentication?"}
       message={
         authToggleConfirm.nextEnabled ? (
           "This will require users to sign in. You will be prompted to set up an admin account immediately."
         ) : (
           <div className="space-y-2 text-left">
-            <div>
-              This will turn off authentication for the entire instance.
-            </div>
+            <div>This will turn off authentication for the entire instance.</div>
             <div className="font-semibold text-rose-700 dark:text-rose-300">
-              Recommendation: keep authentication enabled unless this instance
-              is fully private.
+              Recommendation: keep authentication enabled unless this instance is fully private.
             </div>
           </div>
         )
@@ -205,9 +184,7 @@ export const SettingsConfirmModals = ({
         }
         await setAuthEnabled(nextEnabled);
       }}
-      onCancel={() =>
-        setAuthToggleConfirm({ isOpen: false, nextEnabled: null })
-      }
+      onCancel={() => setAuthToggleConfirm({ isOpen: false, nextEnabled: null })}
     />
     <ConfirmModal
       isOpen={authDisableFinalConfirmOpen}
@@ -215,9 +192,8 @@ export const SettingsConfirmModals = ({
       message={
         <div className="space-y-2 text-left">
           <div>
-            With authentication off, any user who can access this URL can view
-            and modify all drawings and settings. They can also turn
-            authentication back on and lock you out.
+            With authentication off, any user who can access this URL can view and modify all
+            drawings and settings. They can also turn authentication back on and lock you out.
           </div>
           <div className="font-semibold text-rose-700 dark:text-rose-300">
             This is only safe on a trusted private network.
@@ -268,10 +244,7 @@ export const SettingsConfirmModals = ({
           console.error("Backup import failed:", err);
           let message = "Failed to import backup.";
           if (api.isAxiosError(err)) {
-            message =
-              err.response?.data?.message ||
-              err.response?.data?.error ||
-              message;
+            message = err.response?.data?.message || err.response?.data?.error || message;
           }
           setBackupImportError({ isOpen: true, message });
           setBackupImportConfirmation({
@@ -283,9 +256,7 @@ export const SettingsConfirmModals = ({
           setBackupImportLoading(false);
         }
       }}
-      onCancel={() =>
-        setBackupImportConfirmation({ isOpen: false, file: null, info: null })
-      }
+      onCancel={() => setBackupImportConfirmation({ isOpen: false, file: null, info: null })}
     />
     <ConfirmModal
       isOpen={backupImportSuccess}

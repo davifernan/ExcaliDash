@@ -6,9 +6,7 @@ import { DashboardToolbar } from "./DashboardToolbar";
 describe("DashboardToolbar async actions", () => {
   it("disables and relabels New Drawing while creation is pending", async () => {
     let resolveCreate!: () => void;
-    const onCreateDrawing = vi.fn(
-      () => new Promise<void>((resolve) => (resolveCreate = resolve)),
-    );
+    const onCreateDrawing = vi.fn(() => new Promise<void>((resolve) => (resolveCreate = resolve)));
 
     render(
       <DashboardToolbar
@@ -49,8 +47,6 @@ describe("DashboardToolbar async actions", () => {
     expect(onCreateDrawing).toHaveBeenCalledTimes(1);
 
     resolveCreate();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New Drawing" })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "New Drawing" })).toBeEnabled());
   });
 });

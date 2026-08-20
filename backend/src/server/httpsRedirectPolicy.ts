@@ -53,9 +53,7 @@ const getForwardedProto = (req: RequestLike): string | null => {
   return firstHop.length > 0 ? firstHop : null;
 };
 
-export const createHttpsRedirectPolicy = (
-  allowedOrigins: string[]
-): HttpsRedirectPolicy => {
+export const createHttpsRedirectPolicy = (allowedOrigins: string[]): HttpsRedirectPolicy => {
   const parsedOrigins = allowedOrigins
     .map((origin) => parseAllowedOrigin(origin))
     .filter((origin): origin is ParsedAllowedOrigin => origin !== null);
@@ -79,7 +77,7 @@ export const createHttpsRedirectPolicy = (
 
 export const getHttpsRedirectUrl = (
   req: RequestLike,
-  policy: HttpsRedirectPolicy
+  policy: HttpsRedirectPolicy,
 ): string | null => {
   const requestPath = (req.originalUrl || req.url || "/").split("?", 1)[0];
   // Infrastructure probes must stay reachable over the container's local
@@ -90,12 +88,15 @@ export const getHttpsRedirectUrl = (
 
   const rawHost = readHeader(req, "host")?.toLowerCase() ?? "";
   const protocols = rawHost ? policy.hostProtocols.get(rawHost) : undefined;
-  const targetHost =
-    protocols?.has("https:") ? rawHost : protocols ? null : policy.canonicalHttpsHost;
+  const targetHost = protocols?.has("https:")
+    ? rawHost
+    : protocols
+      ? null
+      : policy.canonicalHttpsHost;
   if (!targetHost) return null;
 
   const path = (req.originalUrl || req.url || "/").startsWith("/")
-    ? (req.originalUrl || req.url || "/")
+    ? req.originalUrl || req.url || "/"
     : "/";
   return `https://${targetHost}${path}`;
 };

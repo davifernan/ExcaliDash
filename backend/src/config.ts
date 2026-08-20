@@ -60,7 +60,7 @@ const resolveMailTransport = (
   if (resendApiKey) return "resend";
   if (smtpHost) return "smtp";
   return "none";
-}
+};
 
 interface BackupConfig {
   schedule: string | null;
@@ -151,11 +151,7 @@ interface OidcConfig {
   clientSecret: string | null;
   redirectUri: string | null;
   idTokenSignedResponseAlg: string | null;
-  tokenEndpointAuthMethod:
-    | "none"
-    | "client_secret_basic"
-    | "client_secret_post"
-    | null;
+  tokenEndpointAuthMethod: "none" | "client_secret_basic" | "client_secret_post" | null;
   scopes: string;
   emailClaim: string;
   emailVerifiedClaim: string;
@@ -202,9 +198,7 @@ const getOptionalOidcSigningAlg = (key: string): string | null => {
     throw new Error(`${key} must not be empty or 'none'`);
   }
   if (!ALLOWED_OIDC_ID_TOKEN_ALGS.has(normalized)) {
-    throw new Error(
-      `${key} must be one of: ${Array.from(ALLOWED_OIDC_ID_TOKEN_ALGS).join(", ")}`
-    );
+    throw new Error(`${key} must be one of: ${Array.from(ALLOWED_OIDC_ID_TOKEN_ALGS).join(", ")}`);
   }
 
   return normalized;
@@ -224,9 +218,7 @@ const getOptionalOidcTokenEndpointAuthMethod = (
   ) {
     return normalized;
   }
-  throw new Error(
-    `${key} must be one of: none, client_secret_basic, client_secret_post`,
-  );
+  throw new Error(`${key} must be one of: none, client_secret_basic, client_secret_post`);
 };
 
 const parseCsvEnvList = (key: string): string[] => {
@@ -285,10 +277,7 @@ const resolveDatabaseUrl = (rawUrl?: string) => {
 
   const absolutePath = path.isAbsolute(filePath)
     ? filePath
-    : path.resolve(
-        hasLeadingPrismaDir ? backendRoot : prismaDir,
-        normalizedRelative,
-      );
+    : path.resolve(hasLeadingPrismaDir ? backendRoot : prismaDir, normalizedRelative);
 
   return `file:${absolutePath}`;
 };
@@ -306,25 +295,17 @@ const getRequiredEnvNumber = (key: string, defaultValue: number): number => {
   if (!value) return defaultValue;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(
-      `Invalid value for environment variable ${key}: must be a positive number`,
-    );
+    throw new Error(`Invalid value for environment variable ${key}: must be a positive number`);
   }
   return parsed;
 };
 
 const parseAuthMode = (rawValue: string | undefined): AuthMode => {
   const normalized = (rawValue || "local").trim().toLowerCase();
-  if (
-    normalized === "local" ||
-    normalized === "hybrid" ||
-    normalized === "oidc_enforced"
-  ) {
+  if (normalized === "local" || normalized === "hybrid" || normalized === "oidc_enforced") {
     return normalized;
   }
-  throw new Error(
-    "Invalid AUTH_MODE. Expected one of: local, hybrid, oidc_enforced",
-  );
+  throw new Error("Invalid AUTH_MODE. Expected one of: local, hybrid, oidc_enforced");
 };
 
 const resolveOidcConfig = (authMode: AuthMode): OidcConfig => {
@@ -342,9 +323,7 @@ const resolveOidcConfig = (authMode: AuthMode): OidcConfig => {
   };
 
   if (groupsClaim.length === 0) {
-    throw new Error(
-      "Invalid OIDC_GROUPS_CLAIM: must be a non-empty claim key/path",
-    );
+    throw new Error("Invalid OIDC_GROUPS_CLAIM: must be a non-empty claim key/path");
   }
 
   const enabled = authMode !== "local";
@@ -359,12 +338,9 @@ const resolveOidcConfig = (authMode: AuthMode): OidcConfig => {
 
   if (!enabled) {
     const hasOidcVars =
-      Object.values(requiredWhenEnabled).some((value) => Boolean(value)) ||
-      adminGroups.length > 0;
+      Object.values(requiredWhenEnabled).some((value) => Boolean(value)) || adminGroups.length > 0;
     if (hasOidcVars) {
-      console.warn(
-        "[config] AUTH_MODE=local; ignoring OIDC_* provider settings.",
-      );
+      console.warn("[config] AUTH_MODE=local; ignoring OIDC_* provider settings.");
     }
   }
 
@@ -374,9 +350,14 @@ const resolveOidcConfig = (authMode: AuthMode): OidcConfig => {
   const tokenEndpointAuthMethod = enabled
     ? getOptionalOidcTokenEndpointAuthMethod("OIDC_TOKEN_ENDPOINT_AUTH_METHOD")
     : null;
-  if (enabled && idTokenSignedResponseAlg && /^HS/i.test(idTokenSignedResponseAlg) && !clientSecret) {
+  if (
+    enabled &&
+    idTokenSignedResponseAlg &&
+    /^HS/i.test(idTokenSignedResponseAlg) &&
+    !clientSecret
+  ) {
     throw new Error(
-      "OIDC_ID_TOKEN_SIGNED_RESPONSE_ALG using HS* requires OIDC_CLIENT_SECRET for a confidential client"
+      "OIDC_ID_TOKEN_SIGNED_RESPONSE_ALG using HS* requires OIDC_CLIENT_SECRET for a confidential client",
     );
   }
 
@@ -393,21 +374,14 @@ const resolveOidcConfig = (authMode: AuthMode): OidcConfig => {
     tokenEndpointAuthMethod,
     scopes: getOptionalEnv("OIDC_SCOPES", "openid profile email"),
     emailClaim: getOptionalEnv("OIDC_EMAIL_CLAIM", "email"),
-    emailVerifiedClaim: getOptionalEnv(
-      "OIDC_EMAIL_VERIFIED_CLAIM",
-      "email_verified",
-    ),
+    emailVerifiedClaim: getOptionalEnv("OIDC_EMAIL_VERIFIED_CLAIM", "email_verified"),
     groupsClaim,
     adminGroups,
-    requireEmailVerified: getOptionalBoolean(
-      "OIDC_REQUIRE_EMAIL_VERIFIED",
-      true,
-    ),
+    requireEmailVerified: getOptionalBoolean("OIDC_REQUIRE_EMAIL_VERIFIED", true),
     jitProvisioning: getOptionalBoolean("OIDC_JIT_PROVISIONING", true),
     firstUserAdmin: getOptionalBoolean("OIDC_FIRST_USER_ADMIN", true),
   };
 };
-
 
 const resolveBackupConfig = (): BackupConfig => {
   const backupDir = getOptionalTrimmedEnv("BACKUP_DIR") || path.resolve(__dirname, "../backups");
@@ -439,33 +413,18 @@ export const config: Config = {
   jwtSecret: resolveJwtSecret(getOptionalEnv("NODE_ENV", "development")),
   jwtAccessExpiresIn: getOptionalEnv("JWT_ACCESS_EXPIRES_IN", "15m"),
   jwtRefreshExpiresIn: getOptionalEnv("JWT_REFRESH_EXPIRES_IN", "7d"),
-  jwtRefreshExpiresInRemembered: getOptionalEnv(
-    "JWT_REFRESH_EXPIRES_IN_REMEMBERED",
-    "30d",
-  ),
+  jwtRefreshExpiresInRemembered: getOptionalEnv("JWT_REFRESH_EXPIRES_IN_REMEMBERED", "30d"),
   rateLimitMaxRequests: getRequiredEnvNumber("RATE_LIMIT_MAX_REQUESTS", 1000),
   csrfMaxRequests: getRequiredEnvNumber("CSRF_MAX_REQUESTS", 60),
   csrfSecret: process.env.CSRF_SECRET || null,
   oidc: resolveOidcConfig(resolvedAuthMode),
   enablePasswordReset: getOptionalBoolean("ENABLE_PASSWORD_RESET", false),
-  enableRefreshTokenRotation: getOptionalBoolean(
-    "ENABLE_REFRESH_TOKEN_ROTATION",
-    true,
-  ),
+  enableRefreshTokenRotation: getOptionalBoolean("ENABLE_REFRESH_TOKEN_ROTATION", true),
   enableAuditLogging: getOptionalBoolean("ENABLE_AUDIT_LOGGING", false),
-  enableSnapshotCompression: getOptionalBoolean(
-    "ENABLE_SNAPSHOT_COMPRESSION",
-    true,
-  ),
+  enableSnapshotCompression: getOptionalBoolean("ENABLE_SNAPSHOT_COMPRESSION", true),
   enforceHttpsRedirect: getOptionalBoolean("ENFORCE_HTTPS_REDIRECT", true),
-  bootstrapSetupCodeTtlMs: getRequiredEnvNumber(
-    "BOOTSTRAP_SETUP_CODE_TTL_MS",
-    15 * 60 * 1000,
-  ),
-  bootstrapSetupCodeMaxAttempts: getRequiredEnvNumber(
-    "BOOTSTRAP_SETUP_CODE_MAX_ATTEMPTS",
-    10,
-  ),
+  bootstrapSetupCodeTtlMs: getRequiredEnvNumber("BOOTSTRAP_SETUP_CODE_TTL_MS", 15 * 60 * 1000),
+  bootstrapSetupCodeMaxAttempts: getRequiredEnvNumber("BOOTSTRAP_SETUP_CODE_MAX_ATTEMPTS", 10),
   passwordPolicy: resolvePasswordPolicyConfig(getRequiredEnvNumber, getOptionalBoolean),
   backups: resolveBackupConfig(),
   imports: {

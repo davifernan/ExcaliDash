@@ -69,7 +69,7 @@ export function normaliseStickyNotes(
     if (!data) continue;
 
     const bound = element.boundElements?.find((b: any) => b?.type === "text");
-    const beingTyped = bound ? options.editing?.has(bound.id) ?? false : false;
+    const beingTyped = bound ? (options.editing?.has(bound.id) ?? false) : false;
 
     let container = element;
     let next: StickyData = data;

@@ -3,9 +3,7 @@ import { logAuditEvent } from "../utils/audit";
 import { userPreferencesSchema } from "./schemas";
 import type { RegisterAccountRoutesDeps } from "./accountRoutes";
 
-export const registerAccountPreferencesRoutes = (
-  deps: RegisterAccountRoutesDeps,
-) => {
+export const registerAccountPreferencesRoutes = (deps: RegisterAccountRoutesDeps) => {
   const { router, prisma, requireAuth, ensureAuthEnabled, config, requireCsrf } = deps;
   const parseStoredPreferences = (raw: string | null | undefined) => {
     if (!raw) return {};

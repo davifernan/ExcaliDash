@@ -63,7 +63,7 @@ describe("auth page registration policy", () => {
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <Login />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.queryByRole("link", { name: /create a new account/i })).not.toBeInTheDocument();
@@ -79,7 +79,7 @@ describe("auth page registration policy", () => {
     render(
       <MemoryRouter initialEntries={["/register"]}>
         <Register />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(mockNavigate).toHaveBeenCalledWith("/login", { replace: true });

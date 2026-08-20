@@ -16,10 +16,7 @@ export type DrawingRouteContext = DashboardRouteDeps & {
   getRequestPrincipal: (req: express.Request) => Promise<DrawingPrincipal | null>;
   resolveDefaultTtlMs: (permission: "view" | "edit") => number;
   resolveMaxTtlMs: () => number;
-  respondWithAuthErrorIfPresent: (
-    req: express.Request,
-    res: express.Response,
-  ) => boolean;
+  respondWithAuthErrorIfPresent: (req: express.Request, res: express.Response) => boolean;
   cleanupS3FilesForDrawing: (drawingId: string, userId: string) => Promise<void>;
   cloneS3FileReferences: (
     sourceDrawingId: string,
@@ -29,14 +26,10 @@ export type DrawingRouteContext = DashboardRouteDeps & {
   ) => Promise<Record<string, any>>;
 };
 
-export const createDrawingRouteContext = (
-  deps: DashboardRouteDeps,
-): DrawingRouteContext => {
+export const createDrawingRouteContext = (deps: DashboardRouteDeps): DrawingRouteContext => {
   const { prisma } = deps;
 
-  const getRequestPrincipal = async (
-    req: express.Request,
-  ): Promise<DrawingPrincipal | null> => {
+  const getRequestPrincipal = async (req: express.Request): Promise<DrawingPrincipal | null> => {
     if (req.user?.authCredentialType === "bootstrap" && req.user.id) {
       return { kind: "user", userId: req.user.id, allowInactive: true };
     }
@@ -52,9 +45,7 @@ export const createDrawingRouteContext = (
         : process.env.LINK_SHARE_VIEW_DEFAULT_TTL_MS;
     const parsed = raw ? Number(raw) : NaN;
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    return permission === "edit"
-      ? 7 * 24 * 60 * 60 * 1000
-      : 30 * 24 * 60 * 60 * 1000;
+    return permission === "edit" ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
   };
 
   const resolveMaxTtlMs = (): number => {
@@ -63,10 +54,7 @@ export const createDrawingRouteContext = (
     return 90 * 24 * 60 * 60 * 1000;
   };
 
-  const respondWithAuthErrorIfPresent = (
-    req: express.Request,
-    res: express.Response,
-  ): boolean => {
+  const respondWithAuthErrorIfPresent = (req: express.Request, res: express.Response): boolean => {
     if (!req.authError) return false;
     res.status(401).json({
       error: "Unauthorized",
@@ -75,10 +63,7 @@ export const createDrawingRouteContext = (
     return true;
   };
 
-  const cleanupS3FilesForDrawing = async (
-    drawingId: string,
-    userId: string,
-  ): Promise<void> => {
+  const cleanupS3FilesForDrawing = async (drawingId: string, userId: string): Promise<void> => {
     if (!isS3Enabled()) return;
 
     const [objects, records] = await Promise.all([

@@ -44,12 +44,7 @@ export const bindSocketRoomLifecycle = ({
 
   const joinCurrentConnection = () => {
     const socketId = socket.id;
-    if (
-      !socketId ||
-      disposed ||
-      joinedSocketId === socketId ||
-      joiningSocketId === socketId
-    ) {
+    if (!socketId || disposed || joinedSocketId === socketId || joiningSocketId === socketId) {
       return;
     }
     if (resetSocketId !== socketId) {

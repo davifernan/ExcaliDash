@@ -10,7 +10,9 @@ vi.hoisted(() => {
   class TestFontFace {
     status = "loaded";
     constructor(readonly family: string) {}
-    load() { return Promise.resolve(this); }
+    load() {
+      return Promise.resolve(this);
+    }
   }
   (globalThis as any).FontFace = TestFontFace;
   Object.defineProperty(document, "fonts", {
@@ -52,7 +54,11 @@ describe("follow correction with the real Excalidraw API", () => {
     let api: any;
     const view = render(
       <div style={{ width: 900, height: 600 }}>
-        <Excalidraw excalidrawAPI={(value) => { api = value; }} />
+        <Excalidraw
+          excalidrawAPI={(value) => {
+            api = value;
+          }}
+        />
       </div>,
     );
     await waitFor(() => expect(api).toBeDefined());
@@ -61,14 +67,20 @@ describe("follow correction with the real Excalidraw API", () => {
       api.updateScene({
         appState: {
           collaborators: new Map([
-            ["rejected-target", {
-              socketId: "rejected-target",
-              username: "Rejected",
-            }],
-            ["target-socket", {
-              socketId: "target-socket",
-              username: "Target",
-            }],
+            [
+              "rejected-target",
+              {
+                socketId: "rejected-target",
+                username: "Rejected",
+              },
+            ],
+            [
+              "target-socket",
+              {
+                socketId: "target-socket",
+                username: "Target",
+              },
+            ],
           ]),
           userToFollow: {
             socketId: "rejected-target",
@@ -77,9 +89,7 @@ describe("follow correction with the real Excalidraw API", () => {
         },
       });
     });
-    await waitFor(() =>
-      expect(api.getAppState().userToFollow?.socketId).toBe("rejected-target"),
-    );
+    await waitFor(() => expect(api.getAppState().userToFollow?.socketId).toBe("rejected-target"));
 
     const handlers = new Map<string, (payload: any) => void>();
     const socket = {
@@ -104,9 +114,7 @@ describe("follow correction with the real Excalidraw API", () => {
         reason: "rate-limited",
       });
     });
-    await waitFor(() =>
-      expect(api.getAppState().userToFollow?.socketId).toBe("target-socket"),
-    );
+    await waitFor(() => expect(api.getAppState().userToFollow?.socketId).toBe("target-socket"));
 
     expect(socket.emit).not.toHaveBeenCalledWith("follow-user", expect.anything());
     cleanup();

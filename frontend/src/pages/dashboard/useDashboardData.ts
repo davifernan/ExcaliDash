@@ -3,10 +3,7 @@ import * as api from "../../api";
 import type { DrawingSortField, SortDirection } from "../../api";
 import type { Collection, DrawingSummary } from "../../types";
 import { isLatestRequest, mergeUniqueDrawings } from "./pagination";
-import {
-  resetDashboardDataStatus,
-  setDashboardDataStatus,
-} from "./dashboardDataStatus";
+import { resetDashboardDataStatus, setDashboardDataStatus } from "./dashboardDataStatus";
 
 type SelectedCollectionId = string | null | undefined;
 
@@ -68,8 +65,7 @@ export const useDashboardData = ({
         drawingsPromise,
         api.getCollections(),
       ]);
-      if (!isLatestRequest(requestVersion, listRequestVersionRef.current))
-        return;
+      if (!isLatestRequest(requestVersion, listRequestVersionRef.current)) return;
 
       if (drawingsResult.status === "fulfilled") {
         setDrawings(drawingsResult.value.drawings);
@@ -104,14 +100,7 @@ export const useDashboardData = ({
         setIsLoading(false);
       }
     }
-  }, [
-    debouncedSearch,
-    selectedCollectionId,
-    pageSize,
-    sortField,
-    sortDirection,
-    onRefreshSuccess,
-  ]);
+  }, [debouncedSearch, selectedCollectionId, pageSize, sortField, sortDirection, onRefreshSuccess]);
 
   const fetchMore = useCallback(async () => {
     if (isFetchingMore || !hasMore || isLoading) return;
@@ -135,8 +124,7 @@ export const useDashboardData = ({
             sortField,
             sortDirection,
           }));
-      if (!isLatestRequest(requestVersion, listRequestVersionRef.current))
-        return;
+      if (!isLatestRequest(requestVersion, listRequestVersionRef.current)) return;
       setDrawings((prev) => mergeUniqueDrawings(prev, drawingsRes.drawings));
       setTotalCount(drawingsRes.totalCount);
       nextOffsetRef.current += drawingsRes.drawings.length;
@@ -174,13 +162,7 @@ export const useDashboardData = ({
       retryCollections: () => void refreshData(),
       retryMore: () => void fetchMore(),
     });
-  }, [
-    drawingsError,
-    collectionsError,
-    loadMoreError,
-    refreshData,
-    fetchMore,
-  ]);
+  }, [drawingsError, collectionsError, loadMoreError, refreshData, fetchMore]);
 
   useEffect(() => resetDashboardDataStatus, []);
 

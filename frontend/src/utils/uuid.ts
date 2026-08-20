@@ -1,7 +1,5 @@
 const getCryptoObject = (): Crypto | undefined =>
-  typeof globalThis !== "undefined"
-    ? globalThis.crypto || (globalThis as any).msCrypto
-    : undefined;
+  typeof globalThis !== "undefined" ? globalThis.crypto || (globalThis as any).msCrypto : undefined;
 
 export const uuidv4 = (): string => {
   const cryptoObj = getCryptoObject();

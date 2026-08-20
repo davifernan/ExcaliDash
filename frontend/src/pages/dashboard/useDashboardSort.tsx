@@ -31,16 +31,10 @@ const readStoredSortConfig = (): {
   }
 };
 
-const writeStoredSortConfig = (config: {
-  field: DrawingSortField;
-  direction: SortDirection;
-}) => {
+const writeStoredSortConfig = (config: { field: DrawingSortField; direction: SortDirection }) => {
   try {
     if (typeof window === "undefined" || !window.localStorage) return;
-    window.localStorage.setItem(
-      DASHBOARD_SORT_STORAGE_KEY,
-      JSON.stringify(config),
-    );
+    window.localStorage.setItem(DASHBOARD_SORT_STORAGE_KEY, JSON.stringify(config));
   } catch {
     // Ignore unavailable storage in private/embedded contexts.
   }
@@ -114,8 +108,7 @@ export const useDashboardSort = () => {
     sortConfig,
     sortOptions,
     currentSortOption:
-      sortOptions.find((option) => option.field === sortConfig.field) ??
-      sortOptions[0],
+      sortOptions.find((option) => option.field === sortConfig.field) ?? sortOptions[0],
     handleSortFieldChange,
     handleSortDirectionToggle,
   };

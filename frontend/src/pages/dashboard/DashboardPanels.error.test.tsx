@@ -1,9 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  resetDashboardDataStatus,
-  setDashboardDataStatus,
-} from "./dashboardDataStatus";
+import { resetDashboardDataStatus, setDashboardDataStatus } from "./dashboardDataStatus";
 import { DrawingsGrid } from "./DashboardPanels";
 
 const baseProps = {
@@ -34,7 +31,8 @@ describe("dashboard data failures", () => {
   it("renders a retryable error instead of the empty state", () => {
     const retry = vi.fn();
     setDashboardDataStatus({
-      drawingsError: "We couldn't load drawings. The server could not be reached. Check your connection and try again.",
+      drawingsError:
+        "We couldn't load drawings. The server could not be reached. Check your connection and try again.",
       retryDrawings: retry,
     });
 

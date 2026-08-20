@@ -17,9 +17,7 @@ export const useEditorAutoHide = (drawingId: string | undefined) => {
     }
   }, [storageKey]);
 
-  const [autoHideEnabled, setAutoHideEnabled] = useState(
-    getStoredAutoHideEnabled,
-  );
+  const [autoHideEnabled, setAutoHideEnabled] = useState(getStoredAutoHideEnabled);
 
   useEffect(() => {
     setAutoHideEnabled(getStoredAutoHideEnabled());

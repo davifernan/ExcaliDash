@@ -7,9 +7,16 @@ import { registerDrawingDeleteDuplicateRoutes } from "./drawingDeleteDuplicateRo
 import { registerDrawingSharingRoutes } from "./drawingSharingRoutes";
 
 class FakeOperator {
-  constructor(private events: any[], private scope: string) {}
-  get volatile() { return this; }
-  emit(event: string, payload: any) { this.events.push({ scope: this.scope, event, payload }); }
+  constructor(
+    private events: any[],
+    private scope: string,
+  ) {}
+  get volatile() {
+    return this;
+  }
+  emit(event: string, payload: any) {
+    this.events.push({ scope: this.scope, event, payload });
+  }
 }
 
 class FakeSocket {
@@ -17,39 +24,66 @@ class FakeSocket {
   readonly handshake: any;
   readonly disconnect = vi.fn();
   private handlers = new Map<string, (...args: any[]) => any>();
-  constructor(readonly id: string, private events: any[], token?: string) {
+  constructor(
+    readonly id: string,
+    private events: any[],
+    token?: string,
+  ) {
     this.handshake = { auth: token ? { token } : {}, headers: {} };
   }
-  get volatile() { return this; }
-  on(event: string, handler: (...args: any[]) => any) { this.handlers.set(event, handler); }
-  emit(event: string, payload: any) { this.events.push({ scope: this.id, event, payload }); }
-  to(scope: string) { return new FakeOperator(this.events, scope); }
-  async join(scope: string) { this.rooms.add(scope); }
-  async leave(scope: string) { this.rooms.delete(scope); }
-  trigger(event: string, ...args: any[]) { return this.handlers.get(event)?.(...args); }
+  get volatile() {
+    return this;
+  }
+  on(event: string, handler: (...args: any[]) => any) {
+    this.handlers.set(event, handler);
+  }
+  emit(event: string, payload: any) {
+    this.events.push({ scope: this.id, event, payload });
+  }
+  to(scope: string) {
+    return new FakeOperator(this.events, scope);
+  }
+  async join(scope: string) {
+    this.rooms.add(scope);
+  }
+  async leave(scope: string) {
+    this.rooms.delete(scope);
+  }
+  trigger(event: string, ...args: any[]) {
+    return this.handlers.get(event)?.(...args);
+  }
 }
 
 class FakeIo {
   readonly events: any[] = [];
   private middleware: any;
   private onConnection: any;
-  use(handler: any) { this.middleware = handler; }
-  on(event: string, handler: any) { if (event === "connection") this.onConnection = handler; }
-  to(scope: string) { return new FakeOperator(this.events, scope); }
+  use(handler: any) {
+    this.middleware = handler;
+  }
+  on(event: string, handler: any) {
+    if (event === "connection") this.onConnection = handler;
+  }
+  to(scope: string) {
+    return new FakeOperator(this.events, scope);
+  }
   async connect(id: string, token?: string) {
     const socket = new FakeSocket(id, this.events, token);
     await new Promise<void>((resolve, reject) => {
-      this.middleware(socket, (error?: Error) => error ? reject(error) : resolve());
+      this.middleware(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });
     this.onConnection(socket);
     return socket;
   }
 }
 
-const asyncHandler = (handler: any) =>
-  async (req: any, res: any, next: any) => {
-    try { await handler(req, res, next); } catch (error) { next(error); }
-  };
+const asyncHandler = (handler: any) => async (req: any, res: any, next: any) => {
+  try {
+    await handler(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+};
 
 const requireAuth = (req: any, _res: any, next: any) => {
   req.user = { id: "owner" };
@@ -67,8 +101,14 @@ const invokeDeleteRoute = async (
   const req: any = { params, body: {}, headers: {}, connection: {} };
   const res: any = {
     statusCode: 200,
-    status(code: number) { this.statusCode = code; return this; },
-    json(payload: unknown) { this.payload = payload; return this; },
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload: unknown) {
+      this.payload = payload;
+      return this;
+    },
   };
   for (const handlerLayer of layer.route.stack) {
     await handlerLayer.handle(req, res, () => undefined);
@@ -93,14 +133,16 @@ const createHarness = async () => {
         const entry = where.keyId
           ? keyRows.get(where.keyId)
           : Array.from(keyRows.values()).find((candidate) => candidate.id === where.id);
-        return entry ? {
-          id: entry.id,
-          keyId: entry.token.keyId,
-          tokenHash: entry.token.tokenHash,
-          scopes: serializeApiKeyScopes(),
-          revokedAt: null,
-          user: { id: entry.userId, isActive: true },
-        } : null;
+        return entry
+          ? {
+              id: entry.id,
+              keyId: entry.token.keyId,
+              tokenHash: entry.token.tokenHash,
+              scopes: serializeApiKeyScopes(),
+              revokedAt: null,
+              user: { id: entry.userId, isActive: true },
+            }
+          : null;
       }),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -108,12 +150,14 @@ const createHarness = async () => {
     // fixture without the flag makes every principal read as deactivated.
     user: { findUnique: vi.fn(async ({ where }: any) => ({ name: where.id, isActive: true })) },
     drawing: {
-      findUnique: vi.fn(async () => drawingExists
-        ? { id: "drawing-1", userId: "owner", collectionId: "collection-1" }
-        : null),
-      findFirst: vi.fn(async () => drawingExists
-        ? { id: "drawing-1", userId: "owner", collectionId: "collection-1", name: "Board" }
-        : null),
+      findUnique: vi.fn(async () =>
+        drawingExists ? { id: "drawing-1", userId: "owner", collectionId: "collection-1" } : null,
+      ),
+      findFirst: vi.fn(async () =>
+        drawingExists
+          ? { id: "drawing-1", userId: "owner", collectionId: "collection-1", name: "Board" }
+          : null,
+      ),
       updateMany: vi.fn(async () => ({ count: drawingExists ? 1 : 0 })),
       deleteMany: vi.fn(async () => {
         if (!drawingExists) return { count: 0 };
@@ -125,8 +169,9 @@ const createHarness = async () => {
       findUnique: vi.fn(async ({ where }: any) =>
         directShare && where.drawingId_granteeUserId.granteeUserId === "viewer"
           ? { permission: "view" }
-          : null),
-      findFirst: vi.fn(async () => directShare ? { granteeUserId: "viewer" } : null),
+          : null,
+      ),
+      findFirst: vi.fn(async () => (directShare ? { granteeUserId: "viewer" } : null)),
       deleteMany: vi.fn(async () => {
         const count = directShare ? 1 : 0;
         directShare = false;
@@ -142,8 +187,9 @@ const createHarness = async () => {
     },
     collectionShare: {
       findFirst: vi.fn(async ({ where }: any) =>
-        collectionShare && where.granteeUserId === "viewer" ? { role: "view" } : null),
-      findMany: vi.fn(async () => collectionShare ? [{ granteeUserId: "viewer" }] : []),
+        collectionShare && where.granteeUserId === "viewer" ? { role: "view" } : null,
+      ),
+      findMany: vi.fn(async () => (collectionShare ? [{ granteeUserId: "viewer" }] : [])),
       deleteMany: vi.fn(async () => {
         const count = collectionShare ? 1 : 0;
         collectionShare = false;
@@ -151,7 +197,7 @@ const createHarness = async () => {
       }),
     },
     drawingLinkShare: {
-      findFirst: vi.fn(async () => publicLink ? { permission: "view" } : null),
+      findFirst: vi.fn(async () => (publicLink ? { permission: "view" } : null)),
       updateMany: vi.fn(async () => {
         const count = publicLink ? 1 : 0;
         publicLink = false;
@@ -169,9 +215,8 @@ const createHarness = async () => {
   });
   const viewer = await io.connect("viewer-socket", viewerKey.token);
   const owner = await io.connect("owner-socket", ownerKey.token);
-  const join = (socket: FakeSocket) => socket.trigger(
-    "join-room", { drawingId: "drawing-1", user: { name: socket.id } },
-  );
+  const join = (socket: FakeSocket) =>
+    socket.trigger("join-room", { drawingId: "drawing-1", user: { name: socket.id } });
   await Promise.all([join(viewer), join(owner)]);
   expect(viewer.rooms.has("drawing_drawing-1")).toBe(true);
   expect(owner.rooms.has("drawing_drawing-1")).toBe(true);
@@ -185,10 +230,22 @@ const createHarness = async () => {
     logAuditEvent: vi.fn(),
   };
   return {
-    prisma, io, viewer, owner, join, collaborationAccess, baseDeps,
-    disableDirectShare: () => { directShare = false; },
-    disableCollectionShare: () => { collectionShare = false; },
-    disablePublicLink: () => { publicLink = false; },
+    prisma,
+    io,
+    viewer,
+    owner,
+    join,
+    collaborationAccess,
+    baseDeps,
+    disableDirectShare: () => {
+      directShare = false;
+    },
+    disableCollectionShare: () => {
+      collectionShare = false;
+    },
+    disablePublicLink: () => {
+      publicLink = false;
+    },
   };
 };
 
@@ -200,10 +257,10 @@ describe("sharing route collaboration revocation", () => {
     const app = express();
     registerDrawingSharingRoutes(app, harness.baseDeps as any);
 
-    const response = await invokeDeleteRoute(
-      app, "/drawings/:id/permissions/:permId",
-      { id: "drawing-1", permId: "permission-1" },
-    );
+    const response = await invokeDeleteRoute(app, "/drawings/:id/permissions/:permId", {
+      id: "drawing-1",
+      permId: "permission-1",
+    });
 
     expect(response.statusCode).toBe(200);
     expect(harness.viewer.rooms.has("drawing_drawing-1")).toBe(false);
@@ -219,10 +276,10 @@ describe("sharing route collaboration revocation", () => {
     const app = express();
     registerDrawingSharingRoutes(app, harness.baseDeps as any);
 
-    const response = await invokeDeleteRoute(
-      app, "/drawings/:id/link-shares/:shareId",
-      { id: "drawing-1", shareId: "link-1" },
-    );
+    const response = await invokeDeleteRoute(app, "/drawings/:id/link-shares/:shareId", {
+      id: "drawing-1",
+      shareId: "link-1",
+    });
 
     expect(response.statusCode).toBe(200);
     expect(anonymous.rooms.has("drawing_drawing-1")).toBe(false);
@@ -236,9 +293,7 @@ describe("sharing route collaboration revocation", () => {
     const app = express();
     registerCollectionRoutes(app, harness.baseDeps as any);
 
-    const response = await invokeDeleteRoute(
-      app, "/collections/:id", { id: "collection-1" },
-    );
+    const response = await invokeDeleteRoute(app, "/collections/:id", { id: "collection-1" });
 
     expect(response.statusCode).toBe(200);
     expect(harness.viewer.rooms.has("drawing_drawing-1")).toBe(false);

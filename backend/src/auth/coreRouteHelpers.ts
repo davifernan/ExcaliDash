@@ -12,22 +12,25 @@ type PasswordPolicyPayload = {
   requireSymbol: boolean;
 };
 
-type AuthUser = {
-  id: string;
-  username?: string | null;
-  email: string;
-  name: string;
-  role?: string;
-  mustResetPassword?: boolean;
-  impersonatorId?: string;
-} | null | undefined;
+type AuthUser =
+  | {
+      id: string;
+      username?: string | null;
+      email: string;
+      name: string;
+      role?: string;
+      mustResetPassword?: boolean;
+      impersonatorId?: string;
+    }
+  | null
+  | undefined;
 
 export const getAuthOnboardingStatus = async (
   prisma: PrismaClient,
   systemConfig: {
     authEnabled: boolean;
     authOnboardingCompleted: boolean;
-  }
+  },
 ) => {
   const [activeUsers, drawingsCount, collectionsCount] = await Promise.all([
     prisma.user.count({ where: { isActive: true } }),
@@ -36,9 +39,7 @@ export const getAuthOnboardingStatus = async (
   ]);
   const hasLegacyData = drawingsCount > 0 || collectionsCount > 0;
   const needsChoice =
-    !systemConfig.authEnabled &&
-    activeUsers === 0 &&
-    !systemConfig.authOnboardingCompleted;
+    !systemConfig.authEnabled && activeUsers === 0 && !systemConfig.authOnboardingCompleted;
 
   return {
     activeUsers,
@@ -50,7 +51,7 @@ export const getAuthOnboardingStatus = async (
 
 export const ensureBootstrapUserExists = async (
   prisma: PrismaClient,
-  bootstrapUserId: string
+  bootstrapUserId: string,
 ): Promise<void> => {
   const bootstrap = await prisma.user.findUnique({
     where: { id: bootstrapUserId },

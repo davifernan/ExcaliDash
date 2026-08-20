@@ -34,7 +34,6 @@ const isTyping = (target: EventTarget | null): boolean => {
   );
 };
 
-
 export const STICKY_TOOL = "sticky";
 
 type Options = {

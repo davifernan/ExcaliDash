@@ -19,9 +19,7 @@ describe("CSRF token issuance", () => {
     });
 
     const agent = request.agent(app);
-    const csrfRes = await agent
-      .get("/csrf-token")
-      .set("User-Agent", "csrf-test-agent-a");
+    const csrfRes = await agent.get("/csrf-token").set("User-Agent", "csrf-test-agent-a");
 
     expect(csrfRes.status).toBe(200);
     const headerName = csrfRes.body.header as string;

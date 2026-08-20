@@ -95,9 +95,7 @@ export async function reclaimSqliteFreeSpace(): Promise<{
   if (databaseUrl && !dbPath) return null;
 
   try {
-    const markerPath = dbPath
-      ? path.join(path.dirname(dbPath), VACUUM_MARKER_FILE)
-      : null;
+    const markerPath = dbPath ? path.join(path.dirname(dbPath), VACUUM_MARKER_FILE) : null;
 
     const [pageCount, freeCount, pageSize, autoVacuum] = await Promise.all([
       readPragmaNumber("page_count"),
@@ -147,8 +145,8 @@ export async function reclaimSqliteFreeSpace(): Promise<{
         const availableBytes = Number(stats.bavail) * Number(stats.bsize);
         if (availableBytes < fileBytes * 2) {
           console.warn(
-            `[Cleanup] Skipping VACUUM: needs ~${(fileBytes * 2) / 1024 / 1024 | 0} MB free, ` +
-              `only ${availableBytes / 1024 / 1024 | 0} MB available`,
+            `[Cleanup] Skipping VACUUM: needs ~${((fileBytes * 2) / 1024 / 1024) | 0} MB free, ` +
+              `only ${(availableBytes / 1024 / 1024) | 0} MB available`,
           );
           return null;
         }
@@ -167,9 +165,7 @@ export async function reclaimSqliteFreeSpace(): Promise<{
     const durationMs = Date.now() - startedAt;
 
     if (markerPath) {
-      await fs.promises
-        .writeFile(markerPath, String(Date.now()), "utf8")
-        .catch(() => undefined);
+      await fs.promises.writeFile(markerPath, String(Date.now()), "utf8").catch(() => undefined);
     }
 
     console.log(
@@ -195,9 +191,7 @@ const INCREMENTAL_VACUUM_PAGE_BUDGET = 20_000;
 const INCREMENTAL_MIN_FREE_BYTES = 8 * 1024 * 1024;
 
 const readPragmaNumber = async (name: string): Promise<number> => {
-  const rows = await prismaClient.$queryRawUnsafe<
-    Array<Record<string, unknown>>
-  >(`PRAGMA ${name}`);
+  const rows = await prismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`PRAGMA ${name}`);
   const value = rows?.[0] ? Object.values(rows[0])[0] : 0;
   return Number(value ?? 0);
 };

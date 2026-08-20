@@ -19,20 +19,28 @@ const run = promisify(execFile);
 async function makePdf(dir: string, pages: number): Promise<string> {
   const html = join(dir, "doc.html");
   const pdf = join(dir, "doc.pdf");
-  const body = Array.from({ length: pages }, (_, i) =>
-    `<h1>Page ${i + 1}</h1><p>Some body text.</p><div style="page-break-after:always"></div>`,
+  const body = Array.from(
+    { length: pages },
+    (_, i) =>
+      `<h1>Page ${i + 1}</h1><p>Some body text.</p><div style="page-break-after:always"></div>`,
   ).join("");
   await writeFile(html, `<html><body>${body}</body></html>`);
   await run("weasyprint", [html, pdf]);
   return pdf;
 }
 
-const havePoppler = await run("pdfinfo", ["-v"]).then(() => true).catch(() => false);
-const haveWeasy = await run("weasyprint", ["--version"]).then(() => true).catch(() => false);
+const havePoppler = await run("pdfinfo", ["-v"])
+  .then(() => true)
+  .catch(() => false);
+const haveWeasy = await run("weasyprint", ["--version"])
+  .then(() => true)
+  .catch(() => false);
 
 describe("reading pdfinfo output", () => {
   it("picks out the page count and page size", () => {
-    const info = parsePdfInfo("Title:          Report\nPages:          12\nPage size:      595.276 x 841.89 pts (A4)\nEncrypted:      no\n");
+    const info = parsePdfInfo(
+      "Title:          Report\nPages:          12\nPage size:      595.276 x 841.89 pts (A4)\nEncrypted:      no\n",
+    );
     expect(info.pageCount).toBe(12);
     expect(info.maxPageWidth).toBeCloseTo(595.276);
     expect(info.maxPageHeight).toBeCloseTo(841.89);
@@ -59,7 +67,9 @@ describe("reading pdfinfo output", () => {
 
 describe("painting the page white", () => {
   it("puts a backdrop behind the drawing", () => {
-    const svg = Buffer.from('<?xml version="1.0"?>\n<svg width="100" height="200" viewBox="0 0 100 200"><path d="M0 0"/></svg>');
+    const svg = Buffer.from(
+      '<?xml version="1.0"?>\n<svg width="100" height="200" viewBox="0 0 100 200"><path d="M0 0"/></svg>',
+    );
     const out = withWhiteBackground(svg).toString();
     expect(out).toContain('<rect x="0" y="0" width="100" height="200" fill="#ffffff"/>');
     // Behind, not in front.
@@ -94,8 +104,9 @@ describe.skipIf(!havePoppler || !haveWeasy)("against real documents", () => {
     const dir = await mkdtemp(join(tmpdir(), "pdftest-"));
     try {
       const pdf = await makePdf(dir, 5);
-      await expect(inspectPdf(pdf, { ...DEFAULT_LIMITS, maxPages: 2 }))
-        .rejects.toThrow(/5 pages; the limit is 2/);
+      await expect(inspectPdf(pdf, { ...DEFAULT_LIMITS, maxPages: 2 })).rejects.toThrow(
+        /5 pages; the limit is 2/,
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

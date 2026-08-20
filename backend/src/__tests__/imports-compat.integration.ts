@@ -92,7 +92,7 @@ describe("Import compatibility (legacy exports)", () => {
 
     expect(importedDrawings.every((d) => d.userId === BOOTSTRAP_USER_ID)).toBe(true);
     expect(importedDrawings.map((d) => d.id)).toEqual(
-      expect.arrayContaining(["legacy-drawing-1", "legacy-drawing-2", "legacy-drawing-trash"])
+      expect.arrayContaining(["legacy-drawing-1", "legacy-drawing-2", "legacy-drawing-trash"]),
     );
 
     const trash = await prisma.collection.findUnique({

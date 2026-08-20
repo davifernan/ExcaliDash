@@ -14,11 +14,7 @@ const normalizeImageElementsForPreview = (
   files: Record<string, any> = {},
 ): any[] =>
   elements.map((element) => {
-    if (
-      !element ||
-      element.type !== "image" ||
-      typeof element.fileId !== "string"
-    ) {
+    if (!element || element.type !== "image" || typeof element.fileId !== "string") {
       return element;
     }
     const file = files[element.fileId];
@@ -39,9 +35,7 @@ export const useDrawingPreview = (
   drawing: DrawingSummary,
   onPreviewGenerated?: (id: string, preview: string) => void,
 ) => {
-  const [previewSvg, setPreviewSvg] = useState<string | null>(
-    drawing.preview ?? null,
-  );
+  const [previewSvg, setPreviewSvg] = useState<string | null>(drawing.preview ?? null);
   const [fullData, setFullData] = useState<HydratedDrawingData | null>(null);
 
   const fullDataRef = useRef(fullData);
@@ -100,10 +94,7 @@ export const useDrawingPreview = (
         if (cancelled) return;
 
         const svg = await exportToSvg({
-          elements: normalizeImageElementsForPreview(
-            data.elements,
-            data.files || {},
-          ),
+          elements: normalizeImageElementsForPreview(data.elements, data.files || {}),
           appState: {
             ...data.appState,
             exportBackground: true,

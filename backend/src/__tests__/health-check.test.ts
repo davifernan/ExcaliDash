@@ -6,10 +6,7 @@
 import { describe, it, expect } from "vitest";
 import express from "express";
 import request from "supertest";
-import {
-  createHttpsRedirectPolicy,
-  getHttpsRedirectUrl,
-} from "../server/httpsRedirectPolicy";
+import { createHttpsRedirectPolicy, getHttpsRedirectUrl } from "../server/httpsRedirectPolicy";
 
 describe("Health check endpoint", () => {
   it("should return 200 OK with status 'ok'", async () => {
@@ -43,9 +40,7 @@ describe("Health check endpoint", () => {
     });
 
     // Health check should NOT redirect (even without x-forwarded-proto)
-    const healthResponse = await request(app)
-      .get("/health")
-      .set("Host", "127.0.0.1:8000");
+    const healthResponse = await request(app).get("/health").set("Host", "127.0.0.1:8000");
     expect(healthResponse.status).toBe(200);
     expect(healthResponse.body).toEqual({ status: "ok" });
 

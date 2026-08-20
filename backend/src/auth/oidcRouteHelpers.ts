@@ -16,9 +16,7 @@ export type OidcFlowPayload = {
 export const requestUsesHttps = (req: Request): boolean => {
   if (req.secure) return true;
   const forwardedProto = req.headers["x-forwarded-proto"];
-  const raw = Array.isArray(forwardedProto)
-    ? forwardedProto[0]
-    : forwardedProto;
+  const raw = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
   const firstHop = String(raw || "")
     .split(",")[0]
     .trim()
@@ -26,8 +24,7 @@ export const requestUsesHttps = (req: Request): boolean => {
   return firstHop === "https";
 };
 
-export const normalizeEmail = (value: string): string =>
-  value.trim().toLowerCase();
+export const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 export const resolveIdTokenSignedResponseAlg = (
   configuredAlg: string | null,
@@ -38,10 +35,7 @@ export const resolveIdTokenSignedResponseAlg = (
   const advertised = issuerMetadata.id_token_signing_alg_values_supported;
   if (Array.isArray(advertised)) {
     const supported = advertised
-      .filter(
-        (value): value is string =>
-          typeof value === "string" && value.trim().length > 0,
-      )
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .map((value) => value.trim());
     if (supported.length > 0) {
       const preferred = [
@@ -88,9 +82,7 @@ export const parseJwtAlgMismatchError = (
   error: unknown,
 ): { expected: string; got: string } | null => {
   if (!(error instanceof Error)) return null;
-  const match = error.message.match(
-    /expected\s+([A-Za-z0-9_-]+)\s*,\s*got:\s*([A-Za-z0-9_-]+)/i,
-  );
+  const match = error.message.match(/expected\s+([A-Za-z0-9_-]+)\s*,\s*got:\s*([A-Za-z0-9_-]+)/i);
   if (!match) return null;
   return {
     expected: String(match[1]).toUpperCase(),
@@ -98,10 +90,7 @@ export const parseJwtAlgMismatchError = (
   };
 };
 
-export const canUseIdTokenSigningAlg = (
-  alg: string,
-  hasClientSecret: boolean,
-): boolean => {
+export const canUseIdTokenSigningAlg = (alg: string, hasClientSecret: boolean): boolean => {
   if (alg.toLowerCase() === "none") return false;
   if (/^HS/i.test(alg)) return hasClientSecret;
   return true;
@@ -119,11 +108,7 @@ export const sanitizeReturnTo = (rawValue: unknown): string => {
 
 const base64UrlEncode = (value: Buffer | string): string => {
   const buffer = typeof value === "string" ? Buffer.from(value, "utf8") : value;
-  return buffer
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 };
 
 const base64UrlDecode = (value: string): Buffer => {
@@ -133,14 +118,9 @@ const base64UrlDecode = (value: string): Buffer => {
 };
 
 const signFlowPayload = (encodedPayload: string, secret: string): string =>
-  base64UrlEncode(
-    crypto.createHmac("sha256", secret).update(encodedPayload, "utf8").digest(),
-  );
+  base64UrlEncode(crypto.createHmac("sha256", secret).update(encodedPayload, "utf8").digest());
 
-export const encodeFlowPayload = (
-  payload: OidcFlowPayload,
-  secret: string,
-): string => {
+export const encodeFlowPayload = (payload: OidcFlowPayload, secret: string): string => {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const signature = signFlowPayload(encodedPayload, secret);
   return `${encodedPayload}.${signature}`;
@@ -184,20 +164,14 @@ export const decodeFlowPayload = (
   }
 };
 
-export const readStringClaim = (
-  claims: Record<string, unknown>,
-  key: string,
-): string | null => {
+export const readStringClaim = (claims: Record<string, unknown>, key: string): string | null => {
   const value = claims[key];
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
 
-export const readBooleanClaim = (
-  claims: Record<string, unknown>,
-  key: string,
-): boolean | null => {
+export const readBooleanClaim = (claims: Record<string, unknown>, key: string): boolean | null => {
   const value = claims[key];
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -208,10 +182,7 @@ export const readBooleanClaim = (
   return null;
 };
 
-export const readClaimByPath = (
-  claims: Record<string, unknown>,
-  keyPath: string,
-): unknown => {
+export const readClaimByPath = (claims: Record<string, unknown>, keyPath: string): unknown => {
   const segments = keyPath
     .split(".")
     .map((segment) => segment.trim())

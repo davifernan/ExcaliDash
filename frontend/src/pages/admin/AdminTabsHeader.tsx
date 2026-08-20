@@ -15,11 +15,7 @@ const TABS: { id: AdminTab; label: string; icon: typeof Shield }[] = [
 ];
 
 /** One header for both tables, so switching does not move anything on screen. */
-export const AdminTabsHeader: React.FC<AdminTabsHeaderProps> = ({
-  active,
-  onChange,
-  loading,
-}) => (
+export const AdminTabsHeader: React.FC<AdminTabsHeaderProps> = ({ active, onChange, loading }) => (
   <div className="px-4 sm:px-6 py-4 border-b-2 border-slate-200 dark:border-neutral-700 flex items-center gap-3">
     {TABS.map(({ id, label, icon: Icon }) => {
       const selected = active === id;
@@ -41,9 +37,7 @@ export const AdminTabsHeader: React.FC<AdminTabsHeaderProps> = ({
       );
     })}
     {loading && (
-      <span className="text-sm text-slate-500 dark:text-neutral-500 font-medium">
-        Loading…
-      </span>
+      <span className="text-sm text-slate-500 dark:text-neutral-500 font-medium">Loading…</span>
     )}
   </div>
 );

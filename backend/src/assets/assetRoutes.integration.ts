@@ -151,9 +151,7 @@ describe("document routes", () => {
         data: { name: "Other", elements: "[]", appState: "{}", userId: owner.id },
       });
       // The owner may see both boards, but this document is not on this one.
-      await request(app)
-        .get(`/drawings/${otherBoard.id}/assets/${assetId}`)
-        .expect(404);
+      await request(app).get(`/drawings/${otherBoard.id}/assets/${assetId}`).expect(404);
     });
 
     it("still serves a document only a kept version still needs", async () => {
@@ -194,10 +192,7 @@ describe("document routes", () => {
 
     it("answers 304 when the client already has it", async () => {
       const first = await request(app).get(url("/original")).expect(200);
-      await request(app)
-        .get(url("/original"))
-        .set("If-None-Match", first.headers.etag)
-        .expect(304);
+      await request(app).get(url("/original")).set("If-None-Match", first.headers.etag).expect(304);
     });
   });
 
@@ -284,8 +279,9 @@ describe("document routes", () => {
 
 describe("filenames in headers", () => {
   it("keeps a plain name as it is", () => {
-    expect(contentDisposition("attachment", "report.pdf"))
-      .toBe(`attachment; filename="report.pdf"; filename*=UTF-8''report.pdf`);
+    expect(contentDisposition("attachment", "report.pdf")).toBe(
+      `attachment; filename="report.pdf"; filename*=UTF-8''report.pdf`,
+    );
   });
 
   it("replaces characters a header cannot carry", () => {

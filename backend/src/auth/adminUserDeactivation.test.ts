@@ -43,9 +43,7 @@ describe("admin account deactivation", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
-    prisma.$transaction = vi.fn(async (callback: (tx: any) => unknown) =>
-      callback(prisma),
-    );
+    prisma.$transaction = vi.fn(async (callback: (tx: any) => unknown) => callback(prisma));
 
     const router = express.Router();
     registerAdminUserRoutes({
@@ -55,8 +53,7 @@ describe("admin account deactivation", () => {
         req.user = { id: "admin", role: "ADMIN" };
         next();
       }) as any,
-      accountActionRateLimiter: ((_req: any, _res: any, next: any) =>
-        next()) as any,
+      accountActionRateLimiter: ((_req: any, _res: any, next: any) => next()) as any,
       ensureAuthEnabled: async () => true,
       requireCsrf: () => true,
       requireAdmin: () => true,
@@ -65,9 +62,7 @@ describe("admin account deactivation", () => {
       config: { enableAuditLogging: false },
     } as any);
     const layer = (router as any).stack.find(
-      (candidate: any) =>
-        candidate.route?.path === "/users/:id" &&
-        candidate.route.methods.patch,
+      (candidate: any) => candidate.route?.path === "/users/:id" && candidate.route.methods.patch,
     );
     const req: any = {
       params: { id: "member" },

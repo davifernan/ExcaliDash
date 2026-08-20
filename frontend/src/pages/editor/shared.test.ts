@@ -15,7 +15,7 @@ describe("editor/shared scene guards", () => {
       hasRenderableElements([
         { id: "a", isDeleted: true },
         { id: "b", isDeleted: true },
-      ])
+      ]),
     ).toBe(false);
   });
 
@@ -62,9 +62,7 @@ describe("editor/shared scene guards", () => {
   });
 
   it("marks collaborator-only updates as non-history scene changes", () => {
-    const collaborators = new Map([
-      ["user-2", { id: "user-2", username: "B" }],
-    ]);
+    const collaborators = new Map([["user-2", { id: "user-2", username: "B" }]]);
 
     const result = buildRemoteSceneUpdate({ collaborators });
 
@@ -92,16 +90,10 @@ describe("editor/shared scene guards", () => {
     });
 
     expect(result.sceneUpdate).toEqual({
-      elements: [
-        localElements[0],
-        pendingElements[0],
-      ],
+      elements: [localElements[0], pendingElements[0]],
       captureUpdate: "NEVER",
     });
-    expect(result.mergedElements).toEqual([
-      localElements[0],
-      pendingElements[0],
-    ]);
+    expect(result.mergedElements).toEqual([localElements[0], pendingElements[0]]);
   });
 
   it("marks remote file-only updates as non-history scene changes", () => {
@@ -140,16 +132,10 @@ describe("editor/shared scene guards", () => {
     });
 
     expect(result.sceneUpdate).toEqual({
-      elements: [
-        localElements[1],
-        localElements[0],
-      ],
+      elements: [localElements[1], localElements[0]],
       captureUpdate: "NEVER",
     });
-    expect(result.mergedElements).toEqual([
-      localElements[1],
-      localElements[0],
-    ]);
+    expect(result.mergedElements).toEqual([localElements[1], localElements[0]]);
   });
 
   it("keeps only durable appState fields for persisted drawings", () => {
@@ -167,7 +153,7 @@ describe("editor/shared scene guards", () => {
         draggingElement: { id: "dragging" },
         scrollX: 120,
         scrollY: 240,
-      })
+      }),
     ).toEqual({
       viewBackgroundColor: "#123456",
       gridSize: 24,

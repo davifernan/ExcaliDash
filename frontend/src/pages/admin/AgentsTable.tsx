@@ -36,26 +36,39 @@ export const AgentsTable: React.FC<AgentsTableProps> = ({
     <AdminTabsHeader active={activeTab} onChange={onTabChange} loading={loading} />
 
     <div className="px-4 sm:px-6 py-3 text-sm text-slate-600 dark:text-neutral-400 border-b-2 border-slate-100 dark:border-neutral-800">
-      An agent acts as the user its key belongs to, so anything it creates is
-      already theirs. Users create keys under <strong>Profile → API keys</strong>.
+      An agent acts as the user its key belongs to, so anything it creates is already theirs. Users
+      create keys under <strong>Profile → API keys</strong>.
     </div>
 
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className="bg-slate-50 dark:bg-neutral-800/70">
           <tr className="text-left">
-            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">Agent</th>
-            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">Acts as</th>
-            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">Scopes</th>
-            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">Last used</th>
-            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">Status</th>
+            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">
+              Agent
+            </th>
+            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">
+              Acts as
+            </th>
+            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">
+              Scopes
+            </th>
+            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">
+              Last used
+            </th>
+            <th className="px-4 sm:px-6 py-3 font-bold text-slate-600 dark:text-neutral-300">
+              Status
+            </th>
             <th className="px-4 sm:px-6 py-3" />
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
           {apiKeys.length === 0 && !loading && (
             <tr>
-              <td colSpan={6} className="px-4 sm:px-6 py-8 text-center text-slate-500 dark:text-neutral-400">
+              <td
+                colSpan={6}
+                className="px-4 sm:px-6 py-8 text-center text-slate-500 dark:text-neutral-400"
+              >
                 No agents yet.
               </td>
             </tr>
@@ -74,14 +87,17 @@ export const AgentsTable: React.FC<AgentsTableProps> = ({
               </td>
               <td className="px-4 sm:px-6 py-3">
                 <div className="flex flex-wrap gap-1">
-                  {key.scopes.split(",").filter(Boolean).map((scope) => (
-                    <span
-                      key={scope}
-                      className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-xs text-slate-700 dark:text-neutral-300 font-mono"
-                    >
-                      {scope.trim()}
-                    </span>
-                  ))}
+                  {key.scopes
+                    .split(",")
+                    .filter(Boolean)
+                    .map((scope) => (
+                      <span
+                        key={scope}
+                        className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-xs text-slate-700 dark:text-neutral-300 font-mono"
+                      >
+                        {scope.trim()}
+                      </span>
+                    ))}
                 </div>
               </td>
               <td className="px-4 sm:px-6 py-3 text-slate-600 dark:text-neutral-400">

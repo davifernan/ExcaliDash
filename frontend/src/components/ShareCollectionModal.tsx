@@ -1,11 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { X, Plus, AlertTriangle, RefreshCw, Search, Users } from "lucide-react";
 import * as api from "../api";
-import type {
-  CollectionShareRow,
-  CollectionShareRole,
-  CollectionShareUser,
-} from "../types";
+import type { CollectionShareRow, CollectionShareRole, CollectionShareUser } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { RoleSelect } from "./RoleSelect";
 
@@ -109,11 +105,7 @@ export const ShareCollectionModal: React.FC<Props> = ({
     setIsLoading(true);
     setError(null);
     try {
-      await api.updateCollectionShare(
-        collectionId,
-        userId,
-        val as CollectionShareRole,
-      );
+      await api.updateCollectionShare(collectionId, userId, val as CollectionShareRole);
       await refresh();
     } catch {
       setError("Failed to update role");
@@ -139,13 +131,9 @@ export const ShareCollectionModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-[500px] bg-white dark:bg-neutral-900 rounded-2xl border-2 border-black dark:border-neutral-700 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.08)] flex flex-col animate-in fade-in zoom-in-95 duration-200">
-
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between border-b-2 border-black dark:border-neutral-700">
           <h2
@@ -255,17 +243,12 @@ export const ShareCollectionModal: React.FC<Props> = ({
               {shares.length === 0 && (
                 <div className="flex flex-col items-center gap-2 py-6 text-slate-400 dark:text-neutral-500">
                   <Users size={28} strokeWidth={1.5} />
-                  <p className="text-xs font-bold">
-                    No one else has access yet
-                  </p>
+                  <p className="text-xs font-bold">No one else has access yet</p>
                 </div>
               )}
 
               {shares.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center gap-3 px-1 py-1.5 min-h-[48px] group"
-                >
+                <div key={s.id} className="flex items-center gap-3 px-1 py-1.5 min-h-[48px] group">
                   <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm border-2 border-indigo-600 dark:border-indigo-500 shrink-0">
                     {s.granteeUser.name.charAt(0).toUpperCase()}
                   </div>

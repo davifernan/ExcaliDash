@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 type PasswordMatchProps = {
   password: string;
@@ -15,7 +15,7 @@ type PasswordMatchProps = {
 export const PasswordMatch: React.FC<PasswordMatchProps> = ({
   password,
   confirmPassword,
-  className = '',
+  className = "",
 }) => {
   if (!confirmPassword) return null;
 
@@ -26,9 +26,7 @@ export const PasswordMatch: React.FC<PasswordMatchProps> = ({
       role="status"
       aria-live="polite"
       className={`mt-1 flex items-center gap-1.5 text-xs ${
-        matches
-          ? 'text-green-600 dark:text-green-400'
-          : 'text-red-600 dark:text-red-400'
+        matches ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
       } ${className}`}
     >
       <svg
@@ -45,7 +43,7 @@ export const PasswordMatch: React.FC<PasswordMatchProps> = ({
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
         )}
       </svg>
-      {matches ? 'Passwords match' : 'Passwords do not match'}
+      {matches ? "Passwords match" : "Passwords do not match"}
     </div>
   );
 };

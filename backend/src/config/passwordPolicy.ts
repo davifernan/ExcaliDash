@@ -45,10 +45,12 @@ export const validatePasswordAgainstPolicy = (
 ): string | null => {
   if (typeof password !== "string") return buildPasswordPolicyMessage(policy);
   if (password.length < policy.minLength) return buildPasswordPolicyMessage(policy);
-  if (password.length > policy.maxLength) return `Password must be at most ${policy.maxLength} characters long`;
+  if (password.length > policy.maxLength)
+    return `Password must be at most ${policy.maxLength} characters long`;
   if (policy.requireUppercase && !/[A-Z]/.test(password)) return buildPasswordPolicyMessage(policy);
   if (policy.requireLowercase && !/[a-z]/.test(password)) return buildPasswordPolicyMessage(policy);
   if (policy.requireNumber && !/\d/.test(password)) return buildPasswordPolicyMessage(policy);
-  if (policy.requireSymbol && !/[^A-Za-z0-9]/.test(password)) return buildPasswordPolicyMessage(policy);
+  if (policy.requireSymbol && !/[^A-Za-z0-9]/.test(password))
+    return buildPasswordPolicyMessage(policy);
   return null;
 };

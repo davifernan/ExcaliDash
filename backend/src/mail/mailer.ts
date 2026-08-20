@@ -15,8 +15,7 @@ export type MailMessage = {
 };
 
 export type MailResult =
-  | { delivered: true; id: string | null }
-  | { delivered: false; reason: string };
+  { delivered: true; id: string | null } | { delivered: false; reason: string };
 
 export interface Mailer {
   /** False when no provider is configured; callers can skip work entirely. */
@@ -25,9 +24,7 @@ export interface Mailer {
 }
 
 /** Used whenever no provider is configured. Never throws, never sends. */
-export const createDisabledMailer = (
-  reason = "No mail provider configured",
-): Mailer => ({
+export const createDisabledMailer = (reason = "No mail provider configured"): Mailer => ({
   enabled: false,
   async send() {
     return { delivered: false, reason };

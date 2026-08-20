@@ -51,7 +51,6 @@ const DEFAULT_RELAXED_POLICY: PasswordPolicyResponse = {
   requireSymbol: false,
 };
 
-
 const buildPatternHtml = (policy: PasswordPolicyResponse): string => {
   const parts: string[] = [];
   if (policy.requireLowercase) parts.push("(?=.*[a-z])");
@@ -79,7 +78,9 @@ const buildRequirementsText = (policy: PasswordPolicyResponse): string => {
   return `${requirements.join(", ")}.`;
 };
 
-const normalizePolicy = (raw: Partial<PasswordPolicyResponse> | null | undefined): PasswordPolicyResponse | null => {
+const normalizePolicy = (
+  raw: Partial<PasswordPolicyResponse> | null | undefined,
+): PasswordPolicyResponse | null => {
   if (!raw) return null;
   const minLength = Number(raw.minLength);
   const maxLength = Number(raw.maxLength);
@@ -106,7 +107,9 @@ const readCachedPolicy = (): PasswordPolicyResponse | null => {
   }
 };
 
-export const cachePasswordPolicy = (policy: Partial<PasswordPolicyResponse> | null | undefined): void => {
+export const cachePasswordPolicy = (
+  policy: Partial<PasswordPolicyResponse> | null | undefined,
+): void => {
   const normalized = normalizePolicy(policy);
   if (!normalized) return;
   try {
@@ -117,14 +120,13 @@ export const cachePasswordPolicy = (policy: Partial<PasswordPolicyResponse> | nu
   }
 };
 
-export const strongPasswordPattern =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,100}$/;
+export const strongPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,100}$/;
 
 export const strongPasswordPatternHtml = buildPatternHtml(DEFAULT_STRONG_POLICY);
 
 export const getPasswordPolicy = (opts?: { strong?: boolean }): PasswordPolicy => {
   const strong = typeof opts?.strong === "boolean" ? opts.strong : true;
-  const base = strong ? readCachedPolicy() ?? DEFAULT_STRONG_POLICY : DEFAULT_RELAXED_POLICY;
+  const base = strong ? (readCachedPolicy() ?? DEFAULT_STRONG_POLICY) : DEFAULT_RELAXED_POLICY;
   const requiresComplexity =
     base.requireUppercase || base.requireLowercase || base.requireNumber || base.requireSymbol;
   const patternHtml = buildPatternHtml(base);
@@ -141,7 +143,7 @@ export const getPasswordPolicy = (opts?: { strong?: boolean }): PasswordPolicy =
 
 export const getPasswordRequirements = (
   password: string,
-  policy: PasswordPolicy
+  policy: PasswordPolicy,
 ): PasswordRequirement[] => {
   const value = typeof password === "string" ? password : "";
   const requirements: PasswordRequirement[] = [
@@ -153,10 +155,18 @@ export const getPasswordRequirements = (
   ];
 
   if (policy.requireUppercase) {
-    requirements.push({ id: "uppercase", label: "One uppercase letter (A-Z)", ok: /[A-Z]/.test(value) });
+    requirements.push({
+      id: "uppercase",
+      label: "One uppercase letter (A-Z)",
+      ok: /[A-Z]/.test(value),
+    });
   }
   if (policy.requireLowercase) {
-    requirements.push({ id: "lowercase", label: "One lowercase letter (a-z)", ok: /[a-z]/.test(value) });
+    requirements.push({
+      id: "lowercase",
+      label: "One lowercase letter (a-z)",
+      ok: /[a-z]/.test(value),
+    });
   }
   if (policy.requireNumber) {
     requirements.push({ id: "number", label: "One number (0-9)", ok: /\d/.test(value) });
@@ -210,10 +220,7 @@ export const generatePassword = (policy: PasswordPolicy): string => {
     alphabet += SYMBOL;
   }
 
-  const length = Math.min(
-    Math.max(policy.minLength, 16),
-    policy.maxLength || 64,
-  );
+  const length = Math.min(Math.max(policy.minLength, 16), policy.maxLength || 64);
   const chars = [...required];
   while (chars.length < length) chars.push(pick(alphabet));
 

@@ -30,7 +30,13 @@ const NoteIcon = ({ color }: { color: StickyColor }) => (
       strokeWidth="1.2"
       strokeLinejoin="round"
     />
-    <path d="M17 12.5h-4.5V17" fill="none" stroke={color.ink} strokeWidth="1.2" strokeLinejoin="round" />
+    <path
+      d="M17 12.5h-4.5V17"
+      fill="none"
+      stroke={color.ink}
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
@@ -41,12 +47,7 @@ type Props = {
   onArm: () => void;
 };
 
-export const StickyToolbarButton: React.FC<Props> = ({
-  containerRef,
-  armed,
-  color,
-  onArm,
-}) => {
+export const StickyToolbarButton: React.FC<Props> = ({ containerRef, armed, color, onArm }) => {
   const toolbar = useToolbarElement(containerRef);
   if (!toolbar) return null;
 

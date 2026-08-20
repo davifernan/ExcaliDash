@@ -1,18 +1,13 @@
 /**
  * Tests for audit logging utility
- * 
+ *
  * These tests verify that audit logging works correctly when enabled
  * and gracefully degrades when disabled or when tables don't exist.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { getTestPrisma, setupTestDb, initTestDb, createTestUser } from "../../__tests__/testUtils";
-import {
-  logAuditEvent,
-  getAuditLogs,
-  setAuditPrismaProvider,
-  type AuditLogData,
-} from "../audit";
+import { logAuditEvent, getAuditLogs, setAuditPrismaProvider, type AuditLogData } from "../audit";
 
 describe("Audit Logging", () => {
   const prisma = getTestPrisma();
@@ -102,7 +97,9 @@ describe("Audit Logging", () => {
         const audit = await import("../audit");
         audit.setAuditPrismaProvider(() => prisma);
 
-        await expect(audit.logAuditEvent({ action: "should_not_log_disabled" })).resolves.not.toThrow();
+        await expect(
+          audit.logAuditEvent({ action: "should_not_log_disabled" }),
+        ).resolves.not.toThrow();
         const logs = await prisma.auditLog.findMany({
           where: { action: "should_not_log_disabled" },
         });

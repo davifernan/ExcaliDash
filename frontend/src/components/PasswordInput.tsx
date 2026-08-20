@@ -1,9 +1,6 @@
-import React, { useId, useState } from 'react';
+import React, { useId, useState } from "react";
 
-type PasswordInputProps = Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  'type'
->;
+type PasswordInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "type">;
 
 /**
  * Password field with a reveal toggle.
@@ -11,10 +8,7 @@ type PasswordInputProps = Omit<
  * Typing a password you cannot read is the main reason people mistype one,
  * which on a reset page means starting the whole mail round trip again.
  */
-export const PasswordInput: React.FC<PasswordInputProps> = ({
-  className = '',
-  ...inputProps
-}) => {
+export const PasswordInput: React.FC<PasswordInputProps> = ({ className = "", ...inputProps }) => {
   const [visible, setVisible] = useState(false);
   const describedBy = useId();
 
@@ -22,13 +16,13 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
     <div className="relative">
       <input
         {...inputProps}
-        type={visible ? 'text' : 'password'}
+        type={visible ? "text" : "password"}
         className={`pr-10 ${className}`}
       />
       <button
         type="button"
         onClick={() => setVisible((current) => !current)}
-        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
         aria-describedby={describedBy}
         // Keep it out of the tab order between the two password fields:

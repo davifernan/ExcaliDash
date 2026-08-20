@@ -42,8 +42,12 @@ const buildApp = (options?: {
       authLoginRateLimitWindowMs: 900000,
       authLoginRateLimitMax: 20,
     }),
-    parseLoginRateLimitConfig: vi.fn().mockReturnValue({ enabled: true, windowMs: 900000, max: 20 }),
-    applyLoginRateLimitConfig: vi.fn().mockReturnValue({ enabled: true, windowMs: 900000, max: 20 }),
+    parseLoginRateLimitConfig: vi
+      .fn()
+      .mockReturnValue({ enabled: true, windowMs: 900000, max: 20 }),
+    applyLoginRateLimitConfig: vi
+      .fn()
+      .mockReturnValue({ enabled: true, windowMs: 900000, max: 20 }),
     resetLoginAttemptKey: vi.fn(),
     requireAdmin: ((req: any, _res: any) => Boolean(req.user && req.user.role === "ADMIN")) as any,
     findUserByIdentifier: vi.fn(),
@@ -93,15 +97,13 @@ describe("admin OIDC access controls", () => {
       oidcJitProvisioningEnabled: false,
     });
 
-    const response = await request(app)
-      .post("/oidc/jit-provisioning")
-      .send({ enabled: false });
+    const response = await request(app).post("/oidc/jit-provisioning").send({ enabled: false });
 
     expect(response.status).toBe(200);
     expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: { oidcJitProvisioningEnabled: false },
-      })
+      }),
     );
     expect(response.body?.oidcJitProvisioningEnabled).toBe(false);
   });
@@ -138,7 +140,7 @@ describe("admin OIDC access controls", () => {
           passwordHash: "",
           mustResetPassword: false,
         }),
-      })
+      }),
     );
   });
 

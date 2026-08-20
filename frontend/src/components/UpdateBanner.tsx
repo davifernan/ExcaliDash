@@ -96,10 +96,10 @@ export const UpdateBanner: React.FC = () => {
   const [info, setInfo] = useState<api.UpdateInfo | null>(() => readCachedInfo(readChannel()));
   const [loading, setLoading] = useState(false);
   const [ignoredVersion, setIgnoredVersion] = useState<string | null>(() =>
-    safeGetItem(DISMISSED_VERSION_KEY)
+    safeGetItem(DISMISSED_VERSION_KEY),
   );
   const [closedVersion, setClosedVersion] = useState<string | null>(() =>
-    safeGetSessionItem(closedVersionStorageKey(readChannel()))
+    safeGetSessionItem(closedVersionStorageKey(readChannel())),
   );
 
   const load = async (force: boolean) => {
@@ -146,7 +146,9 @@ export const UpdateBanner: React.FC = () => {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 flex-shrink-0">
-            <span className="text-[10px] font-black uppercase tracking-wider">Update available</span>
+            <span className="text-[10px] font-black uppercase tracking-wider">
+              Update available
+            </span>
           </div>
           <div className="min-w-0 flex items-center gap-2">
             <span className="text-sm font-bold text-emerald-950 dark:text-emerald-50 truncate">
@@ -162,7 +164,9 @@ export const UpdateBanner: React.FC = () => {
           <select
             value={channel}
             onChange={(e) => {
-              const next = (e.target.value === "prerelease" ? "prerelease" : "stable") as api.UpdateChannel;
+              const next = (
+                e.target.value === "prerelease" ? "prerelease" : "stable"
+              ) as api.UpdateChannel;
               writeChannel(next);
               setChannel(next);
             }}

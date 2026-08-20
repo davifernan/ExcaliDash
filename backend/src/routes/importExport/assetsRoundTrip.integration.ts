@@ -59,7 +59,9 @@ describe("document backup and export round trip", () => {
     let exportHandler: any;
     let importHandler: any;
     const app = {
-      get: (_route: string, ...handlers: any[]) => { exportHandler = handlers.at(-1); },
+      get: (_route: string, ...handlers: any[]) => {
+        exportHandler = handlers.at(-1);
+      },
       post: (route: string, ...handlers: any[]) => {
         if (route === "/import/excalidash") importHandler = handlers.at(-1);
       },
@@ -74,12 +76,15 @@ describe("document backup and export round trip", () => {
       assetStorageDir,
       backendRoot: resolve(__dirname, "../../.."),
       getBackendVersion: () => "test",
-      parseJsonField: (raw: string | null | undefined, fallback: unknown) => raw ? JSON.parse(raw) : fallback,
+      parseJsonField: (raw: string | null | undefined, fallback: unknown) =>
+        raw ? JSON.parse(raw) : fallback,
       sanitizeText,
       validateImportedDrawing,
       ensureTrashCollection: async () => undefined,
       invalidateDrawingsCache: () => undefined,
-      removeFileIfExists: async (filePath?: string) => { if (filePath) await fs.rm(filePath, { force: true }); },
+      removeFileIfExists: async (filePath?: string) => {
+        if (filePath) await fs.rm(filePath, { force: true });
+      },
       verifyDatabaseIntegrityAsync: async () => true,
       MAX_IMPORT_ARCHIVE_ENTRIES: 100,
       MAX_IMPORT_ARCHIVE_BYTES: 20 * MIB,
@@ -100,10 +105,20 @@ describe("document backup and export round trip", () => {
     const chunks: Buffer[] = [];
     response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
     response.setHeader = () => response;
-    response.status = (status: number) => { response.statusCode = status; return response; };
-    response.json = (body: unknown) => { response.body = body; response.end(); return response; };
+    response.status = (status: number) => {
+      response.statusCode = status;
+      return response;
+    };
+    response.json = (body: unknown) => {
+      response.body = body;
+      response.end();
+      return response;
+    };
     const ended = new Promise<void>((done) => response.on("end", done));
-    await handler({ user: { id: userId }, query: {}, protocol: "https", get: () => "example.test" }, response);
+    await handler(
+      { user: { id: userId }, query: {}, protocol: "https", get: () => "example.test" },
+      response,
+    );
     await ended;
     return Buffer.concat(chunks);
   };
@@ -126,11 +141,16 @@ describe("document backup and export round trip", () => {
         source: Readable.from([pdf]),
       },
     );
-    const elements = [{
-      id: "pdf-widget",
-      customData: { widgetKind: "pdf", assetId: created.asset.id, note: "x".repeat(2000) },
-    }];
-    await prisma.drawing.update({ where: { id: drawing.id }, data: { elements: JSON.stringify(elements) } });
+    const elements = [
+      {
+        id: "pdf-widget",
+        customData: { widgetKind: "pdf", assetId: created.asset.id, note: "x".repeat(2000) },
+      },
+    ];
+    await prisma.drawing.update({
+      where: { id: drawing.id },
+      data: { elements: JSON.stringify(elements) },
+    });
     await prisma.drawingAsset.update({
       where: { drawingId_assetId: { drawingId: drawing.id, assetId: created.asset.id } },
       data: { state: "ACTIVE", expiresAt: null },
@@ -144,12 +164,16 @@ describe("document backup and export round trip", () => {
         files: encodeSnapshotField("{}", true),
       },
     });
-    await prisma.drawingSnapshotAsset.create({ data: { snapshotId: snapshot.id, assetId: created.asset.id } });
+    await prisma.drawingSnapshotAsset.create({
+      data: { snapshotId: snapshot.id, assetId: created.asset.id },
+    });
 
     const { exportHandler, importHandler } = routeHarness();
     const archive = await exportArchive(exportHandler, user.id);
     const parsedArchive = await JSZip.loadAsync(archive);
-    const manifest = JSON.parse(await parsedArchive.file("excalidash.manifest.json")!.async("string"));
+    const manifest = JSON.parse(
+      await parsedArchive.file("excalidash.manifest.json")!.async("string"),
+    );
     expect(manifest.formatVersion).toBe(2);
     expect(manifest.blobs[0].sha256).toBe(created.blob.sha256);
     expect(await parsedArchive.file(manifest.blobs[0].filePath)!.async("nodebuffer")).toEqual(pdf);
@@ -163,20 +187,30 @@ describe("document backup and export round trip", () => {
     await fs.writeFile(join(uploadDir, stagedFilename), archive);
     const response: any = {
       statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      json(body: unknown) { this.body = body; return this; },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body: unknown) {
+        this.body = body;
+        return this;
+      },
     };
     await importHandler({ user: { id: user.id }, file: { filename: stagedFilename } }, response);
     expect(response.statusCode, JSON.stringify(response.body)).toBe(200);
 
     const restoredDrawing = await prisma.drawing.findUnique({ where: { id: drawing.id } });
-    const restoredAsset = await prisma.asset.findFirst({ include: { blob: true, drawings: true, snapshots: true } });
+    const restoredAsset = await prisma.asset.findFirst({
+      include: { blob: true, drawings: true, snapshots: true },
+    });
     expect(restoredDrawing).toBeTruthy();
     expect(restoredAsset?.originalName).toBe("proof.pdf");
     expect(restoredAsset?.drawings).toHaveLength(1);
     expect(restoredAsset?.snapshots).toHaveLength(1);
     expect(JSON.parse(restoredDrawing!.elements)[0].customData.assetId).toBe(restoredAsset!.id);
-    const restoredBytes = await fs.readFile(resolveStoragePath(assetStorageDir, restoredAsset!.blob.storageKey));
+    const restoredBytes = await fs.readFile(
+      resolveStoragePath(assetStorageDir, restoredAsset!.blob.storageKey),
+    );
     expect(restoredBytes).toEqual(pdf);
   });
 
@@ -213,7 +247,9 @@ describe("document backup and export round trip", () => {
     expect(target).toBeTruthy();
     const archive = await JSZip.loadAsync(await fs.readFile(target!));
     expect(archive.file("database.sqlite")).toBeTruthy();
-    expect(await archive.file(`assets/${created.blob.storageKey}`)!.async("nodebuffer")).toEqual(bytes);
+    expect(await archive.file(`assets/${created.blob.storageKey}`)!.async("nodebuffer")).toEqual(
+      bytes,
+    );
     expect(Object.keys(archive.files).some((name) => name.includes("/cache/"))).toBe(false);
   });
 });

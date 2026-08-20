@@ -19,18 +19,14 @@ export type DrawingPrincipal = {
   };
 };
 
-export const normalizeDrawingPermission = (
-  input: unknown,
-): DrawingPermission | null => {
+export const normalizeDrawingPermission = (input: unknown): DrawingPermission | null => {
   if (input === "view" || input === "edit") return input;
   return null;
 };
 
-export const buildShareLinkToken = (): string =>
-  crypto.randomBytes(24).toString("base64url");
+export const buildShareLinkToken = (): string => crypto.randomBytes(24).toString("base64url");
 
-export const hashShareLinkToken = (token: string): string =>
-  hashTokenForStorage(token);
+export const hashShareLinkToken = (token: string): string => hashTokenForStorage(token);
 
 const normalizePassphraseForHash = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -46,17 +42,12 @@ const DEFAULT_SCRYPT_MAXMEM = 64 * 1024 * 1024;
 export const hashPassphrase = (value: string, pepper: string): string => {
   const normalized = normalizePassphraseForHash(value);
   const salt = crypto.randomBytes(DEFAULT_SCRYPT_SALT_BYTES);
-  const key = crypto.scryptSync(
-    `${pepper}|${normalized}`,
-    salt,
-    DEFAULT_SCRYPT_KEYLEN,
-    {
-      cost: DEFAULT_SCRYPT_N,
-      blockSize: DEFAULT_SCRYPT_R,
-      parallelization: DEFAULT_SCRYPT_P,
-      maxmem: DEFAULT_SCRYPT_MAXMEM,
-    },
-  );
+  const key = crypto.scryptSync(`${pepper}|${normalized}`, salt, DEFAULT_SCRYPT_KEYLEN, {
+    cost: DEFAULT_SCRYPT_N,
+    blockSize: DEFAULT_SCRYPT_R,
+    parallelization: DEFAULT_SCRYPT_P,
+    maxmem: DEFAULT_SCRYPT_MAXMEM,
+  });
   return [
     SCRYPT_PREFIX,
     String(DEFAULT_SCRYPT_N),
@@ -100,17 +91,12 @@ export const verifyPassphraseHash = (
     if (salt.length < 8) return false;
     if (expectedKey.length < 16) return false;
 
-    const actualKey = crypto.scryptSync(
-      `${pepper}|${normalized}`,
-      salt,
-      expectedKey.length,
-      {
-        cost: n,
-        blockSize: r,
-        parallelization: p,
-        maxmem: DEFAULT_SCRYPT_MAXMEM,
-      },
-    );
+    const actualKey = crypto.scryptSync(`${pepper}|${normalized}`, salt, expectedKey.length, {
+      cost: n,
+      blockSize: r,
+      parallelization: p,
+      maxmem: DEFAULT_SCRYPT_MAXMEM,
+    });
     if (actualKey.length !== expectedKey.length) return false;
     return crypto.timingSafeEqual(actualKey, expectedKey);
   }
@@ -189,18 +175,15 @@ export const getDrawingAccess = async (params: {
           baseAccess = "owner";
         } else {
           // Check if user has a collection share entry
-          const collectionShare = await params.prisma.collectionShare.findFirst(
-            {
-              where: {
-                collectionId: drawing.collectionId,
-                granteeUserId: params.principal.userId,
-              },
-              select: { role: true },
+          const collectionShare = await params.prisma.collectionShare.findFirst({
+            where: {
+              collectionId: drawing.collectionId,
+              granteeUserId: params.principal.userId,
             },
-          );
+            select: { role: true },
+          });
           if (collectionShare) {
-            baseAccess =
-              normalizeDrawingPermission(collectionShare.role) ?? baseAccess;
+            baseAccess = normalizeDrawingPermission(collectionShare.role) ?? baseAccess;
           }
         }
       }
@@ -219,17 +202,14 @@ export const getDrawingAccess = async (params: {
   return maxAccess(baseAccess, linkAccess);
 };
 
-export const canViewDrawing = (
-  access: DrawingAccess,
-): access is Exclude<DrawingAccess, "none"> => access !== "none";
+export const canViewDrawing = (access: DrawingAccess): access is Exclude<DrawingAccess, "none"> =>
+  access !== "none";
 
 export const canEditDrawing = (
   access: DrawingAccess,
-): access is Extract<DrawingAccess, "edit" | "owner"> =>
-  access === "edit" || access === "owner";
+): access is Extract<DrawingAccess, "edit" | "owner"> => access === "edit" || access === "owner";
 
-export const isOwnerAccess = (access: DrawingAccess): boolean =>
-  access === "owner";
+export const isOwnerAccess = (access: DrawingAccess): boolean => access === "owner";
 
 const getActiveLinkShareAccess = async (params: {
   prisma: PrismaClient;

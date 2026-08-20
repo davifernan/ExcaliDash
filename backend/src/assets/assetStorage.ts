@@ -43,12 +43,9 @@ export type StoredFile = {
 export function shouldCompress(mimeType: string): boolean {
   const type = mimeType.split(";")[0].trim().toLowerCase();
   if (type.startsWith("text/")) return true;
-  return [
-    "image/svg+xml",
-    "application/json",
-    "application/xml",
-    "application/x-ndjson",
-  ].includes(type);
+  return ["image/svg+xml", "application/json", "application/xml", "application/x-ndjson"].includes(
+    type,
+  );
 }
 
 export class AssetTooLargeError extends Error {
@@ -123,10 +120,7 @@ export async function storeStream(
 ): Promise<StoredFile> {
   const target = resolveStoragePath(root, storageKey);
   const stagingDir = resolveStoragePath(root, "staging");
-  const staging = join(
-    stagingDir,
-    `${Date.now()}-${Math.random().toString(36).slice(2)}.part`,
-  );
+  const staging = join(stagingDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.part`);
 
   await mkdir(stagingDir, { recursive: true });
   await mkdir(dirname(target), { recursive: true });
@@ -152,9 +146,11 @@ export async function storeStream(
 
   const stages: any[] = [source, measure];
   if (options.compress) {
-    stages.push(createBrotliCompress({
-      params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 },
-    }));
+    stages.push(
+      createBrotliCompress({
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 },
+      }),
+    );
   }
   stages.push(createWriteStream(staging));
 

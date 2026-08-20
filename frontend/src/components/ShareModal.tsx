@@ -1,12 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import {
-  X,
-  Link as LinkIcon,
-  AlertTriangle,
-  Check,
-  RefreshCw,
-} from "lucide-react";
+import { X, Link as LinkIcon, AlertTriangle, Check, RefreshCw } from "lucide-react";
 import * as api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { GeneralAccessSection } from "./share-modal/GeneralAccessSection";
@@ -24,12 +18,7 @@ type Props = {
   onClose: () => void;
 };
 
-export const ShareModal: React.FC<Props> = ({
-  drawingId,
-  drawingName,
-  isOpen,
-  onClose,
-}) => {
+export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, onClose }) => {
   const { user } = useAuth();
   const currentUserId = user?.id || null;
   const [isLoading, setIsLoading] = useState(false);
@@ -86,9 +75,7 @@ export const ShareModal: React.FC<Props> = ({
       let message = "Failed to load sharing settings";
       if (api.isAxiosError(err)) {
         const serverMessage =
-          typeof err.response?.data?.message === "string"
-            ? err.response.data.message
-            : null;
+          typeof err.response?.data?.message === "string" ? err.response.data.message : null;
         if (serverMessage) message = serverMessage;
       }
       setError(message);
@@ -120,9 +107,7 @@ export const ShareModal: React.FC<Props> = ({
     const run = async () => {
       try {
         const users = await api.resolveShareUsers(drawingId, q);
-        const filtered = currentUserId
-          ? users.filter((u) => u.id !== currentUserId)
-          : users;
+        const filtered = currentUserId ? users.filter((u) => u.id !== currentUserId) : users;
         if (!cancelled) setUserResults(filtered);
       } catch {
         if (!cancelled) setUserResults([]);
@@ -173,9 +158,7 @@ export const ShareModal: React.FC<Props> = ({
       let message = "Failed to share with user";
       if (api.isAxiosError(err)) {
         const serverMessage =
-          typeof err.response?.data?.message === "string"
-            ? err.response.data.message
-            : null;
+          typeof err.response?.data?.message === "string" ? err.response.data.message : null;
         if (serverMessage) message = serverMessage;
       }
       setError(message);
@@ -197,10 +180,7 @@ export const ShareModal: React.FC<Props> = ({
     }
   };
 
-  const handleUpdateUserPermission = async (
-    granteeUserId: string,
-    permission: "view" | "edit",
-  ) => {
+  const handleUpdateUserPermission = async (granteeUserId: string, permission: "view" | "edit") => {
     setIsLoading(true);
     setError(null);
     try {
@@ -213,9 +193,7 @@ export const ShareModal: React.FC<Props> = ({
       let message = "Failed to update access";
       if (api.isAxiosError(err)) {
         const serverMessage =
-          typeof err.response?.data?.message === "string"
-            ? err.response.data.message
-            : null;
+          typeof err.response?.data?.message === "string" ? err.response.data.message : null;
         if (serverMessage) message = serverMessage;
       }
       setError(message);
@@ -224,10 +202,7 @@ export const ShareModal: React.FC<Props> = ({
     }
   };
 
-  const handleUpdateLink = async (
-    newPermission?: "view" | "edit",
-    newExpiry?: string | null,
-  ) => {
+  const handleUpdateLink = async (newPermission?: "view" | "edit", newExpiry?: string | null) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -237,9 +212,7 @@ export const ShareModal: React.FC<Props> = ({
       const perm = newPermission ?? linkPermission;
       setLinkPermission(perm);
       let expiresAt =
-        newExpiry !== undefined
-          ? newExpiry
-          : calculateExpiresAt(expiryOption, customExpiry);
+        newExpiry !== undefined ? newExpiry : calculateExpiresAt(expiryOption, customExpiry);
       if (perm === "edit" && expiresAt === null) {
         expiresAt = calculateExpiresAt(DEFAULT_EDIT_EXPIRY_OPTION);
         setExpiryOption(DEFAULT_EDIT_EXPIRY_OPTION);
@@ -251,9 +224,7 @@ export const ShareModal: React.FC<Props> = ({
       let message = "Failed to update link";
       if (api.isAxiosError(err)) {
         const serverMessage =
-          typeof err.response?.data?.message === "string"
-            ? err.response.data.message
-            : null;
+          typeof err.response?.data?.message === "string" ? err.response.data.message : null;
         if (serverMessage) message = serverMessage;
       }
       setError(message);
@@ -281,10 +252,7 @@ export const ShareModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-neutral-900/20 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-[420px] bg-white dark:bg-neutral-900 rounded-2xl border-2 border-black dark:border-neutral-700 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.08)] flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
@@ -346,8 +314,7 @@ export const ShareModal: React.FC<Props> = ({
               isCopied
                 ? "bg-emerald-500 text-white border-black shadow-none translate-x-[1px] translate-y-[1px]"
                 : "bg-white dark:bg-neutral-900 border-black dark:border-neutral-600 text-indigo-600 dark:text-indigo-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.05)] hover:-translate-y-0.5",
-              !activeLink &&
-                "opacity-40 grayscale cursor-not-allowed shadow-none",
+              !activeLink && "opacity-40 grayscale cursor-not-allowed shadow-none",
             )}
           >
             {isCopied ? (

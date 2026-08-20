@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { Logo } from '../components/Logo';
-import * as api from '../api';
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { Logo } from "../components/Logo";
+import * as api from "../api";
 
 /**
  * Two very different pages behind one route: a server that can deliver mail
@@ -11,21 +11,21 @@ import * as api from '../api';
  */
 export const PasswordResetRequest: React.FC = () => {
   const { passwordResetEnabled } = useAuth();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
     try {
       await api.authPasswordResetRequest(email);
       // The reply is deliberately identical for known and unknown addresses.
       setSubmitted(true);
     } catch {
-      setError('Could not request a reset right now. Please try again later.');
+      setError("Could not request a reset right now. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -37,12 +37,12 @@ export const PasswordResetRequest: React.FC = () => {
         <div className="text-center">
           <Logo className="mx-auto h-12 w-auto" />
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900 dark:text-white">
-            {passwordResetEnabled ? 'Reset your password' : 'Password help'}
+            {passwordResetEnabled ? "Reset your password" : "Password help"}
           </h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             {passwordResetEnabled
-              ? 'Enter your email address and we will send you a reset link.'
-              : 'This server does not send password reset emails.'}
+              ? "Enter your email address and we will send you a reset link."
+              : "This server does not send password reset emails."}
           </p>
         </div>
 
@@ -78,29 +78,29 @@ export const PasswordResetRequest: React.FC = () => {
                   />
                 </div>
 
-                {error && (
-                  <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
-                )}
+                {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
 
                 <button
                   type="submit"
                   disabled={loading}
                   className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
                 >
-                  {loading ? 'Sending…' : 'Send reset link'}
+                  {loading ? "Sending…" : "Send reset link"}
                 </button>
               </form>
             )
           ) : (
             <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 text-left space-y-3">
               <div className="text-sm text-gray-700 dark:text-gray-200">
-                Contact your administrator and ask them to generate a temporary password from the Admin dashboard.
+                Contact your administrator and ask them to generate a temporary password from the
+                Admin dashboard.
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-300">
                 If you are an admin and you’re locked out, run:
               </div>
               <pre className="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-3 overflow-x-auto">
-cd backend && node scripts/admin-recover.cjs --identifier you@example.com --generate --activate --disable-login-rate-limit
+                cd backend && node scripts/admin-recover.cjs --identifier you@example.com --generate
+                --activate --disable-login-rate-limit
               </pre>
             </div>
           )}

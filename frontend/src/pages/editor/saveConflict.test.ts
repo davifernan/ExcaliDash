@@ -10,8 +10,17 @@ import { reconcileElements } from "../../utils/sync";
  * saved a moment earlier.
  */
 const el = (id: string, version: number, extra: Record<string, unknown> = {}) => ({
-  id, version, versionNonce: version * 7, updated: version * 1000,
-  type: "rectangle", x: 0, y: 0, width: 10, height: 10, isDeleted: false, ...extra,
+  id,
+  version,
+  versionNonce: version * 7,
+  updated: version * 1000,
+  type: "rectangle",
+  x: 0,
+  y: 0,
+  width: 10,
+  height: 10,
+  isDeleted: false,
+  ...extra,
 });
 
 describe("merging a save conflict", () => {
@@ -64,11 +73,9 @@ describe("what someone is doing right now", () => {
   const held = (id: string) => new Set([id]);
 
   it("keeps the element being dragged, even when the stored version is newer", () => {
-    const merged = reconcileElements(
-      [el("mine", 2, { x: 500 })],
-      [el("mine", 9, { x: 0 })],
-      { protect: held("mine") },
-    );
+    const merged = reconcileElements([el("mine", 2, { x: 500 })], [el("mine", 9, { x: 0 })], {
+      protect: held("mine"),
+    });
     expect(merged.find((e) => e.id === "mine")?.x).toBe(500);
   });
 
@@ -83,11 +90,9 @@ describe("what someone is doing right now", () => {
   });
 
   it("protects nothing when no gesture is in progress", () => {
-    const merged = reconcileElements(
-      [el("idle", 2, { x: 500 })],
-      [el("idle", 9, { x: 0 })],
-      { protect: new Set<string>() },
-    );
+    const merged = reconcileElements([el("idle", 2, { x: 500 })], [el("idle", 9, { x: 0 })], {
+      protect: new Set<string>(),
+    });
     expect(merged.find((e) => e.id === "idle")?.x).toBe(0);
   });
 });

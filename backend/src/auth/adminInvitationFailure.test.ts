@@ -6,11 +6,16 @@ describe("admin invitation failure", () => {
   it("returns a password that matches the created account when delivery fails", async () => {
     let createUserHandler: any;
     let createdPasswordHash = "";
-    const router = new Proxy({}, {
-      get: (_target, method) => (...args: any[]) => {
-        if (method === "post" && args[0] === "/users") createUserHandler = args.at(-1);
+    const router = new Proxy(
+      {},
+      {
+        get:
+          (_target, method) =>
+          (...args: any[]) => {
+            if (method === "post" && args[0] === "/users") createUserHandler = args.at(-1);
+          },
       },
-    });
+    );
     const prisma = {
       user: {
         findUnique: vi.fn().mockResolvedValue(null),
@@ -73,17 +78,20 @@ describe("admin invitation failure", () => {
       },
     };
 
-    await createUserHandler({
-      body: {
-        email: "invitee@example.com",
-        name: "Invitee",
-        sendInvite: true,
-        mustResetPassword: true,
+    await createUserHandler(
+      {
+        body: {
+          email: "invitee@example.com",
+          name: "Invitee",
+          sendInvite: true,
+          mustResetPassword: true,
+        },
+        user: { id: "admin-1", role: "ADMIN" },
+        headers: {},
+        connection: {},
       },
-      user: { id: "admin-1", role: "ADMIN" },
-      headers: {},
-      connection: {},
-    }, response);
+      response,
+    );
 
     expect(response.statusCode).toBe(201);
     expect(response.body.invited).toBe(false);

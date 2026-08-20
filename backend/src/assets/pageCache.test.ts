@@ -20,12 +20,13 @@ afterEach(async () => {
 
 const asset = { id: "doc-1", blob: { storageKey: "originals/do/c1/doc-1" } };
 
-const deps = (over: Record<string, unknown> = {}) => ({
-  storageDir,
-  cacheBudgetBytes: 10_000,
-  minFreeDiskPercent: 0,
-  ...over,
-}) as any;
+const deps = (over: Record<string, unknown> = {}) =>
+  ({
+    storageDir,
+    cacheBudgetBytes: 10_000,
+    minFreeDiskPercent: 0,
+    ...over,
+  }) as any;
 
 const svgRender = vi.fn(async (_path: string, page: number) => ({
   body: Buffer.from(`<svg>page ${page} ${"filler ".repeat(50)}</svg>`),
@@ -63,7 +64,8 @@ describe("rendering a page once", () => {
   });
 
   it("lets a failed render be retried rather than caching the failure", async () => {
-    const flaky = vi.fn()
+    const flaky = vi
+      .fn()
       .mockRejectedValueOnce(new Error("renderer died"))
       .mockResolvedValueOnce({ body: Buffer.from("<svg>ok</svg>"), mimeType: "image/svg+xml" });
 
@@ -127,8 +129,9 @@ describe("not filling the disk", () => {
   });
 
   it("says how much room there is and how much is needed", async () => {
-    const err = await getPage(deps({ render: svgRender, minFreeDiskPercent: 100 }), asset, 1)
-      .catch((e) => e);
+    const err = await getPage(deps({ render: svgRender, minFreeDiskPercent: 100 }), asset, 1).catch(
+      (e) => e,
+    );
     expect(err.message).toMatch(/% free/);
     expect(err.message).toMatch(/100% required/);
   });

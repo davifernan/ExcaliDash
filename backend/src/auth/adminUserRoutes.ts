@@ -8,17 +8,27 @@ import { adminCreateUserSchema, adminRoleUpdateSchema, adminUpdateUserSchema } f
 import crypto from "crypto";
 import { hashTokenForStorage } from "./tokenSecurity";
 import { buildUserInviteEmail } from "../mail/templates/userInvite";
-import {
-  disconnectApiKeySockets,
-  recheckActiveUserSockets,
-} from "../server/socketRevocation";
+import { disconnectApiKeySockets, recheckActiveUserSockets } from "../server/socketRevocation";
 import { COMPANY_ARCHIVE_USER_EMAIL } from "./userOffboarding";
 import { revokeUserCredentials } from "./userCredentialRevocation";
 import { registerAdminUserOffboardingRoutes } from "./adminUserOffboardingRoutes";
 
 export const INVITE_VALID_DAYS = 7;
 export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
-  const { router, prisma, requireAuth, accountActionRateLimiter, ensureAuthEnabled, requireAdmin, findUserByIdentifier, countActiveAdmins, sanitizeText, config, requireCsrf, mailer } = deps;
+  const {
+    router,
+    prisma,
+    requireAuth,
+    accountActionRateLimiter,
+    ensureAuthEnabled,
+    requireAdmin,
+    findUserByIdentifier,
+    countActiveAdmins,
+    sanitizeText,
+    config,
+    requireCsrf,
+    mailer,
+  } = deps;
 
   /** Invitation links always point at the first configured frontend origin. */
   const resolveFrontendBaseUrl = (): string => {
@@ -37,40 +47,28 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
       if (!requireAdmin(req, res)) return;
       const parsed = adminRoleUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res
-          .status(400)
-          .json({
-            error: "Bad request",
-            message: "Invalid admin update payload",
-          });
+        return res.status(400).json({
+          error: "Bad request",
+          message: "Invalid admin update payload",
+        });
       }
       const target = await findUserByIdentifier(parsed.data.identifier);
       if (!target) {
-        return res
-          .status(404)
-          .json({ error: "Not found", message: "User not found" });
+        return res.status(404).json({ error: "Not found", message: "User not found" });
       }
       if (target.id === req.user.id && parsed.data.role !== "ADMIN") {
-        return res
-          .status(409)
-          .json({
-            error: "Conflict",
-            message: "You cannot change your own role from ADMIN",
-          });
+        return res.status(409).json({
+          error: "Conflict",
+          message: "You cannot change your own role from ADMIN",
+        });
       }
-      if (
-        target.role === "ADMIN" &&
-        parsed.data.role !== "ADMIN" &&
-        target.isActive
-      ) {
+      if (target.role === "ADMIN" && parsed.data.role !== "ADMIN" && target.isActive) {
         const admins = await countActiveAdmins();
         if (admins <= 1) {
-          return res
-            .status(409)
-            .json({
-              error: "Conflict",
-              message: "There must be at least one active admin",
-            });
+          return res.status(409).json({
+            error: "Conflict",
+            message: "There must be at least one active admin",
+          });
         }
       }
       const updated = await prisma.user.update({
@@ -89,12 +87,10 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
       res.json({ user: updated });
     } catch (error) {
       console.error("Admin role update error:", error);
-      res
-        .status(500)
-        .json({
-          error: "Internal server error",
-          message: "Failed to update user role",
-        });
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Failed to update user role",
+      });
     }
   });
   /**
@@ -192,12 +188,10 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
       res.json({ users });
     } catch (error) {
       console.error("List users error:", error);
-      res
-        .status(500)
-        .json({
-          error: "Internal server error",
-          message: "Failed to list users",
-        });
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Failed to list users",
+      });
     }
   });
   router.post(
@@ -211,12 +205,10 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
         if (!requireAdmin(req, res)) return;
         const parsed = adminCreateUserSchema.safeParse(req.body);
         if (!parsed.success) {
-          return res
-            .status(400)
-            .json({
-              error: "Validation error",
-              message: "Invalid user payload",
-            });
+          return res.status(400).json({
+            error: "Validation error",
+            message: "Invalid user payload",
+          });
         }
         const {
           email,
@@ -231,12 +223,10 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
         } = parsed.data;
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
-          return res
-            .status(409)
-            .json({
-              error: "Conflict",
-              message: "User with this email already exists",
-            });
+          return res.status(409).json({
+            error: "Conflict",
+            message: "User with this email already exists",
+          });
         }
         if (username) {
           const existingUsername = await prisma.user.findFirst({
@@ -244,21 +234,17 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             select: { id: true },
           });
           if (existingUsername) {
-            return res
-              .status(409)
-              .json({
-                error: "Conflict",
-                message: "User with this username already exists",
-              });
+            return res.status(409).json({
+              error: "Conflict",
+              message: "User with this username already exists",
+            });
           }
         }
         if (oidcOnly && !config.oidc.enabled) {
-          return res
-            .status(409)
-            .json({
-              error: "Conflict",
-              message: "OIDC-only invited users require OIDC to be enabled.",
-            });
+          return res.status(409).json({
+            error: "Conflict",
+            message: "OIDC-only invited users require OIDC to be enabled.",
+          });
         }
         // An invited account still needs a real hash: redeeming the link goes
         // through the password reset flow, which refuses accounts without one.
@@ -267,9 +253,7 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
           !oidcOnly && !password ? crypto.randomBytes(24).toString("base64url") : null;
         const effectivePassword = password ?? invitePassword;
         const passwordHash =
-          oidcOnly || !effectivePassword
-            ? ""
-            : await bcrypt.hash(effectivePassword, 10);
+          oidcOnly || !effectivePassword ? "" : await bcrypt.hash(effectivePassword, 10);
         const sanitizedName = sanitizeText(name, 100);
         const user = await prisma.user.create({
           data: {
@@ -335,7 +319,9 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             }
           }
           if (invitationError) {
-            console.error(`[mail] Invitation for ${user.email} was not delivered: ${invitationError}`);
+            console.error(
+              `[mail] Invitation for ${user.email} was not delivered: ${invitationError}`,
+            );
           }
         }
         if (config.enableAuditLogging) {
@@ -359,99 +345,70 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
         });
       } catch (error) {
         console.error("Create user error:", error);
-        res
-          .status(500)
-          .json({
-            error: "Internal server error",
-            message: "Failed to create user",
-          });
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Failed to create user",
+        });
       }
     },
   );
-  router.patch(
-    "/users/:id",
-    requireAuth,
-    async (req: Request, res: Response) => {
-      try {
-        if (!(await ensureAuthEnabled(res))) return;
-        if (!requireCsrf(req, res)) return;
-        if (!requireAdmin(req, res)) return;
-        const userId = String(req.params.id || "").trim();
-        if (!userId) {
-          return res
-            .status(400)
-            .json({ error: "Bad request", message: "Invalid user id" });
-        }
-        const parsed = adminUpdateUserSchema.safeParse(req.body);
-        if (!parsed.success) {
-          return res
-            .status(400)
-            .json({ error: "Bad request", message: "Invalid update payload" });
-        }
-        if (userId === req.user.id && parsed.data.isActive === false) {
-          return res
-            .status(409)
-            .json({
-              error: "Conflict",
-              message: "You cannot deactivate your own account",
-            });
-        }
-        if (
-          userId === req.user.id &&
-          parsed.data.role &&
-          parsed.data.role !== "ADMIN"
-        ) {
-          return res
-            .status(409)
-            .json({
-              error: "Conflict",
-              message: "You cannot change your own role from ADMIN",
-            });
-        }
-        const current = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true, role: true, isActive: true },
+  router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureAuthEnabled(res))) return;
+      if (!requireCsrf(req, res)) return;
+      if (!requireAdmin(req, res)) return;
+      const userId = String(req.params.id || "").trim();
+      if (!userId) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid user id" });
+      }
+      const parsed = adminUpdateUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid update payload" });
+      }
+      if (userId === req.user.id && parsed.data.isActive === false) {
+        return res.status(409).json({
+          error: "Conflict",
+          message: "You cannot deactivate your own account",
         });
-        if (!current) {
-          return res
-            .status(404)
-            .json({ error: "Not found", message: "User not found" });
+      }
+      if (userId === req.user.id && parsed.data.role && parsed.data.role !== "ADMIN") {
+        return res.status(409).json({
+          error: "Conflict",
+          message: "You cannot change your own role from ADMIN",
+        });
+      }
+      const current = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, isActive: true },
+      });
+      if (!current) {
+        return res.status(404).json({ error: "Not found", message: "User not found" });
+      }
+      const nextRole = typeof parsed.data.role === "undefined" ? current.role : parsed.data.role;
+      const nextActive =
+        typeof parsed.data.isActive === "undefined" ? current.isActive : parsed.data.isActive;
+      const removingAdmin =
+        current.role === "ADMIN" &&
+        current.isActive &&
+        (nextRole !== "ADMIN" || nextActive === false);
+      if (removingAdmin) {
+        const admins = await countActiveAdmins();
+        if (admins <= 1) {
+          return res.status(409).json({
+            error: "Conflict",
+            message: "There must be at least one active admin",
+          });
         }
-        const nextRole =
-          typeof parsed.data.role === "undefined"
-            ? current.role
-            : parsed.data.role;
-        const nextActive =
-          typeof parsed.data.isActive === "undefined"
-            ? current.isActive
-            : parsed.data.isActive;
-        const removingAdmin =
-          current.role === "ADMIN" &&
-          current.isActive &&
-          (nextRole !== "ADMIN" || nextActive === false);
-        if (removingAdmin) {
-          const admins = await countActiveAdmins();
-          if (admins <= 1) {
-            return res
-              .status(409)
-              .json({
-                error: "Conflict",
-                message: "There must be at least one active admin",
-              });
-          }
-        }
-        const data: Record<string, unknown> = {};
-        if (typeof parsed.data.username !== "undefined")
-          data.username = parsed.data.username;
-        if (typeof parsed.data.name !== "undefined")
-          data.name = sanitizeText(parsed.data.name, 100);
-        if (typeof parsed.data.role !== "undefined")
-          data.role = parsed.data.role;
-        if (typeof parsed.data.mustResetPassword !== "undefined")
-          data.mustResetPassword = parsed.data.mustResetPassword;
-        if (typeof parsed.data.isActive !== "undefined")
-          data.isActive = parsed.data.isActive;
-        const updateUser = (tx: Pick<typeof prisma, "user">) => tx.user.update({
+      }
+      const data: Record<string, unknown> = {};
+      if (typeof parsed.data.username !== "undefined") data.username = parsed.data.username;
+      if (typeof parsed.data.name !== "undefined") data.name = sanitizeText(parsed.data.name, 100);
+      if (typeof parsed.data.role !== "undefined") data.role = parsed.data.role;
+      if (typeof parsed.data.mustResetPassword !== "undefined")
+        data.mustResetPassword = parsed.data.mustResetPassword;
+      if (typeof parsed.data.isActive !== "undefined") data.isActive = parsed.data.isActive;
+      const updateUser = (tx: Pick<typeof prisma, "user">) =>
+        tx.user.update({
           where: { id: userId },
           data,
           select: {
@@ -466,68 +423,53 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             updatedAt: true,
           },
         });
-        let revokedApiKeyIds: string[] = [];
-        const canRevokeStoredCredentials =
-          typeof prisma.$transaction === "function" &&
-          Boolean(prisma.refreshToken) &&
-          Boolean(prisma.apiKey);
-        const updated =
-          current.isActive &&
-          nextActive === false &&
-          canRevokeStoredCredentials
+      let revokedApiKeyIds: string[] = [];
+      const canRevokeStoredCredentials =
+        typeof prisma.$transaction === "function" &&
+        Boolean(prisma.refreshToken) &&
+        Boolean(prisma.apiKey);
+      const updated =
+        current.isActive && nextActive === false && canRevokeStoredCredentials
           ? await prisma.$transaction(async (tx) => {
               const saved = await updateUser(tx);
-              revokedApiKeyIds = await revokeUserCredentials(
-                tx,
-                userId,
-                new Date(),
-              );
+              revokedApiKeyIds = await revokeUserCredentials(tx, userId, new Date());
               return saved;
             })
           : await updateUser(prisma);
-        if (current.isActive && !updated.isActive) {
-          // The transaction is the revocation point. Do not acknowledge it
-          // until every local user/API-key socket has been disconnected.
-          await Promise.all([
-            recheckActiveUserSockets(updated.id),
-            ...revokedApiKeyIds.map(disconnectApiKeySockets),
-          ]);
-        }
-        if (config.enableAuditLogging) {
-          await logAuditEvent({
-            userId: req.user.id,
-            action: "admin_user_updated",
-            resource: `user:${updated.id}`,
-            ipAddress: req.ip || req.connection.remoteAddress || undefined,
-            userAgent: req.headers["user-agent"] || undefined,
-            details: { updatedUserId: updated.id, fields: Object.keys(data) },
-          });
-        }
-        res.json({ user: updated });
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
-        ) {
-          return res
-            .status(409)
-            .json({
-              error: "Conflict",
-              message: "User with this username already exists",
-            });
-        }
-        console.error("Update user error:", error);
-        res
-          .status(500)
-          .json({
-            error: "Internal server error",
-            message: "Failed to update user",
-          });
+      if (current.isActive && !updated.isActive) {
+        // The transaction is the revocation point. Do not acknowledge it
+        // until every local user/API-key socket has been disconnected.
+        await Promise.all([
+          recheckActiveUserSockets(updated.id),
+          ...revokedApiKeyIds.map(disconnectApiKeySockets),
+        ]);
       }
-    },
-  );
+      if (config.enableAuditLogging) {
+        await logAuditEvent({
+          userId: req.user.id,
+          action: "admin_user_updated",
+          resource: `user:${updated.id}`,
+          ipAddress: req.ip || req.connection.remoteAddress || undefined,
+          userAgent: req.headers["user-agent"] || undefined,
+          details: { updatedUserId: updated.id, fields: Object.keys(data) },
+        });
+      }
+      res.json({ user: updated });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return res.status(409).json({
+          error: "Conflict",
+          message: "User with this username already exists",
+        });
+      }
+      console.error("Update user error:", error);
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Failed to update user",
+      });
+    }
+  });
 
   registerAdminUserOffboardingRoutes(deps);
   registerAdminUserPasswordRoutes(deps);
-
 };

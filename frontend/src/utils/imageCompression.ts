@@ -30,8 +30,7 @@ const getMimeTypeFromDataUrl = (dataURL: string): string | null => {
 };
 
 const canCompressMimeType = (mimeType: string): boolean =>
-  mimeType.startsWith(COMPRESSIBLE_MIME_PREFIX) &&
-  !NON_COMPRESSIBLE_MIME_TYPES.has(mimeType);
+  mimeType.startsWith(COMPRESSIBLE_MIME_PREFIX) && !NON_COMPRESSIBLE_MIME_TYPES.has(mimeType);
 
 const loadImageFromDataUrl = (dataURL: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
@@ -59,7 +58,7 @@ const clampDimension = (width: number, height: number, maxDimension: number) => 
 const drawToCanvas = (
   image: HTMLImageElement,
   width: number,
-  height: number
+  height: number,
 ): HTMLCanvasElement => {
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -94,7 +93,7 @@ const maybeCompressDataUrl = async (
     minDataUrlLength?: number;
     maxDimension?: number;
     minImprovementRatio?: number;
-  }
+  },
 ): Promise<CompressionResult> => {
   if (!isCompressionEnabled()) {
     return {
@@ -120,7 +119,11 @@ const maybeCompressDataUrl = async (
     };
   }
 
-  const effectiveMimeType = (sourceMimeType || getMimeTypeFromDataUrl(inputDataURL) || "").toLowerCase();
+  const effectiveMimeType = (
+    sourceMimeType ||
+    getMimeTypeFromDataUrl(inputDataURL) ||
+    ""
+  ).toLowerCase();
   if (!canCompressMimeType(effectiveMimeType)) {
     return {
       dataURL: inputDataURL,
@@ -178,13 +181,11 @@ const maybeCompressDataUrl = async (
   };
 };
 
-export const compressDroppedImagePayload = async (args: {
-  dataURL: string;
-  mimeType: string;
-}) => maybeCompressDataUrl(args.dataURL, args.mimeType);
+export const compressDroppedImagePayload = async (args: { dataURL: string; mimeType: string }) =>
+  maybeCompressDataUrl(args.dataURL, args.mimeType);
 
 export const compressExcalidrawFiles = async (
-  files: Record<string, ExcalidrawFileRecord>
+  files: Record<string, ExcalidrawFileRecord>,
 ): Promise<{
   files: Record<string, ExcalidrawFileRecord>;
   changed: boolean;
@@ -202,8 +203,9 @@ export const compressExcalidrawFiles = async (
   for (const [id, fileRecord] of entries) {
     const dataURL = fileRecord?.dataURL;
     const mimeType =
-      (typeof fileRecord?.mimeType === "string" ? fileRecord.mimeType : getMimeTypeFromDataUrl(String(dataURL || ""))) ||
-      "";
+      (typeof fileRecord?.mimeType === "string"
+        ? fileRecord.mimeType
+        : getMimeTypeFromDataUrl(String(dataURL || ""))) || "";
 
     if (!isDataImageUrl(dataURL) || !canCompressMimeType(mimeType.toLowerCase())) {
       continue;

@@ -8,11 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
-import {
-  createCsrfToken,
-  validateCsrfToken,
-  getCsrfTokenHeader,
-} from "../security";
+import { createCsrfToken, validateCsrfToken, getCsrfTokenHeader } from "../security";
 
 const getClientIdFromRequest = (req: express.Request): string => {
   const ip = req.ip || req.connection.remoteAddress || "unknown";
@@ -29,7 +25,6 @@ describe("Issue #38: CSRF with trust proxy settings", () => {
   });
 
   it("demonstrates the trust proxy issue with multiple proxies", async () => {
-
     const app1 = express();
     app1.set("trust proxy", 1);
     app1.use(express.json());
@@ -47,11 +42,7 @@ describe("Issue #38: CSRF with trust proxy settings", () => {
       .set("User-Agent", "Mozilla/5.0 Test");
 
     expect(response1.body.ip).toBe("172.17.0.3");
-    console.log(
-      "trust proxy: 1 → IP:",
-      response1.body.ip,
-      "(not the real client IP)",
-    );
+    console.log("trust proxy: 1 → IP:", response1.body.ip, "(not the real client IP)");
 
     const app2 = express();
     app2.set("trust proxy", true);
@@ -70,11 +61,7 @@ describe("Issue #38: CSRF with trust proxy settings", () => {
       .set("User-Agent", "Mozilla/5.0 Test");
 
     expect(response2.body.ip).toBe("203.0.113.42");
-    console.log(
-      "trust proxy: true → IP:",
-      response2.body.ip,
-      "(real client IP - CORRECT)",
-    );
+    console.log("trust proxy: true → IP:", response2.body.ip, "(real client IP - CORRECT)");
   });
 
   it("simulates CSRF failure scenario from issue #38", async () => {
@@ -86,10 +73,7 @@ describe("Issue #38: CSRF with trust proxy settings", () => {
     const clientId1 = `${externalProxyIp1}:${userAgent}`;
     const token = createCsrfToken(clientId1);
 
-    console.log(
-      "  X-Forwarded-For:",
-      `${clientIp1}, ${externalProxyIp1}, 172.17.0.3`,
-    );
+    console.log("  X-Forwarded-For:", `${clientIp1}, ${externalProxyIp1}, 172.17.0.3`);
     console.log("  Express sees IP:", externalProxyIp1);
     console.log("  ClientId:", clientId1.slice(0, 50) + "...");
 
@@ -97,10 +81,7 @@ describe("Issue #38: CSRF with trust proxy settings", () => {
 
     const clientId2 = `${externalProxyIp2}:${userAgent}`;
 
-    console.log(
-      "  X-Forwarded-For:",
-      `${clientIp1}, ${externalProxyIp2}, 172.17.0.3`,
-    );
+    console.log("  X-Forwarded-For:", `${clientIp1}, ${externalProxyIp2}, 172.17.0.3`);
     console.log("  Express sees IP:", externalProxyIp2);
     console.log("  ClientId:", clientId2.slice(0, 50) + "...");
 

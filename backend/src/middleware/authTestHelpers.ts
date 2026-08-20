@@ -64,7 +64,4 @@ export const makeOidcAccessToken = (payload?: {
   );
 
 export const makeRefreshToken = () =>
-  jwt.sign(
-    { userId: "user-1", email: "user-1@test.local", type: "refresh" },
-    config.jwtSecret,
-  );
+  jwt.sign({ userId: "user-1", email: "user-1@test.local", type: "refresh" }, config.jwtSecret);

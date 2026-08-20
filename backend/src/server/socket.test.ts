@@ -19,12 +19,7 @@ class FakeOperator {
   ) {}
 
   get volatile() {
-    return new FakeOperator(
-      this.emissions,
-      this.senderId,
-      this.scope,
-      true,
-    );
+    return new FakeOperator(this.emissions, this.senderId, this.scope, true);
   }
 
   emit(event: string, payload: any) {
@@ -87,8 +82,7 @@ class FakeSocket {
 
 class FakeIo {
   readonly emissions: Emission[] = [];
-  private middleware: ((socket: FakeSocket, next: (error?: Error) => void) => any) | null =
-    null;
+  private middleware: ((socket: FakeSocket, next: (error?: Error) => void) => any) | null = null;
   private connectionHandler: ((socket: FakeSocket) => void) | null = null;
 
   use(handler: any) {
@@ -106,9 +100,7 @@ class FakeIo {
   async connect(id: string) {
     const socket = new FakeSocket(id, this.emissions);
     await new Promise<void>((resolve, reject) => {
-      this.middleware?.(socket, (error?: Error) =>
-        error ? reject(error) : resolve(),
-      );
+      this.middleware?.(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });
     this.connectionHandler?.(socket);
     return socket;
@@ -164,9 +156,7 @@ describe("socket collaboration security and follow state", () => {
   };
 
   const lastEmission = (event: string, scope?: string) =>
-    io.emissions
-      .filter((item) => item.event === event && (!scope || item.scope === scope))
-      .at(-1);
+    io.emissions.filter((item) => item.event === event && (!scope || item.scope === scope)).at(-1);
 
   it("keeps two tabs from one account as independent socket presences", async () => {
     const oldTab = await io.connect("socket-old");
@@ -191,9 +181,7 @@ describe("socket collaboration security and follow state", () => {
       pointer: { x: 1, y: 2, tool: "pointer" },
       button: "up",
     });
-    expect(lastEmission("cursor-move", room("drawing-1"))?.payload.presenceId).toBe(
-      "socket-old",
-    );
+    expect(lastEmission("cursor-move", room("drawing-1"))?.payload.presenceId).toBe("socket-old");
   });
 
   it("whitelists cursor and element relay fields", async () => {
@@ -287,9 +275,7 @@ describe("socket collaboration security and follow state", () => {
       targetPresenceId: "socket-target",
       action: "FOLLOW",
     });
-    expect(lastEmission("follow-status", "socket-target")?.payload.reason).toBe(
-      "self-follow",
-    );
+    expect(lastEmission("follow-status", "socket-target")?.payload.reason).toBe("self-follow");
 
     await follower.trigger("follow-user", {
       drawingId: "drawing-1",
@@ -300,9 +286,7 @@ describe("socket collaboration security and follow state", () => {
       { presenceId: "socket-follower", name: "Local User" },
     ]);
     await follower.trigger("disconnect");
-    expect(lastEmission("followed-by-update", "socket-target")?.payload.followers).toEqual(
-      [],
-    );
+    expect(lastEmission("followed-by-update", "socket-target")?.payload.followers).toEqual([]);
 
     const nextFollower = await io.connect("socket-next-follower");
     await join(nextFollower);
@@ -312,9 +296,10 @@ describe("socket collaboration security and follow state", () => {
       action: "FOLLOW",
     });
     await target.trigger("disconnect");
-    expect(
-      lastEmission("follow-status", "socket-next-follower")?.payload,
-    ).toMatchObject({ followingPresenceId: null, reason: "disconnected" });
+    expect(lastEmission("follow-status", "socket-next-follower")?.payload).toMatchObject({
+      followingPresenceId: null,
+      reason: "disconnected",
+    });
   });
 
   it("checks fresh read access and removes follow edges after revocation", async () => {
@@ -336,15 +321,11 @@ describe("socket collaboration security and follow state", () => {
     });
 
     expect(accessLookups).toBeGreaterThan(lookupsBeforeEvent);
-    expect(lastEmission("follow-status", "socket-follower")?.payload.reason).toBe(
-      "access-revoked",
-    );
+    expect(lastEmission("follow-status", "socket-follower")?.payload.reason).toBe("access-revoked");
     expect(lastEmission("presence-update", room("drawing-1"))?.payload).toEqual([
       expect.objectContaining({ presenceId: "socket-follower" }),
     ]);
-    expect(lastEmission("error", "socket-target")?.payload.message).toMatch(
-      /do not have access/,
-    );
+    expect(lastEmission("error", "socket-target")?.payload.message).toMatch(/do not have access/);
   });
 
   it("cleans old-room presence and relationships on a board switch", async () => {
@@ -359,9 +340,7 @@ describe("socket collaboration security and follow state", () => {
     });
 
     await join(target, "drawing-2");
-    expect(lastEmission("follow-status", "socket-follower")?.payload.reason).toBe(
-      "board-changed",
-    );
+    expect(lastEmission("follow-status", "socket-follower")?.payload.reason).toBe("board-changed");
     expect(lastEmission("presence-update", room("drawing-1"))?.payload).toEqual([
       expect.objectContaining({ presenceId: "socket-follower" }),
     ]);

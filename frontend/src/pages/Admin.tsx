@@ -14,10 +14,7 @@ import { UsersTable } from "./admin/UsersTable";
 import { AgentsTable, type AdminApiKey } from "./admin/AgentsTable";
 import type { AdminTab } from "./admin/AdminTabsHeader";
 import type { AdminUser } from "./admin/types";
-import {
-  getCreateUserOutcome,
-  type CreateUserResponse,
-} from "./admin/createUserOutcome";
+import { getCreateUserOutcome, type CreateUserResponse } from "./admin/createUserOutcome";
 import { useAccessControlSettings } from "./admin/useAccessControlSettings";
 import { useAdminCollections } from "./admin/useAdminCollections";
 import { useLoginRateLimitSettings } from "./admin/useLoginRateLimitSettings";
@@ -58,19 +55,14 @@ export const Admin: React.FC = () => {
   const [createRole, setCreateRole] = useState<"ADMIN" | "USER">("USER");
   const [createMustReset, setCreateMustReset] = useState(true);
   const [createActive, setCreateActive] = useState(true);
-  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(
-    null,
-  );
-  const [resetPasswordLoadingId, setResetPasswordLoadingId] = useState<
-    string | null
-  >(null);
+  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null);
+  const [resetPasswordLoadingId, setResetPasswordLoadingId] = useState<string | null>(null);
   const [resetPasswordResult, setResetPasswordResult] = useState<{
     email: string;
     tempPassword: string;
   } | null>(null);
   const [offboardUserId, setOffboardUserId] = useState("");
-  const [offboardDestination, setOffboardDestination] =
-    useState("company-archive");
+  const [offboardDestination, setOffboardDestination] = useState("company-archive");
   const [offboardConfirmation, setOffboardConfirmation] = useState("");
   const [offboarding, setOffboarding] = useState(false);
   const accessControl = useAccessControlSettings(isAdmin, setError, setSuccess);
@@ -101,9 +93,7 @@ export const Admin: React.FC = () => {
   const loadApiKeys = async () => {
     setLoadingApiKeys(true);
     try {
-      const response = await api.api.get<{ apiKeys: AdminApiKey[] }>(
-        "/auth/users/api-keys",
-      );
+      const response = await api.api.get<{ apiKeys: AdminApiKey[] }>("/auth/users/api-keys");
       setApiKeys(response.data.apiKeys || []);
     } catch {
       setError("Failed to load agents");
@@ -119,9 +109,7 @@ export const Admin: React.FC = () => {
       // Revoked keys stay listed on purpose, so the record remains visible.
       setApiKeys((prev) =>
         prev.map((entry) =>
-          entry.id === key.id
-            ? { ...entry, revokedAt: new Date().toISOString() }
-            : entry,
+          entry.id === key.id ? { ...entry, revokedAt: new Date().toISOString() } : entry,
         ),
       );
       setSuccess(`Agent "${key.name}" revoked`);
@@ -141,8 +129,7 @@ export const Admin: React.FC = () => {
     } catch (err: unknown) {
       let message = "Failed to load users";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -167,8 +154,7 @@ export const Admin: React.FC = () => {
     } catch (err: unknown) {
       let message = "Failed to reset password";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -189,9 +175,7 @@ export const Admin: React.FC = () => {
     // An invited user picks their own password; the server generates a
     // throwaway so the account still has a valid hash.
     const passwordError =
-      createOidcOnly || willInvite
-        ? null
-        : validatePassword(createPassword, passwordPolicy);
+      createOidcOnly || willInvite ? null : validatePassword(createPassword, passwordPolicy);
     if (passwordError) {
       setError(passwordError);
       return;
@@ -208,14 +192,9 @@ export const Admin: React.FC = () => {
         isActive: createActive,
         sendInvite: willInvite,
       };
-      const response = await api.api.post<CreateUserResponse>(
-        "/auth/users",
-        payload,
-      );
+      const response = await api.api.post<CreateUserResponse>("/auth/users", payload);
       setUsers((prev) =>
-        [...prev, response.data.user].sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt),
-        ),
+        [...prev, response.data.user].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
       );
       const outcome = getCreateUserOutcome(response.data);
       setSuccess(outcome.success ?? "");
@@ -238,37 +217,25 @@ export const Admin: React.FC = () => {
     } catch (err: unknown) {
       let message = "Failed to create user";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     }
   };
   const patchUser = async (
     id: string,
-    data: Partial<
-      Pick<
-        AdminUser,
-        "username" | "name" | "role" | "mustResetPassword" | "isActive"
-      >
-    >,
+    data: Partial<Pick<AdminUser, "username" | "name" | "role" | "mustResetPassword" | "isActive">>,
   ) => {
     setError("");
     setSuccess("");
     try {
-      const response = await api.api.patch<{ user: AdminUser }>(
-        `/auth/users/${id}`,
-        data,
-      );
-      setUsers((prev) =>
-        prev.map((u) => (u.id === id ? response.data.user : u)),
-      );
+      const response = await api.api.patch<{ user: AdminUser }>(`/auth/users/${id}`, data);
+      setUsers((prev) => prev.map((u) => (u.id === id ? response.data.user : u)));
       setSuccess("User updated");
     } catch (err: unknown) {
       let message = "Failed to update user";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     }
@@ -302,8 +269,7 @@ export const Admin: React.FC = () => {
     } catch (err: unknown) {
       let message = "Failed to permanently delete user data";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -346,8 +312,7 @@ export const Admin: React.FC = () => {
     } catch (err: unknown) {
       let message = "Failed to impersonate user";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     }
@@ -424,9 +389,7 @@ export const Admin: React.FC = () => {
         resetIdentifier={loginRateLimit.resetIdentifier}
         resetLoading={loginRateLimit.resetLoading}
         userEmails={users.map((user) => user.email)}
-        onToggleEnabled={() =>
-          loginRateLimit.setEnabled(!loginRateLimit.enabled)
-        }
+        onToggleEnabled={() => loginRateLimit.setEnabled(!loginRateLimit.enabled)}
         onWindowMinutesChange={loginRateLimit.setWindowMinutes}
         onMaxAttemptsChange={loginRateLimit.setMaxAttempts}
         onResetIdentifierChange={loginRateLimit.setResetIdentifier}
@@ -442,23 +405,21 @@ export const Admin: React.FC = () => {
           onRevoke={revokeApiKey}
         />
       ) : (
-      <UsersTable
-        activeTab={adminTab}
-        onTabChange={setAdminTab}
-        users={users}
-        loading={loadingUsers}
-        currentUserId={authUser?.id}
-        resetPasswordLoadingId={resetPasswordLoadingId}
-        onRoleChange={(user, role) => patchUser(user.id, { role })}
-        onToggleActive={(user) =>
-          patchUser(user.id, { isActive: !user.isActive })
-        }
-        onToggleMustReset={(user) =>
-          patchUser(user.id, { mustResetPassword: !user.mustResetPassword })
-        }
-        onImpersonate={setImpersonateTarget}
-        onResetPassword={generateTempPassword}
-      />
+        <UsersTable
+          activeTab={adminTab}
+          onTabChange={setAdminTab}
+          users={users}
+          loading={loadingUsers}
+          currentUserId={authUser?.id}
+          resetPasswordLoadingId={resetPasswordLoadingId}
+          onRoleChange={(user, role) => patchUser(user.id, { role })}
+          onToggleActive={(user) => patchUser(user.id, { isActive: !user.isActive })}
+          onToggleMustReset={(user) =>
+            patchUser(user.id, { mustResetPassword: !user.mustResetPassword })
+          }
+          onImpersonate={setImpersonateTarget}
+          onResetPassword={generateTempPassword}
+        />
       )}{" "}
       {adminTab === "users" && (
         <form
@@ -469,11 +430,9 @@ export const Admin: React.FC = () => {
             Permanent user offboarding
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            This removes the person's name, email, login identities,
-            credentials, API keys, personal library and related audit data.
-            Boards and documents are transferred to the destination below.
-            This is separate from making an account inactive and cannot be
-            undone.
+            This removes the person's name, email, login identities, credentials, API keys, personal
+            library and related audit data. Boards and documents are transferred to the destination
+            below. This is separate from making an account inactive and cannot be undone.
           </p>
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
             <label className="text-sm font-bold text-slate-800 dark:text-neutral-200">
@@ -507,9 +466,7 @@ export const Admin: React.FC = () => {
               >
                 <option value="company-archive">Company archive account</option>
                 {users
-                  .filter(
-                    (user) => user.id !== offboardUserId && user.isActive,
-                  )
+                  .filter((user) => user.id !== offboardUserId && user.isActive)
                   .map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.name} ({user.email})
@@ -521,15 +478,12 @@ export const Admin: React.FC = () => {
               Confirm with exact email
               <input
                 value={offboardConfirmation}
-                onChange={(event) =>
-                  setOffboardConfirmation(event.target.value)
-                }
+                onChange={(event) => setOffboardConfirmation(event.target.value)}
                 disabled={!offboardUserId}
                 autoComplete="off"
                 className="mt-1 w-full px-3 py-2 bg-white dark:bg-neutral-800 border-2 border-slate-300 dark:border-neutral-700 rounded-xl disabled:opacity-60"
                 placeholder={
-                  users.find((user) => user.id === offboardUserId)?.email ||
-                  "user@example.com"
+                  users.find((user) => user.id === offboardUserId)?.email || "user@example.com"
                 }
               />
             </label>
@@ -539,8 +493,7 @@ export const Admin: React.FC = () => {
             disabled={
               offboarding ||
               !offboardUserId ||
-              offboardConfirmation !==
-                users.find((user) => user.id === offboardUserId)?.email
+              offboardConfirmation !== users.find((user) => user.id === offboardUserId)?.email
             }
             className="mt-4 px-4 py-2 rounded-xl border-2 border-red-800 bg-red-700 text-white font-black disabled:opacity-50"
           >
@@ -553,9 +506,7 @@ export const Admin: React.FC = () => {
         resetPasswordResult={resetPasswordResult}
         onConfirmImpersonation={startImpersonation}
         onCancelImpersonation={() => setImpersonateTarget(null)}
-        onCopyPassword={(result) =>
-          navigator.clipboard?.writeText(result.tempPassword)
-        }
+        onCopyPassword={(result) => navigator.clipboard?.writeText(result.tempPassword)}
         onClosePassword={() => setResetPasswordResult(null)}
       />{" "}
       <Toaster position="bottom-center" />{" "}

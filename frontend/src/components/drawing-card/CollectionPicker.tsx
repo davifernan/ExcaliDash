@@ -25,8 +25,7 @@ export const CollectionPicker: React.FC<CollectionPickerProps> = ({
   onMoveToCollection,
 }) => {
   const collectionName = drawing.collectionId
-    ? collections.find((collection) => collection.id === drawing.collectionId)
-        ?.name || "Collection"
+    ? collections.find((collection) => collection.id === drawing.collectionId)?.name || "Collection"
     : "Unorganized";
 
   return (
@@ -60,20 +59,18 @@ export const CollectionPicker: React.FC<CollectionPickerProps> = ({
           </span>
         )}
 
-        {isSharedCollection &&
-          drawing.accessLevel &&
-          drawing.accessLevel !== "owner" && (
-            <span
-              className={clsx(
-                "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide border",
-                drawing.accessLevel === "edit"
-                  ? "bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30"
-                  : "bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30",
-              )}
-            >
-              {drawing.accessLevel === "edit" ? "Editor" : "Viewer"}
-            </span>
-          )}
+        {isSharedCollection && drawing.accessLevel && drawing.accessLevel !== "owner" && (
+          <span
+            className={clsx(
+              "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide border",
+              drawing.accessLevel === "edit"
+                ? "bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30"
+                : "bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30",
+            )}
+          >
+            {drawing.accessLevel === "edit" ? "Editor" : "Viewer"}
+          </span>
+        )}
       </div>
 
       {!isShared && isOpen && (

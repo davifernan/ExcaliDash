@@ -20,11 +20,7 @@ type Options = {
   containerRef: React.RefObject<HTMLElement>;
   canEdit: boolean;
   /** The editor's own change handler, which still has to run. */
-  onCanvasChange: (
-    elements: readonly any[],
-    appState: any,
-    files?: Record<string, any>
-  ) => void;
+  onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
 };
 
 export function useStickyNotesFeature({
@@ -64,18 +60,9 @@ export function useStickyNotesFeature({
 
   const stickyOverlay = canEdit ? (
     <>
-      <StickyToolbarButton
-        containerRef={containerRef}
-        armed={armed}
-        color={color}
-        onArm={arm}
-      />
+      <StickyToolbarButton containerRef={containerRef} armed={armed} color={color} onArm={arm} />
       {armed && <StickyPalette toolbar={toolbar} color={color} onPick={setColor} />}
-      <StickyHandles
-        excalidrawAPI={excalidrawAPI}
-        containerRef={containerRef}
-        canEdit={canEdit}
-      />
+      <StickyHandles excalidrawAPI={excalidrawAPI} containerRef={containerRef} canEdit={canEdit} />
     </>
   ) : null;
 

@@ -5,10 +5,7 @@ import { getUserTrashCollectionId, toPublicTrashCollectionId } from "./trash";
 import { SortDirection, SortField } from "./types";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
-export const registerDrawingListRoutes = (
-  app: express.Express,
-  context: DrawingRouteContext,
-) => {
+export const registerDrawingListRoutes = (app: express.Express, context: DrawingRouteContext) => {
   const {
     prisma,
     requireAuth,
@@ -40,9 +37,7 @@ export const registerDrawingListRoutes = (
       } = req.query;
       const where: Prisma.DrawingWhereInput = { userId: req.user.id };
       const searchTerm =
-        typeof search === "string" && search.trim().length > 0
-          ? search.trim()
-          : undefined;
+        typeof search === "string" && search.trim().length > 0 ? search.trim() : undefined;
 
       if (searchTerm) {
         where.name = { contains: searchTerm };
@@ -100,9 +95,7 @@ export const registerDrawingListRoutes = (
           ? includePreview.toLowerCase() === "true" || includePreview === "1"
           : false;
       const parsedSortField: SortField =
-        sortField === "name" ||
-        sortField === "createdAt" ||
-        sortField === "updatedAt"
+        sortField === "name" || sortField === "createdAt" || sortField === "updatedAt"
           ? sortField
           : "updatedAt";
       const parsedSortDirection: SortDirection =
@@ -113,17 +106,13 @@ export const registerDrawingListRoutes = (
             : "desc";
 
       const rawLimit = limit ? Number.parseInt(limit as string, 10) : undefined;
-      const rawOffset = offset
-        ? Number.parseInt(offset as string, 10)
-        : undefined;
+      const rawOffset = offset ? Number.parseInt(offset as string, 10) : undefined;
       const parsedLimit =
         rawLimit !== undefined && Number.isFinite(rawLimit)
           ? Math.min(Math.max(rawLimit, 1), MAX_PAGE_SIZE)
           : undefined;
       const parsedOffset =
-        rawOffset !== undefined && Number.isFinite(rawOffset)
-          ? Math.max(rawOffset, 0)
-          : undefined;
+        rawOffset !== undefined && Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : undefined;
 
       const cacheKey =
         buildDrawingsCacheKey({
@@ -215,9 +204,7 @@ export const registerDrawingListRoutes = (
       const { search, includeData, includePreview, limit, offset, sortField, sortDirection } =
         req.query;
       const searchTerm =
-        typeof search === "string" && search.trim().length > 0
-          ? search.trim()
-          : undefined;
+        typeof search === "string" && search.trim().length > 0 ? search.trim() : undefined;
 
       const shouldIncludeData =
         typeof includeData === "string"
@@ -228,9 +215,7 @@ export const registerDrawingListRoutes = (
           ? includePreview.toLowerCase() === "true" || includePreview === "1"
           : false;
       const parsedSortField: SortField =
-        sortField === "name" ||
-        sortField === "createdAt" ||
-        sortField === "updatedAt"
+        sortField === "name" || sortField === "createdAt" || sortField === "updatedAt"
           ? sortField
           : "updatedAt";
       const parsedSortDirection: SortDirection =
@@ -241,17 +226,13 @@ export const registerDrawingListRoutes = (
             : "desc";
 
       const rawLimit = limit ? Number.parseInt(limit as string, 10) : undefined;
-      const rawOffset = offset
-        ? Number.parseInt(offset as string, 10)
-        : undefined;
+      const rawOffset = offset ? Number.parseInt(offset as string, 10) : undefined;
       const parsedLimit =
         rawLimit !== undefined && Number.isFinite(rawLimit)
           ? Math.min(Math.max(rawLimit, 1), MAX_PAGE_SIZE)
           : undefined;
       const parsedOffset =
-        rawOffset !== undefined && Number.isFinite(rawOffset)
-          ? Math.max(rawOffset, 0)
-          : undefined;
+        rawOffset !== undefined && Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : undefined;
 
       const orderBy: Prisma.DrawingOrderByWithRelationInput =
         parsedSortField === "name"
@@ -316,9 +297,7 @@ export const registerDrawingListRoutes = (
       ]);
 
       const normalize = (d: any) => {
-        const rawPerm = Array.isArray(d?.permissions)
-          ? d.permissions[0]?.permission
-          : null;
+        const rawPerm = Array.isArray(d?.permissions) ? d.permissions[0]?.permission : null;
         const perm = normalizeDrawingPermission(rawPerm) ?? "view";
         const { permissions: _permissions, ...rest } = d;
         return {
@@ -352,5 +331,4 @@ export const registerDrawingListRoutes = (
       });
     }),
   );
-
 };

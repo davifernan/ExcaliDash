@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  COMPANY_ARCHIVE_USER_EMAIL,
-  offboardUserAndTransferBoards,
-} from "./userOffboarding";
+import { COMPANY_ARCHIVE_USER_EMAIL, offboardUserAndTransferBoards } from "./userOffboarding";
 
-const mutation = (result: unknown = { count: 1 }) =>
-  vi.fn().mockResolvedValue(result);
+const mutation = (result: unknown = { count: 1 }) => vi.fn().mockResolvedValue(result);
 
 describe("user offboarding", () => {
   it("removes personal data while transferring every company board dependency", async () => {
@@ -38,9 +34,7 @@ describe("user offboarding", () => {
       auditLog: { deleteMany: mutation() },
     };
     const prisma = {
-      $transaction: vi.fn(async (callback: (client: any) => Promise<unknown>) =>
-        callback(tx),
-      ),
+      $transaction: vi.fn(async (callback: (client: any) => Promise<unknown>) => callback(tx)),
     };
 
     const result = await offboardUserAndTransferBoards({

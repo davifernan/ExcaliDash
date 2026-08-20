@@ -68,9 +68,7 @@ export const UpdateSettingsCard = ({
           id="settings-update-channel"
           value={updateChannel}
           onChange={(e) =>
-            onChannelChange(
-              e.target.value === "prerelease" ? "prerelease" : "stable",
-            )
+            onChannelChange(e.target.value === "prerelease" ? "prerelease" : "stable")
           }
           className="w-full h-10 px-2 sm:px-3 rounded-lg border-2 border-black dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
         >
@@ -98,9 +96,7 @@ export const UpdateSettingsCard = ({
                     : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300",
           )}
         >
-          {updateLoading && (
-            <RefreshCw size={14} className="animate-spin flex-shrink-0" />
-          )}
+          {updateLoading && <RefreshCw size={14} className="animate-spin flex-shrink-0" />}
           <span className="truncate">
             {updateInfo?.outboundEnabled === false ? (
               "Checks disabled"
@@ -110,11 +106,7 @@ export const UpdateSettingsCard = ({
               `v${updateInfo.latestVersion} available`
             ) : updateInfo?.latestVersion ? (
               <span className="flex items-center gap-1.5">
-                <Check
-                  size={14}
-                  strokeWidth={3}
-                  className="text-emerald-500 flex-shrink-0"
-                />
+                <Check size={14} strokeWidth={3} className="text-emerald-500 flex-shrink-0" />
                 Up to date
               </span>
             ) : updateError ? (

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createHttpsRedirectPolicy,
-  getHttpsRedirectUrl,
-} from "./httpsRedirectPolicy";
+import { createHttpsRedirectPolicy, getHttpsRedirectUrl } from "./httpsRedirectPolicy";
 
 const createRequest = (overrides?: {
   host?: string;
@@ -14,9 +11,7 @@ const createRequest = (overrides?: {
     secure: overrides?.secure ?? false,
     headers: {
       host: overrides?.host ?? "secure.example.com",
-      ...(overrides?.forwardedProto
-        ? { "x-forwarded-proto": overrides.forwardedProto }
-        : {}),
+      ...(overrides?.forwardedProto ? { "x-forwarded-proto": overrides.forwardedProto } : {}),
     },
     originalUrl: overrides?.path ?? "/api/session?next=%2Fdashboard",
   }) as any;
@@ -45,15 +40,12 @@ describe("https redirect policy", () => {
     });
 
     expect(getHttpsRedirectUrl(req, policy)).toBe(
-      "https://secure.example.com/api/session?next=%2Fdashboard"
+      "https://secure.example.com/api/session?next=%2Fdashboard",
     );
   });
 
   it("prefers https when the same host is configured for both http and https", () => {
-    const policy = createHttpsRedirectPolicy([
-      "http://app.example.com",
-      "https://app.example.com",
-    ]);
+    const policy = createHttpsRedirectPolicy(["http://app.example.com", "https://app.example.com"]);
     const req = createRequest({
       host: "app.example.com",
       path: "/login",
@@ -72,9 +64,7 @@ describe("https redirect policy", () => {
       path: "/login",
     });
 
-    expect(getHttpsRedirectUrl(req, policy)).toBe(
-      "https://secure.example.com/login"
-    );
+    expect(getHttpsRedirectUrl(req, policy)).toBe("https://secure.example.com/login");
   });
 
   it("leaves the local HTTP health probe reachable for unknown hosts", () => {

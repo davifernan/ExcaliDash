@@ -42,7 +42,9 @@ export const createLegacySqliteDb = (opts: LegacyDbOptions): string => {
           updatedAt TEXT
         );
       `);
-      db.prepare(`INSERT INTO "${tableCollection}" (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)`).run(
+      db.prepare(
+        `INSERT INTO "${tableCollection}" (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)`,
+      ).run(
         "legacy-collection-1",
         "Legacy Collection",
         new Date("2024-01-01T00:00:00.000Z").toISOString(),
@@ -71,7 +73,7 @@ export const createLegacySqliteDb = (opts: LegacyDbOptions): string => {
       `INSERT INTO "${tableDrawing}"
         (id, name, elements, appState, files, preview, version, collectionId, collectionName, createdAt, updatedAt)
         VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     insertDrawing.run(
@@ -135,7 +137,7 @@ export const createLegacySqliteDb = (opts: LegacyDbOptions): string => {
         `INSERT INTO "_prisma_migrations"
           (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
           VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?)`
+          (?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         "m1",
         "checksum",
@@ -184,11 +186,25 @@ export const createExcalidashArchiveWithDuplicateDrawingIds = async (): Promise<
   zip.file("excalidash.manifest.json", JSON.stringify(manifest));
   zip.file(
     "Unorganized/drawing-1.excalidraw",
-    JSON.stringify({ type: "excalidraw", version: 2, source: "test", elements: [], appState: {}, files: {} })
+    JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      source: "test",
+      elements: [],
+      appState: {},
+      files: {},
+    }),
   );
   zip.file(
     "Unorganized/drawing-2.excalidraw",
-    JSON.stringify({ type: "excalidraw", version: 2, source: "test", elements: [], appState: {}, files: {} })
+    JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      source: "test",
+      elements: [],
+      appState: {},
+      files: {},
+    }),
   );
 
   const buffer = await zip.generateAsync({ type: "nodebuffer" });
@@ -222,7 +238,7 @@ export const createLegacySqliteDbWithDuplicateDrawingIds = (): string => {
     const insertDrawing = db.prepare(
       `INSERT INTO "Drawing"
         (id, name, elements, appState, files, preview, version, collectionId, collectionName, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     insertDrawing.run(

@@ -65,7 +65,7 @@ export const logAuditEvent = async (data: AuditLogData): Promise<void> => {
  */
 export const getAuditLogs = async (
   userId?: string,
-  limit: number = 100
+  limit: number = 100,
 ): Promise<AuditLogResult[]> => {
   try {
     const { config } = await import("../config");

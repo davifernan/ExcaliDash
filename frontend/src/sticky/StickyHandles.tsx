@@ -73,10 +73,7 @@ function layoutFor(api: any, hoveredId: string | null): Layout | null {
     noteId: note.id,
     dots: HANDLE_SIDES.map((side) => {
       const scene = handlePoint(note, side);
-      const { x, y } = sceneCoordsToViewportCoords(
-        { sceneX: scene.x, sceneY: scene.y },
-        appState,
-      );
+      const { x, y } = sceneCoordsToViewportCoords({ sceneX: scene.x, sceneY: scene.y }, appState);
       return { side, x, y };
     }),
   };
@@ -87,11 +84,7 @@ const signature = (layout: Layout | null) =>
     ? `${layout.noteId}:${layout.dots.map((d) => `${Math.round(d.x)},${Math.round(d.y)}`).join("|")}`
     : "";
 
-export const StickyHandles: React.FC<Props> = ({
-  excalidrawAPI,
-  containerRef,
-  canEdit,
-}) => {
+export const StickyHandles: React.FC<Props> = ({ excalidrawAPI, containerRef, canEdit }) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [layout, setLayout] = useState<Layout | null>(null);
 

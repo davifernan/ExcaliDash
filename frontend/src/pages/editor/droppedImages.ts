@@ -23,16 +23,13 @@ const isSupportedDroppedImageFile = (file: File): boolean => {
   return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file?.name || "");
 };
 
-export const getDroppedImageFiles = (
-  dataTransfer?: DataTransfer | null,
-): File[] =>
+export const getDroppedImageFiles = (dataTransfer?: DataTransfer | null): File[] =>
   Array.from(dataTransfer?.files || []).filter(isSupportedDroppedImageFile);
 
 const readFileAsDataURL = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () =>
-      reject(reader.error || new Error("Failed to read image file"));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read image file"));
     reader.onload = () => {
       if (typeof reader.result !== "string") {
         reject(new Error("Failed to read image file"));
@@ -43,9 +40,7 @@ const readFileAsDataURL = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
-const getImageDimensions = (
-  file: File,
-): Promise<{ width: number; height: number }> =>
+const getImageDimensions = (file: File): Promise<{ width: number; height: number }> =>
   new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
     const image = new Image();
@@ -53,10 +48,7 @@ const getImageDimensions = (
       URL.revokeObjectURL(objectUrl);
       resolve({
         width: Math.max(1, Math.round(image.naturalWidth || image.width || 1)),
-        height: Math.max(
-          1,
-          Math.round(image.naturalHeight || image.height || 1),
-        ),
+        height: Math.max(1, Math.round(image.naturalHeight || image.height || 1)),
       });
     };
     image.onerror = () => {
@@ -66,9 +58,7 @@ const getImageDimensions = (
     image.src = objectUrl;
   });
 
-export const loadDroppedImageData = async (
-  file: File,
-): Promise<DroppedImageData> => {
+export const loadDroppedImageData = async (file: File): Promise<DroppedImageData> => {
   const [rawDataURL, dimensions] = await Promise.all([
     readFileAsDataURL(file),
     getImageDimensions(file),

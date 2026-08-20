@@ -26,8 +26,8 @@ describe("production operations defaults", () => {
     ];
     for (const name of names) {
       const compose = await readRootFile(name);
-      expect(compose, name).toContain("max-size: \"10m\"");
-      expect(compose, name).toContain("max-file: \"3\"");
+      expect(compose, name).toContain('max-size: "10m"');
+      expect(compose, name).toContain('max-file: "3"');
     }
   });
 

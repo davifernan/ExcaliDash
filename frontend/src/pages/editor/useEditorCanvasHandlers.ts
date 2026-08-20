@@ -6,11 +6,7 @@ import {
   viewportCoordsToSceneCoords,
 } from "@excalidraw/excalidraw";
 import { toast } from "sonner";
-import {
-  getDroppedImageFiles,
-  loadDroppedImageData,
-  MULTI_IMAGE_DROP_GAP,
-} from "./droppedImages";
+import { getDroppedImageFiles, loadDroppedImageData, MULTI_IMAGE_DROP_GAP } from "./droppedImages";
 import { addDroppedPdfWidgets, isPdfFile } from "./pdfDrop";
 import {
   hasRenderableElements,
@@ -55,10 +51,7 @@ type UseEditorCanvasHandlersParams = {
     staleEmptySnapshot: boolean;
     staleNonRenderableSnapshot: boolean;
   };
-  broadcastChanges: (
-    elements: readonly any[],
-    currentFiles?: Record<string, any>,
-  ) => void;
+  broadcastChanges: (elements: readonly any[], currentFiles?: Record<string, any>) => void;
 };
 
 export const useEditorCanvasHandlers = ({
@@ -93,8 +86,7 @@ export const useEditorCanvasHandlers = ({
       if (isUnmountingRef.current) return;
       if (isSyncingRef.current) return;
       latestAppStateRef.current = appState;
-      const currentFiles =
-        files || excalidrawAPIRef.current?.getFiles() || {};
+      const currentFiles = files || excalidrawAPIRef.current?.getFiles() || {};
       if (Object.keys(currentFiles).length > 0) {
         latestFilesRef.current = currentFiles;
       }
@@ -119,8 +111,7 @@ export const useEditorCanvasHandlers = ({
         isBootstrappingSceneRef.current = false;
         if (matchesInitialSnapshot) return;
       }
-      const { prevented: preventedCanvasOverwrite } =
-        resolveSafeSnapshot(allElements);
+      const { prevented: preventedCanvasOverwrite } = resolveSafeSnapshot(allElements);
       if (preventedCanvasOverwrite) return;
       const hasRenderable = hasRenderableElements(allElements);
       if (hasRenderable && suspiciousBlankLoadRef.current) {
@@ -150,15 +141,12 @@ export const useEditorCanvasHandlers = ({
   const handleCanvasDropCapture = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
       const allDroppedFiles = Array.from(event.dataTransfer?.files || []);
-      const isPdfOnlyDrop =
-        allDroppedFiles.length > 0 && allDroppedFiles.every(isPdfFile);
+      const isPdfOnlyDrop = allDroppedFiles.length > 0 && allDroppedFiles.every(isPdfFile);
       if (isPdfOnlyDrop) {
         event.preventDefault();
         event.stopPropagation();
         if (!canEdit) {
-          toast.error(
-            "You can view this board, but you cannot add anything to it.",
-          );
+          toast.error("You can view this board, but you cannot add anything to it.");
           return;
         }
         if (!drawingId || !excalidrawAPIRef.current) return;
@@ -178,10 +166,7 @@ export const useEditorCanvasHandlers = ({
       }
       if (!canEdit || !excalidrawAPIRef.current) return;
       const droppedImages = getDroppedImageFiles(event.dataTransfer);
-      if (
-        droppedImages.length <= 1 ||
-        droppedImages.length !== allDroppedFiles.length
-      ) {
+      if (droppedImages.length <= 1 || droppedImages.length !== allDroppedFiles.length) {
         return;
       }
       event.preventDefault();
@@ -193,9 +178,7 @@ export const useEditorCanvasHandlers = ({
           { clientX: event.clientX, clientY: event.clientY },
           appState,
         );
-        const loadedImages = await Promise.all(
-          droppedImages.map(loadDroppedImageData),
-        );
+        const loadedImages = await Promise.all(droppedImages.map(loadDroppedImageData));
         if (loadedImages.length === 0) return;
         excalidrawAPIRef.current.addFiles(
           loadedImages.map(({ fileId, mimeType, dataURL, created }) => ({
@@ -251,11 +234,7 @@ export const useEditorCanvasHandlers = ({
       if (!excalidrawAPIRef.current) return;
       const nextFiles = excalidrawAPIRef.current.getFiles?.() || {};
       const didEmit = emitFilesDeltaIfNeeded(nextFiles);
-      if (
-        didEmit &&
-        latestAppStateRef.current &&
-        debouncedSaveRef.current
-      ) {
+      if (didEmit && latestAppStateRef.current && debouncedSaveRef.current) {
         hasSceneChangesSinceLoadRef.current = true;
         lastLocalChangeAtRef.current = Date.now();
         debouncedSaveRef.current(

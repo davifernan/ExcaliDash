@@ -19,9 +19,7 @@ export const createSocketAuthenticator = ({
   jwtSecret,
   principals,
 }: SocketAuthDeps) => {
-  const resolvePrincipal = async (
-    token?: string,
-  ): Promise<DrawingPrincipal | null> => {
+  const resolvePrincipal = async (token?: string): Promise<DrawingPrincipal | null> => {
     const authEnabled = await authModeService.getAuthEnabled();
     if (!authEnabled) {
       return {

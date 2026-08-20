@@ -19,9 +19,7 @@ describe("drawing route context", () => {
     vi.clearAllMocks();
     s3Mocks.isS3Enabled.mockReturnValue(true);
     s3Mocks.getS3Config.mockReturnValue({});
-    s3Mocks.buildS3Key.mockReturnValue(
-      "excalidash/user-1/target-drawing/file-1.png",
-    );
+    s3Mocks.buildS3Key.mockReturnValue("excalidash/user-1/target-drawing/file-1.png");
   });
 
   it("fails duplicate S3 cloning when an object copy fails", async () => {
@@ -46,16 +44,11 @@ describe("drawing route context", () => {
     } as any);
 
     await expect(
-      context.cloneS3FileReferences(
-        "source-drawing",
-        "target-drawing",
-        "user-1",
-        {
-          "file-1": {
-            dataURL: "/api/files/source-drawing/file-1",
-          },
+      context.cloneS3FileReferences("source-drawing", "target-drawing", "user-1", {
+        "file-1": {
+          dataURL: "/api/files/source-drawing/file-1",
         },
-      ),
+      }),
     ).rejects.toThrow("copy failed");
     expect(prisma.s3File.upsert).not.toHaveBeenCalled();
   });

@@ -32,8 +32,7 @@ let s3Config: S3Config | null = null;
  * Shared S3 object-key prefix. Reading the env var in one place avoids
  * upload and cleanup code paths drifting onto different prefixes.
  */
-export const FILE_KEY_PREFIX =
-  process.env.S3_KEY_PREFIX?.replace(/\/+$/, "") || "excalidash";
+export const FILE_KEY_PREFIX = process.env.S3_KEY_PREFIX?.replace(/\/+$/, "") || "excalidash";
 
 /**
  * Build the canonical S3 object key for a given drawing's image file.
@@ -82,8 +81,7 @@ export const initS3 = (cfg: S3Config): void => {
 };
 
 /** Returns true when S3 has been initialised (i.e. S3_BUCKET is configured). */
-export const isS3Enabled = (): boolean =>
-  s3Client !== null && s3Config !== null;
+export const isS3Enabled = (): boolean => s3Client !== null && s3Config !== null;
 
 /** Returns the active S3 configuration, or null if S3 is disabled. */
 export const getS3Config = (): S3Config | null => s3Config;
@@ -97,7 +95,7 @@ export const getS3Config = (): S3Config | null => s3Config;
 export const generatePresignedUploadUrl = async (
   key: string,
   mimeType: string,
-  expiresInSeconds = 300
+  expiresInSeconds = 300,
 ): Promise<string> => {
   if (!s3Client || !s3Config) {
     throw new Error("S3 is not configured");
@@ -122,7 +120,7 @@ export const generatePresignedUploadUrl = async (
  */
 export const generatePresignedDownloadUrl = async (
   key: string,
-  expiresInSeconds = 3600
+  expiresInSeconds = 3600,
 ): Promise<string> => {
   if (!s3Client || !s3Config) {
     throw new Error("S3 is not configured");
@@ -164,7 +162,7 @@ export const getPublicUrl = (key: string): string => {
     console.warn(
       "[S3] S3_PUBLIC_URL is not set but a custom S3_ENDPOINT is configured. " +
         "Public image URLs may not resolve correctly. Set S3_PUBLIC_URL to the " +
-        "public base URL of your bucket or CDN."
+        "public base URL of your bucket or CDN.",
     );
   }
 
@@ -176,11 +174,7 @@ export const getPublicUrl = (key: string): string => {
  * Upload a Buffer directly to S3.
  * Used by the backend to store image data without going through presigned URLs.
  */
-export const uploadBuffer = async (
-  key: string,
-  body: Buffer,
-  mimeType: string
-): Promise<void> => {
+export const uploadBuffer = async (key: string, body: Buffer, mimeType: string): Promise<void> => {
   if (!s3Client || !s3Config) {
     throw new Error("S3 is not configured");
   }
@@ -200,7 +194,7 @@ export const uploadBuffer = async (
  * List all objects under a given prefix. Handles pagination automatically.
  */
 export const listS3Objects = async (
-  prefix: string
+  prefix: string,
 ): Promise<Array<{ key: string; size: number }>> => {
   if (!s3Client || !s3Config) {
     throw new Error("S3 is not configured");
@@ -226,9 +220,7 @@ export const listS3Objects = async (
       }
     }
 
-    continuationToken = response.IsTruncated
-      ? response.NextContinuationToken
-      : undefined;
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
   } while (continuationToken);
 
   return results;

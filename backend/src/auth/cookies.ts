@@ -19,22 +19,20 @@ const parseDurationToMs = (value: string, fallbackMs: number): number => {
 
 const ACCESS_TOKEN_COOKIE_MAX_AGE_MS = parseDurationToMs(
   config.jwtAccessExpiresIn,
-  DEFAULT_ACCESS_TTL_MS
+  DEFAULT_ACCESS_TTL_MS,
 );
 const REFRESH_TOKEN_COOKIE_MAX_AGE_MS = parseDurationToMs(
   config.jwtRefreshExpiresIn,
-  DEFAULT_REFRESH_TTL_MS
+  DEFAULT_REFRESH_TTL_MS,
 );
 const REMEMBERED_REFRESH_TOKEN_COOKIE_MAX_AGE_MS = parseDurationToMs(
   config.jwtRefreshExpiresInRemembered,
-  DEFAULT_REMEMBERED_REFRESH_TTL_MS
+  DEFAULT_REMEMBERED_REFRESH_TTL_MS,
 );
 
 /** The refresh cookie outlives the session only when the user asked for it. */
 export const getRefreshCookieMaxAgeMs = (remember?: boolean): number =>
-  remember
-    ? REMEMBERED_REFRESH_TOKEN_COOKIE_MAX_AGE_MS
-    : REFRESH_TOKEN_COOKIE_MAX_AGE_MS;
+  remember ? REMEMBERED_REFRESH_TOKEN_COOKIE_MAX_AGE_MS : REFRESH_TOKEN_COOKIE_MAX_AGE_MS;
 
 const canTrustProxyHeaders = (req: Request): boolean => {
   const trustProxy = req.app?.get?.("trust proxy");
@@ -69,7 +67,7 @@ export const setAuthCookies = (
   req: Request,
   res: Response,
   tokens: { accessToken: string; refreshToken: string },
-  options?: { remember?: boolean }
+  options?: { remember?: boolean },
 ): void => {
   res.cookie(ACCESS_TOKEN_COOKIE_NAME, tokens.accessToken, {
     ...baseCookieOptions(req),
@@ -81,11 +79,7 @@ export const setAuthCookies = (
   });
 };
 
-export const setAccessTokenCookie = (
-  req: Request,
-  res: Response,
-  accessToken: string
-): void => {
+export const setAccessTokenCookie = (req: Request, res: Response, accessToken: string): void => {
   res.cookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
     ...baseCookieOptions(req),
     maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE_MS,
@@ -98,9 +92,7 @@ export const clearAuthCookies = (req: Request, res: Response): void => {
   res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, options);
 };
 
-export const parseCookieHeader = (
-  cookieHeader: string | undefined
-): Record<string, string> => {
+export const parseCookieHeader = (cookieHeader: string | undefined): Record<string, string> => {
   if (!cookieHeader) return {};
 
   const cookies: Record<string, string> = {};

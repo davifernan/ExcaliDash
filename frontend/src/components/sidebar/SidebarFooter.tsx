@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  Shield,
-  Settings as SettingsIcon,
-  Trash2,
-  User,
-  LogOut,
-} from "lucide-react";
+import { Shield, Settings as SettingsIcon, Trash2, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { getInitialsFromName } from "../../utils/user";
@@ -113,10 +107,7 @@ export const SidebarFooter: React.FC<SidebarFooterProps> = ({
                   </div>
                   <div className="truncate leading-tight">{user.email}</div>
                 </div>
-                <div
-                  className="w-7 h-7 sm:w-8 sm:h-8 invisible"
-                  aria-hidden="true"
-                />
+                <div className="w-7 h-7 sm:w-8 sm:h-8 invisible" aria-hidden="true" />
               </div>
             </div>
           )}

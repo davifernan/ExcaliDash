@@ -7,17 +7,8 @@
 import express from "express";
 import type { Server as SocketIoServer } from "socket.io";
 import { PrismaClient } from "../generated/client";
-import {
-  isS3Enabled,
-  deleteS3Object,
-  listS3Objects,
-  drawingS3Prefix,
-} from "../s3";
-import {
-  VALID_STORAGE_FILE_ID,
-  type S3FileRecord,
-  type S3ObjectRecord,
-} from "./storage/helpers";
+import { isS3Enabled, deleteS3Object, listS3Objects, drawingS3Prefix } from "../s3";
+import { VALID_STORAGE_FILE_ID, type S3FileRecord, type S3ObjectRecord } from "./storage/helpers";
 import {
   buildFilesDiffResponse,
   buildOrphanDeletePlan,
@@ -30,29 +21,15 @@ export type StorageRouteDeps = {
   prisma: PrismaClient;
   requireAuth: express.RequestHandler;
   asyncHandler: <T = void>(
-    fn: (
-      req: express.Request,
-      res: express.Response,
-      next: express.NextFunction,
-    ) => Promise<T>,
+    fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<T>,
   ) => express.RequestHandler;
   parseJsonField: <T>(rawValue: string | null | undefined, fallback: T) => T;
   invalidateDrawingsCache: () => void;
   io: SocketIoServer;
 };
 
-export const registerStorageRoutes = (
-  app: express.Express,
-  deps: StorageRouteDeps,
-): void => {
-  const {
-    prisma,
-    requireAuth,
-    asyncHandler,
-    parseJsonField,
-    invalidateDrawingsCache,
-    io,
-  } = deps;
+export const registerStorageRoutes = (app: express.Express, deps: StorageRouteDeps): void => {
+  const { prisma, requireAuth, asyncHandler, parseJsonField, invalidateDrawingsCache, io } = deps;
 
   /**
    * Tell anyone joined to the drawing's collaboration room that the
@@ -87,9 +64,7 @@ export const registerStorageRoutes = (
 
       // Confirm name must match
       if (typeof confirmName !== "string" || confirmName !== drawing.name) {
-        return res
-          .status(403)
-          .json({ error: "confirmName does not match drawing name" });
+        return res.status(403).json({ error: "confirmName does not match drawing name" });
       }
 
       const elements: any[] = parseJsonField(drawing.elements, []);
@@ -218,9 +193,7 @@ export const registerStorageRoutes = (
       const { confirmName, fileIds: rawFileIds } = req.body ?? {};
 
       if (!Array.isArray(rawFileIds) || rawFileIds.length === 0) {
-        return res
-          .status(400)
-          .json({ error: "fileIds must be a non-empty array" });
+        return res.status(400).json({ error: "fileIds must be a non-empty array" });
       }
 
       // Validate every entry: same regex as the rest of the codebase
@@ -246,9 +219,7 @@ export const registerStorageRoutes = (
       }
 
       if (typeof confirmName !== "string" || confirmName !== drawing.name) {
-        return res
-          .status(403)
-          .json({ error: "confirmName does not match drawing name" });
+        return res.status(403).json({ error: "confirmName does not match drawing name" });
       }
 
       const elements: any[] = parseJsonField(drawing.elements, []);

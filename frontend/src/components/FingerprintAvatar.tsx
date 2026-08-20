@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { getOrCreateBrowserFingerprint, getFingerprintInitials } from '../utils/identity';
+import React, { useMemo, useState } from "react";
+import { getOrCreateBrowserFingerprint, getFingerprintInitials } from "../utils/identity";
 
 const fnv1a = (input: string): number => {
   let hash = 0x811c9dc5;
@@ -22,7 +22,7 @@ export const FingerprintAvatar: React.FC<{
   seed?: string;
   title?: string;
   className?: string;
-}> = ({ size = 32, seed, title = 'Browser fingerprint avatar', className }) => {
+}> = ({ size = 32, seed, title = "Browser fingerprint avatar", className }) => {
   const [deviceId] = useState(() => getOrCreateBrowserFingerprint());
   const effectiveSeed = seed || deviceId;
 

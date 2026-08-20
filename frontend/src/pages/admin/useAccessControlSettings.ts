@@ -6,15 +6,12 @@ export const useAccessControlSettings = (
   setError: (message: string) => void,
   setSuccess: (message: string) => void,
 ) => {
-  const [registrationEnabled, setRegistrationEnabled] = useState<
-    boolean | null
-  >(null);
-  const [localRegistrationAllowed, setLocalRegistrationAllowed] =
-    useState(true);
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+  const [localRegistrationAllowed, setLocalRegistrationAllowed] = useState(true);
   const [oidcEnabled, setOidcEnabled] = useState(false);
-  const [oidcJitProvisioningEnabled, setOidcJitProvisioningEnabled] = useState<
-    boolean | null
-  >(null);
+  const [oidcJitProvisioningEnabled, setOidcJitProvisioningEnabled] = useState<boolean | null>(
+    null,
+  );
   const [oidcProviderName, setOidcProviderName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -32,9 +29,7 @@ export const useAccessControlSettings = (
       setLocalRegistrationAllowed(response.data.authMode !== "oidc_enforced");
       setOidcEnabled(Boolean(response.data.oidcEnabled));
       setOidcProviderName(
-        typeof response.data.oidcProvider === "string"
-          ? response.data.oidcProvider
-          : null,
+        typeof response.data.oidcProvider === "string" ? response.data.oidcProvider : null,
       );
       setOidcJitProvisioningEnabled(
         typeof response.data.oidcJitProvisioningEnabled === "boolean"
@@ -44,8 +39,7 @@ export const useAccessControlSettings = (
     } catch (err: unknown) {
       let message = "Failed to load registration status";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -54,8 +48,7 @@ export const useAccessControlSettings = (
   };
 
   const toggleRegistration = async () => {
-    if (!isAdmin || registrationEnabled === null || !localRegistrationAllowed)
-      return;
+    if (!isAdmin || registrationEnabled === null || !localRegistrationAllowed) return;
     setLoading(true);
     setError("");
     setSuccess("");
@@ -66,15 +59,12 @@ export const useAccessControlSettings = (
       );
       setRegistrationEnabled(Boolean(response.data.registrationEnabled));
       setSuccess(
-        response.data.registrationEnabled
-          ? "Registration enabled"
-          : "Registration disabled",
+        response.data.registrationEnabled ? "Registration enabled" : "Registration disabled",
       );
     } catch (err: unknown) {
       let message = "Failed to update registration setting";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {
@@ -93,9 +83,7 @@ export const useAccessControlSettings = (
       }>("/auth/oidc/jit-provisioning", {
         enabled: !oidcJitProvisioningEnabled,
       });
-      setOidcJitProvisioningEnabled(
-        Boolean(response.data.oidcJitProvisioningEnabled),
-      );
+      setOidcJitProvisioningEnabled(Boolean(response.data.oidcJitProvisioningEnabled));
       setSuccess(
         response.data.oidcJitProvisioningEnabled
           ? "OIDC auto-provisioning enabled"
@@ -104,8 +92,7 @@ export const useAccessControlSettings = (
     } catch (err: unknown) {
       let message = "Failed to update OIDC provisioning setting";
       if (api.isAxiosError(err)) {
-        message =
-          err.response?.data?.message || err.response?.data?.error || message;
+        message = err.response?.data?.message || err.response?.data?.error || message;
       }
       setError(message);
     } finally {

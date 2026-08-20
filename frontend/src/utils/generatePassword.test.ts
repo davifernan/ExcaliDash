@@ -39,18 +39,14 @@ describe("generatePassword", () => {
   });
 
   it("does not repeat itself", () => {
-    const seen = new Set(
-      Array.from({ length: 100 }, () => generatePassword(policy())),
-    );
+    const seen = new Set(Array.from({ length: 100 }, () => generatePassword(policy())));
 
     expect(seen.size).toBe(100);
   });
 
   it("does not park the required characters at the front", () => {
     // Without shuffling, the first characters would always be the same classes.
-    const firsts = new Set(
-      Array.from({ length: 60 }, () => generatePassword(policy())[0]),
-    );
+    const firsts = new Set(Array.from({ length: 60 }, () => generatePassword(policy())[0]));
 
     expect(firsts.size).toBeGreaterThan(3);
   });

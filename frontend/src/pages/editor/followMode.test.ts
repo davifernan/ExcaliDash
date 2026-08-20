@@ -3,10 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const excalidrawMocks = vi.hoisted(() => ({
   getVisibleSceneBounds: vi.fn(() => [-50, -25, 450, 275]),
   sceneCoordsToViewportCoords: vi.fn(
-    (
-      { sceneX, sceneY }: { sceneX: number; sceneY: number },
-      appState: any,
-    ) => ({
+    ({ sceneX, sceneY }: { sceneX: number; sceneY: number }, appState: any) => ({
       x: (sceneX + appState.scrollX) * appState.zoom.value + appState.offsetLeft,
       y: (sceneY + appState.scrollY) * appState.zoom.value + appState.offsetTop,
     }),
@@ -22,10 +19,7 @@ vi.mock("@excalidraw/excalidraw", () => ({
   zoomToFitBounds: excalidrawMocks.zoomToFitBounds,
 }));
 
-import {
-  bindFollowMode,
-  parseFollowSceneBounds,
-} from "./followMode";
+import { bindFollowMode, parseFollowSceneBounds } from "./followMode";
 
 describe("follow viewport bounds", () => {
   beforeEach(() => {
@@ -33,12 +27,7 @@ describe("follow viewport bounds", () => {
   });
 
   it("accepts only finite, ordered scene rectangles", () => {
-    expect(parseFollowSceneBounds([-10, -20, 300, 400])).toEqual([
-      -10,
-      -20,
-      300,
-      400,
-    ]);
+    expect(parseFollowSceneBounds([-10, -20, 300, 400])).toEqual([-10, -20, 300, 400]);
     expect(parseFollowSceneBounds([0, 0, Number.NaN, 10])).toBeNull();
     expect(parseFollowSceneBounds([0, 0, 0, 10])).toBeNull();
     expect(parseFollowSceneBounds([0, 0, 10])).toBeNull();
@@ -154,8 +143,7 @@ describe("follow viewport bounds", () => {
     const handlers = new Map<string, (payload: any) => void>();
     const socket = {
       emit: vi.fn(),
-      on: (event: string, handler: (payload: any) => void) =>
-        handlers.set(event, handler),
+      on: (event: string, handler: (payload: any) => void) => handlers.set(event, handler),
       off: vi.fn(),
     };
     let scrollCallback = () => undefined;
@@ -205,9 +193,7 @@ describe("follow viewport bounds", () => {
       sequence: 1,
     });
 
-    const frame = container.querySelector<HTMLElement>(
-      '[data-follow-viewport="frame"]',
-    );
+    const frame = container.querySelector<HTMLElement>('[data-follow-viewport="frame"]');
     const control = document.createElement("button");
     control.style.position = "absolute";
     control.style.zIndex = "2";
@@ -216,10 +202,7 @@ describe("follow viewport bounds", () => {
     expect(frame?.style.height).toBe("500px");
     expect(frame?.style.boxShadow).toContain("9999px");
     expect(Number(frame?.style.zIndex)).toBeLessThan(Number(control.style.zIndex));
-    expect(socket.emit).not.toHaveBeenCalledWith(
-      "viewport-bounds",
-      expect.anything(),
-    );
+    expect(socket.emit).not.toHaveBeenCalledWith("viewport-bounds", expect.anything());
 
     resizeCallback();
     expect(excalidrawMocks.zoomToFitBounds).toHaveBeenCalledTimes(2);
@@ -236,9 +219,7 @@ describe("follow viewport bounds", () => {
       sequence: 2,
     });
     expect(
-      container.querySelector<HTMLElement>(
-        '[data-follow-viewport="zoom-warning"]',
-      )?.style.display,
+      container.querySelector<HTMLElement>('[data-follow-viewport="zoom-warning"]')?.style.display,
     ).toBe("block");
 
     cleanup();
@@ -246,5 +227,4 @@ describe("follow viewport bounds", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
-
 });

@@ -8,10 +8,7 @@ import { registerDrawingDeleteDuplicateRoutes } from "./drawingDeleteDuplicateRo
 import { registerDrawingSharingRoutes } from "./drawingSharingRoutes";
 import { registerDrawingHistoryRoutes } from "./drawingHistoryRoutes";
 
-export const registerDrawingRoutes = (
-  app: express.Express,
-  deps: DashboardRouteDeps,
-) => {
+export const registerDrawingRoutes = (app: express.Express, deps: DashboardRouteDeps) => {
   const context = createDrawingRouteContext(deps);
 
   registerDrawingListRoutes(app, context);

@@ -4,15 +4,8 @@ export const bindCanvasWheelZoom = (container: HTMLDivElement | null) => {
     if (!target) return;
     const isCanvas = target.tagName?.toLowerCase() === "canvas";
     const isEditorUi =
-      target.closest(".layer-ui__wrapper") !== null ||
-      target.closest(".App-menu") !== null;
-    if (
-      !isCanvas ||
-      isEditorUi ||
-      event.ctrlKey ||
-      event.metaKey ||
-      (event as any)._isFakeZoom
-    ) {
+      target.closest(".layer-ui__wrapper") !== null || target.closest(".App-menu") !== null;
+    if (!isCanvas || isEditorUi || event.ctrlKey || event.metaKey || (event as any)._isFakeZoom) {
       return;
     }
     event.preventDefault();
@@ -34,6 +27,5 @@ export const bindCanvasWheelZoom = (container: HTMLDivElement | null) => {
     capture: true,
     passive: false,
   });
-  return () =>
-    container?.removeEventListener("wheel", handleWheel, { capture: true });
+  return () => container?.removeEventListener("wheel", handleWheel, { capture: true });
 };

@@ -7,8 +7,12 @@ import { promisify } from "node:util";
 import { describeShrink, shouldTryShrink, shrinkPdf } from "./pdfShrink";
 
 const run = promisify(execFile);
-const haveGs = await run("gs", ["--version"]).then(() => true).catch(() => false);
-const haveWeasy = await run("weasyprint", ["--version"]).then(() => true).catch(() => false);
+const haveGs = await run("gs", ["--version"])
+  .then(() => true)
+  .catch(() => false);
+const haveWeasy = await run("weasyprint", ["--version"])
+  .then(() => true)
+  .catch(() => false);
 
 const opts = (over = {}) => ({ level: "printer" as const, minBytes: 0, ...over });
 
@@ -25,13 +29,25 @@ describe("deciding whether to try", () => {
 
 describe("describing the result", () => {
   it("says how much was saved", () => {
-    expect(describeShrink({ applied: true, originalBytes: 13_000_000, finalBytes: 4_100_000, reason: "smaller" }))
-      .toBe("Optimised from 12.4 MB to 3.9 MB (68% smaller).");
+    expect(
+      describeShrink({
+        applied: true,
+        originalBytes: 13_000_000,
+        finalBytes: 4_100_000,
+        reason: "smaller",
+      }),
+    ).toBe("Optimised from 12.4 MB to 3.9 MB (68% smaller).");
   });
 
   it("says nothing when the file was left alone", () => {
-    expect(describeShrink({ applied: false, originalBytes: 100, finalBytes: 100, reason: "not-smaller" }))
-      .toBeNull();
+    expect(
+      describeShrink({
+        applied: false,
+        originalBytes: 100,
+        finalBytes: 100,
+        reason: "not-smaller",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -87,7 +103,10 @@ describe.skipIf(!haveGs || !haveWeasy)("against a real document", () => {
     const pdf = join(dir, "d.pdf");
     // Text only: rebuilding this makes it bigger, which is the case that must
     // not silently replace the upload.
-    await writeFile(html, `<html><body>${"<p>Lorem ipsum dolor sit amet.</p>".repeat(400)}</body></html>`);
+    await writeFile(
+      html,
+      `<html><body>${"<p>Lorem ipsum dolor sit amet.</p>".repeat(400)}</body></html>`,
+    );
     await run("weasyprint", [html, pdf]);
     return pdf;
   };

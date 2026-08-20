@@ -36,10 +36,7 @@ export const uploadPdfAsset = async (
   return response.data;
 };
 
-export const getPdfAsset = async (
-  drawingId: string,
-  assetId: string,
-): Promise<PdfAsset> => {
+export const getPdfAsset = async (drawingId: string, assetId: string): Promise<PdfAsset> => {
   const response = await api.get<PdfAsset>(assetPath(drawingId, assetId));
   return response.data;
 };
@@ -49,14 +46,10 @@ export const getAssetUsage = async (): Promise<AssetUsage> => {
   return response.data;
 };
 
-const absoluteApiUrl = (path: string) =>
-  `${API_URL.replace(/\/$/, "")}${path}`;
+const absoluteApiUrl = (path: string) => `${API_URL.replace(/\/$/, "")}${path}`;
 
-export const getPdfPageUrl = (
-  drawingId: string,
-  assetId: string,
-  page: number,
-) => absoluteApiUrl(`${assetPath(drawingId, assetId)}/pages/${page}`);
+export const getPdfPageUrl = (drawingId: string, assetId: string, page: number) =>
+  absoluteApiUrl(`${assetPath(drawingId, assetId)}/pages/${page}`);
 
 export const getPdfOriginalUrl = (drawingId: string, assetId: string) =>
   absoluteApiUrl(`${assetPath(drawingId, assetId)}/original`);

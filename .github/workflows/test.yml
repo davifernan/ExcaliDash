@@ -39,6 +39,11 @@ jobs:
           cd backend
           npx prisma generate
       
+      - name: Check formatting
+        run: |
+          cd backend
+          npm run format:check
+
       - name: Run backend tests
         run: |
           cd backend

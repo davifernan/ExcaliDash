@@ -25,14 +25,12 @@ type UpdateResponse = {
 
 let UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 
-let cache:
-  | {
-      channel: UpdateChannel;
-      fetchedAt: number;
-      etag: string | null;
-      response: Omit<UpdateResponse, "currentVersion">;
-    }
-  | null = null;
+let cache: {
+  channel: UpdateChannel;
+  fetchedAt: number;
+  etag: string | null;
+  response: Omit<UpdateResponse, "currentVersion">;
+} | null = null;
 
 export const parseChannel = (raw: unknown): UpdateChannel => {
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
@@ -52,7 +50,7 @@ export const envGithubToken = (): string | null => {
 
 export const pickLatestRelease = (
   releases: GithubRelease[],
-  channel: UpdateChannel
+  channel: UpdateChannel,
 ): GithubRelease | null => {
   const candidates = releases
     .filter((r) => r && !r.draft)
@@ -68,7 +66,10 @@ export const pickLatestRelease = (
       const parsed = parseSemver(tag);
       return { r, parsed };
     })
-    .filter((x) => Boolean(x.parsed)) as Array<{ r: GithubRelease; parsed: NonNullable<ReturnType<typeof parseSemver>> }>;
+    .filter((x) => Boolean(x.parsed)) as Array<{
+    r: GithubRelease;
+    parsed: NonNullable<ReturnType<typeof parseSemver>>;
+  }>;
 
   if (candidates.length === 0) return null;
 
@@ -89,7 +90,7 @@ export const normalizeVersion = (raw: string): string | null => {
 };
 
 export const fetchLatest = async (
-  channel: UpdateChannel
+  channel: UpdateChannel,
 ): Promise<Omit<UpdateResponse, "currentVersion">> => {
   const now = Date.now();
   if (cache && cache.channel === channel && now - cache.fetchedAt < UPDATE_CHECK_TTL_MS) {
@@ -164,7 +165,7 @@ export const fetchLatest = async (
 
 export const computeIsUpdateAvailable = (
   currentVersion: string | null,
-  latestVersion: string | null
+  latestVersion: string | null,
 ): boolean | null => {
   if (!currentVersion || !latestVersion) return null;
   const currentParsed = parseSemver(currentVersion);
@@ -199,6 +200,6 @@ export const registerUpdateRoutes = (app: express.Express, deps: SystemRouteDeps
       };
 
       res.status(200).json(payload);
-    })
+    }),
   );
 };

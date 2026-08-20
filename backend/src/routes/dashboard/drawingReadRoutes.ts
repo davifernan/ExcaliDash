@@ -3,10 +3,7 @@ import { canViewDrawing, getDrawingAccess } from "../../authz/sharing";
 import { toPublicTrashCollectionId } from "./trash";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
-export const registerDrawingReadRoutes = (
-  app: express.Express,
-  context: DrawingRouteContext,
-) => {
+export const registerDrawingReadRoutes = (app: express.Express, context: DrawingRouteContext) => {
   const {
     prisma,
     optionalAuth,
@@ -43,8 +40,7 @@ export const registerDrawingReadRoutes = (
         });
       }
 
-      const isOwner =
-        principal?.kind === "user" && principal.userId === drawing.userId;
+      const isOwner = principal?.kind === "user" && principal.userId === drawing.userId;
       return res.json({
         ...drawing,
         // Collections (and trash mapping) are owner-scoped. For shared/public access, avoid leaking
@@ -59,5 +55,4 @@ export const registerDrawingReadRoutes = (
       });
     }),
   );
-
 };

@@ -1,21 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { Logo } from '../components/Logo';
-import * as api from '../api';
-import { USER_KEY } from '../utils/impersonation';
-import { getPasswordPolicy, validatePassword } from '../utils/passwordPolicy';
-import { PasswordRequirements } from '../components/PasswordRequirements';
-import { PasswordInput } from '../components/PasswordInput';
-import { AuthStatusErrorPanel } from '../components/AuthStatusErrorPanel';
+import React, { useEffect, useState } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { Logo } from "../components/Logo";
+import * as api from "../api";
+import { USER_KEY } from "../utils/impersonation";
+import { getPasswordPolicy, validatePassword } from "../utils/passwordPolicy";
+import { PasswordRequirements } from "../components/PasswordRequirements";
+import { PasswordInput } from "../components/PasswordInput";
+import { AuthStatusErrorPanel } from "../components/AuthStatusErrorPanel";
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const {
     login,
@@ -35,31 +35,31 @@ export const Login: React.FC = () => {
   } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const queryMustReset = searchParams.get('mustReset') === '1';
-  const oidcErrorCode = searchParams.get('oidcError');
-  const oidcErrorMessage = searchParams.get('oidcErrorMessage');
-  const oidcReturnTo = searchParams.get('returnTo') || '/';
+  const queryMustReset = searchParams.get("mustReset") === "1";
+  const oidcErrorCode = searchParams.get("oidcError");
+  const oidcErrorMessage = searchParams.get("oidcErrorMessage");
+  const oidcReturnTo = searchParams.get("returnTo") || "/";
   const mustReset = Boolean(user?.mustResetPassword) || queryMustReset;
   const passwordPolicy = getPasswordPolicy();
 
   useEffect(() => {
     if (!oidcErrorCode) return;
-    setError(oidcErrorMessage || 'OIDC sign-in failed');
+    setError(oidcErrorMessage || "OIDC sign-in failed");
   }, [oidcErrorCode, oidcErrorMessage]);
 
   useEffect(() => {
     if (authStatusError) return;
     if (authLoading || authEnabled === null) return;
     if (authOnboardingRequired) {
-      navigate('/auth-setup', { replace: true });
+      navigate("/auth-setup", { replace: true });
       return;
     }
     if (!authEnabled) {
-      navigate('/', { replace: true });
+      navigate("/", { replace: true });
       return;
     }
     if (bootstrapRequired) {
-      navigate('/register', { replace: true });
+      navigate("/register", { replace: true });
       return;
     }
     if (oidcEnforced && !mustReset) {
@@ -70,7 +70,7 @@ export const Login: React.FC = () => {
     }
     if (isAuthenticated) {
       if (mustReset) return;
-      navigate('/', { replace: true });
+      navigate("/", { replace: true });
     }
   }, [
     authEnabled,
@@ -92,20 +92,22 @@ export const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
       await login(email, password, rememberMe);
       const stored = localStorage.getItem(USER_KEY);
-      const storedUser = stored ? (JSON.parse(stored) as { mustResetPassword?: boolean } | null) : null;
+      const storedUser = stored
+        ? (JSON.parse(stored) as { mustResetPassword?: boolean } | null)
+        : null;
       if (storedUser?.mustResetPassword) {
-        setPassword('');
+        setPassword("");
         return;
       }
-      navigate('/');
+      navigate("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to login';
+      const message = err instanceof Error ? err.message : "Failed to login";
       setError(message);
     } finally {
       setLoading(false);
@@ -114,10 +116,10 @@ export const Login: React.FC = () => {
 
   const handleMustReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (!newPassword || !confirmNewPassword) {
-      setError('Please enter and confirm a new password');
+      setError("Please enter and confirm a new password");
       return;
     }
     const passwordError = validatePassword(newPassword, passwordPolicy);
@@ -126,21 +128,27 @@ export const Login: React.FC = () => {
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setError('New passwords do not match');
+      setError("New passwords do not match");
       return;
     }
 
     setLoading(true);
     try {
       const response = await api.api.post<{
-        user: { id: string; email: string; name: string; role?: string; mustResetPassword?: boolean };
-      }>('/auth/must-reset-password', { newPassword });
+        user: {
+          id: string;
+          email: string;
+          name: string;
+          role?: string;
+          mustResetPassword?: boolean;
+        };
+      }>("/auth/must-reset-password", { newPassword });
 
       localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
 
-      window.location.href = '/';
+      window.location.href = "/";
     } catch (err: unknown) {
-      let message = 'Failed to reset password';
+      let message = "Failed to reset password";
       if (api.isAxiosError(err)) {
         message = err.response?.data?.message || err.response?.data?.error || message;
       }
@@ -157,14 +165,14 @@ export const Login: React.FC = () => {
           <Logo className="mx-auto h-12 w-auto" />
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900 dark:text-white">
             {mustReset
-              ? 'Reset your password'
+              ? "Reset your password"
               : oidcEnforced
-                ? `Sign in with ${oidcProvider || 'OIDC'}`
-                : 'Sign in to your account'}
+                ? `Sign in with ${oidcProvider || "OIDC"}`
+                : "Sign in to your account"}
           </h2>
           {!mustReset && !oidcEnforced && registrationEnabled ? (
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              Or{' '}
+              Or{" "}
               <Link
                 to="/register"
                 className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400"
@@ -182,7 +190,7 @@ export const Login: React.FC = () => {
             </p>
           ) : (
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              You will be redirected to {oidcProvider || 'your identity provider'}.
+              You will be redirected to {oidcProvider || "your identity provider"}.
             </p>
           )}
         </div>
@@ -199,84 +207,84 @@ export const Login: React.FC = () => {
                 onClick={() => api.startOidcSignIn(oidcReturnTo)}
                 className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Continue with {oidcProvider || 'OIDC'}
+                Continue with {oidcProvider || "OIDC"}
               </button>
             </div>
           ) : (
             <>
               <div className="rounded-md shadow-sm -space-y-px">
                 {!mustReset ? (
-                <>
-                  <div>
-                    <label htmlFor="email" className="sr-only">
-                      Email address
-                    </label>
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      required
-                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                      placeholder="Email address"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="password" className="sr-only">
-                      Password
-                    </label>
-                    <PasswordInput
-                      id="password"
-                      name="password"
-                      autoComplete="current-password"
-                      required
-                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                      placeholder="Password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </div>
-                </>
+                  <>
+                    <div>
+                      <label htmlFor="email" className="sr-only">
+                        Email address
+                      </label>
+                      <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                        placeholder="Email address"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="password" className="sr-only">
+                        Password
+                      </label>
+                      <PasswordInput
+                        id="password"
+                        name="password"
+                        autoComplete="current-password"
+                        required
+                        className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                    </div>
+                  </>
                 ) : (
-                <>
-                  <div>
-                    <label htmlFor="newPassword" className="sr-only">
-                      New password
-                    </label>
-                    <PasswordInput
-                      id="newPassword"
-                      name="newPassword"
-                      autoComplete="new-password"
-                      required
-                      minLength={passwordPolicy.minLength}
-                      maxLength={passwordPolicy.maxLength}
-                      pattern={passwordPolicy.patternHtml}
-                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                      placeholder="New password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="confirmNewPassword" className="sr-only">
-                      Confirm new password
-                    </label>
-                    <PasswordInput
-                      id="confirmNewPassword"
-                      name="confirmNewPassword"
-                      autoComplete="new-password"
-                      required
-                      minLength={passwordPolicy.minLength}
-                      maxLength={passwordPolicy.maxLength}
-                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                      placeholder="Confirm new password"
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    />
-                  </div>
-                </>
+                  <>
+                    <div>
+                      <label htmlFor="newPassword" className="sr-only">
+                        New password
+                      </label>
+                      <PasswordInput
+                        id="newPassword"
+                        name="newPassword"
+                        autoComplete="new-password"
+                        required
+                        minLength={passwordPolicy.minLength}
+                        maxLength={passwordPolicy.maxLength}
+                        pattern={passwordPolicy.patternHtml}
+                        className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                        placeholder="New password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="confirmNewPassword" className="sr-only">
+                        Confirm new password
+                      </label>
+                      <PasswordInput
+                        id="confirmNewPassword"
+                        name="confirmNewPassword"
+                        autoComplete="new-password"
+                        required
+                        minLength={passwordPolicy.minLength}
+                        maxLength={passwordPolicy.maxLength}
+                        className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                        placeholder="Confirm new password"
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      />
+                    </div>
+                  </>
                 )}
               </div>
               {mustReset && (
@@ -317,8 +325,12 @@ export const Login: React.FC = () => {
                 className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {mustReset
-                  ? (loading ? 'Updating...' : 'Set new password')
-                  : (loading ? 'Signing in...' : 'Sign in')}
+                  ? loading
+                    ? "Updating..."
+                    : "Set new password"
+                  : loading
+                    ? "Signing in..."
+                    : "Sign in"}
               </button>
             </div>
           )}
@@ -327,10 +339,10 @@ export const Login: React.FC = () => {
             <div>
               <button
                 type="button"
-                onClick={() => api.startOidcSignIn('/')}
+                onClick={() => api.startOidcSignIn("/")}
                 className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-700 text-sm font-medium rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Continue with {oidcProvider || 'OIDC'}
+                Continue with {oidcProvider || "OIDC"}
               </button>
             </div>
           )}
@@ -340,8 +352,8 @@ export const Login: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setNewPassword('');
-                  setConfirmNewPassword('');
+                  setNewPassword("");
+                  setConfirmNewPassword("");
                   logout();
                 }}
                 className="text-sm font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400"

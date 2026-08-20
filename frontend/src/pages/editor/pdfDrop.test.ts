@@ -15,8 +15,7 @@ vi.mock("@excalidraw/excalidraw", () => ({
   convertToExcalidrawElements: (elements: unknown[]) => elements,
 }));
 vi.mock("../../api", () => ({
-  isAxiosError: (error: unknown) =>
-    Boolean((error as { isAxiosError?: boolean })?.isAxiosError),
+  isAxiosError: (error: unknown) => Boolean((error as { isAxiosError?: boolean })?.isAxiosError),
   uploadPdfAsset: mockUploadPdfAsset,
 }));
 
@@ -35,7 +34,11 @@ describe("PDF drop errors", () => {
   it.each([
     [413, "File exceeds the 30 MB upload limit.", "The file is too large (max 30 MB)."],
     [507, "Storage limit reached", "No storage space is available."],
-    [422, "The PDF has a damaged cross-reference table.", "The PDF has a damaged cross-reference table."],
+    [
+      422,
+      "The PDF has a damaged cross-reference table.",
+      "The PDF has a damaged cross-reference table.",
+    ],
     [403, "Read-only access", "You can view this board, but you cannot add anything to it."],
   ])("shows a useful message for HTTP %i", async (status, serverMessage, expected) => {
     mockUploadPdfAsset.mockRejectedValueOnce(axiosError(status, serverMessage));

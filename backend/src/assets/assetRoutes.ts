@@ -14,12 +14,7 @@ import type { Express, Request, Response } from "express";
 import { createReadStream } from "node:fs";
 import { canEditDrawing, canViewDrawing, getDrawingAccess } from "../authz/sharing";
 import { resolveStoragePath } from "./assetStorage";
-import {
-  AssetTooLargeError,
-  QuotaExceededError,
-  createAsset,
-  usedBytesFor,
-} from "./assetService";
+import { AssetTooLargeError, QuotaExceededError, createAsset, usedBytesFor } from "./assetService";
 import { PdfRejectedError } from "./pdfRenderer";
 
 const ID = /^[\w-]{1,64}$/;
@@ -34,7 +29,10 @@ export type AssetRouteDeps = {
   maxUploadBytes: number;
   maxPerUserBytes: number;
   /** Renders and caches a page, returning what to send. */
-  getPage: (asset: any, page: number) => Promise<{
+  getPage: (
+    asset: any,
+    page: number,
+  ) => Promise<{
     body: Buffer;
     mimeType: string;
     contentEncoding: string | null;
@@ -50,9 +48,8 @@ export type AssetRouteDeps = {
 
 const principalOf = (req: Request) =>
   req.user?.authCredentialType === "bootstrap" && req.user.id
-    ? ({ kind: "user" as const, userId: req.user.id, allowInactive: true })
-    : req.principal ??
-      (req.user?.id ? ({ kind: "user" as const, userId: req.user.id }) : null);
+    ? { kind: "user" as const, userId: req.user.id, allowInactive: true }
+    : (req.principal ?? (req.user?.id ? { kind: "user" as const, userId: req.user.id } : null));
 
 /**
  * The document, if this request is allowed to have it.
@@ -131,7 +128,9 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         });
       }
 
-      const declared = String(req.headers["content-type"] ?? "").split(";")[0].trim();
+      const declared = String(req.headers["content-type"] ?? "")
+        .split(";")[0]
+        .trim();
       if (declared !== "application/pdf") {
         return res.status(415).json({
           error: "Unsupported file type",
@@ -252,7 +251,10 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
 
       const { blob } = found.asset;
       res.setHeader("Content-Type", found.asset.mimeType);
-      res.setHeader("Content-Disposition", contentDisposition("attachment", found.asset.originalName));
+      res.setHeader(
+        "Content-Disposition",
+        contentDisposition("attachment", found.asset.originalName),
+      );
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
       res.setHeader("Cache-Control", "private, no-cache, must-revalidate");

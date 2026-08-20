@@ -23,10 +23,16 @@ const makeHarness = async (overrides: Record<string, unknown> = {}) => {
   const imported: any[] = [];
   const tx = {
     storedBlob: { create: async () => undefined, update: async () => undefined },
-    collection: { findUnique: async () => null, create: async () => undefined, update: async () => undefined },
+    collection: {
+      findUnique: async () => null,
+      create: async () => undefined,
+      update: async () => undefined,
+    },
     drawing: {
       findUnique: async () => null,
-      create: async ({ data }: any) => { imported.push(data); },
+      create: async ({ data }: any) => {
+        imported.push(data);
+      },
       update: async () => undefined,
     },
     asset: { create: async () => undefined },
@@ -56,12 +62,15 @@ const makeHarness = async (overrides: Record<string, unknown> = {}) => {
     assetStorageDir,
     backendRoot: root,
     getBackendVersion: () => "test",
-    parseJsonField: (raw: string | null | undefined, fallback: unknown) => raw ? JSON.parse(raw) : fallback,
+    parseJsonField: (raw: string | null | undefined, fallback: unknown) =>
+      raw ? JSON.parse(raw) : fallback,
     sanitizeText,
     validateImportedDrawing,
     ensureTrashCollection: async () => undefined,
     invalidateDrawingsCache: () => undefined,
-    removeFileIfExists: async (filePath?: string) => { if (filePath) await fs.rm(filePath, { force: true }); },
+    removeFileIfExists: async (filePath?: string) => {
+      if (filePath) await fs.rm(filePath, { force: true });
+    },
     verifyDatabaseIntegrityAsync: async () => true,
     MAX_IMPORT_ARCHIVE_ENTRIES: 100,
     MAX_IMPORT_ARCHIVE_BYTES: 10 * MIB,
@@ -80,8 +89,14 @@ const makeHarness = async (overrides: Record<string, unknown> = {}) => {
     await fs.writeFile(join(uploadDir, filename), archive);
     const response: any = {
       statusCode: 200,
-      status(code: number) { this.statusCode = code; return this; },
-      json(body: unknown) { this.body = body; return this; },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body: unknown) {
+        this.body = body;
+        return this;
+      },
     };
     await importHandler({ user: { id: "user-1" }, file: { filename } }, response);
     return response;
@@ -91,20 +106,25 @@ const makeHarness = async (overrides: Record<string, unknown> = {}) => {
 
 const v1Archive = async () => {
   const zip = new JSZip();
-  zip.file("excalidash.manifest.json", JSON.stringify({
-    format: "excalidash",
-    formatVersion: 1,
-    exportedAt: new Date().toISOString(),
-    unorganizedFolder: "Unorganized",
-    collections: [],
-    drawings: [{
-      id: "drawing-v1",
-      name: "Old backup",
-      filePath: "Unorganized/old.excalidraw",
-      collectionId: null,
-      version: 1,
-    }],
-  }));
+  zip.file(
+    "excalidash.manifest.json",
+    JSON.stringify({
+      format: "excalidash",
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      unorganizedFolder: "Unorganized",
+      collections: [],
+      drawings: [
+        {
+          id: "drawing-v1",
+          name: "Old backup",
+          filePath: "Unorganized/old.excalidraw",
+          collectionId: null,
+          version: 1,
+        },
+      ],
+    }),
+  );
   zip.file("Unorganized/old.excalidraw", JSON.stringify({ elements: [], appState: {}, files: {} }));
   return zip.generateAsync({ type: "nodebuffer" });
 };
@@ -123,18 +143,25 @@ describe("streaming .excalidash import", () => {
     const safeName = "safe/safe/namexx";
     const unsafeName = "../../etc/passwd";
     expect(Buffer.byteLength(safeName)).toBe(Buffer.byteLength(unsafeName));
-    zip.file("excalidash.manifest.json", JSON.stringify({
-      format: "excalidash",
-      formatVersion: 1,
-      exportedAt: new Date().toISOString(),
-      unorganizedFolder: "Unorganized",
-      collections: [],
-      drawings: [],
-    }));
+    zip.file(
+      "excalidash.manifest.json",
+      JSON.stringify({
+        format: "excalidash",
+        formatVersion: 1,
+        exportedAt: new Date().toISOString(),
+        unorganizedFolder: "Unorganized",
+        collections: [],
+        drawings: [],
+      }),
+    );
     zip.file(safeName, "do not write this");
     const archive = await zip.generateAsync({ type: "nodebuffer" });
     let replaced = 0;
-    for (let offset = archive.indexOf(safeName); offset >= 0; offset = archive.indexOf(safeName, offset + unsafeName.length)) {
+    for (
+      let offset = archive.indexOf(safeName);
+      offset >= 0;
+      offset = archive.indexOf(safeName, offset + unsafeName.length)
+    ) {
       archive.write(unsafeName, offset, "utf8");
       replaced += 1;
     }
@@ -149,35 +176,51 @@ describe("streaming .excalidash import", () => {
   it("rejects a version-2 document whose sha256 does not match", async () => {
     const bytes = Buffer.from("document");
     const zip = new JSZip();
-    zip.file("excalidash.manifest.json", JSON.stringify({
-      format: "excalidash",
-      formatVersion: 2,
-      exportedAt: new Date().toISOString(),
-      unorganizedFolder: "Unorganized",
-      collections: [],
-      drawings: [{ id: "drawing", name: "Board", filePath: "board.excalidraw", collectionId: null }],
-      blobs: [{
-        id: "blob",
-        filePath: "assets/originals/blob",
-        sha256: createHash("sha256").update("different").digest("hex"),
-        sizeBytes: bytes.length,
-        contentEncoding: null,
-      }],
-      assets: [{
-        id: "asset",
-        blobId: "blob",
-        kind: "PDF",
-        originalName: "document.pdf",
-        mimeType: "application/pdf",
-        pageCount: 1,
-        status: "READY",
-      }],
-      drawingAssets: [{ drawingId: "drawing", assetId: "asset", state: "ACTIVE", expiresAt: null }],
-      snapshots: [],
-    }));
-    zip.file("board.excalidraw", JSON.stringify({
-      elements: [{ customData: { assetId: "asset" } }], appState: {}, files: {},
-    }));
+    zip.file(
+      "excalidash.manifest.json",
+      JSON.stringify({
+        format: "excalidash",
+        formatVersion: 2,
+        exportedAt: new Date().toISOString(),
+        unorganizedFolder: "Unorganized",
+        collections: [],
+        drawings: [
+          { id: "drawing", name: "Board", filePath: "board.excalidraw", collectionId: null },
+        ],
+        blobs: [
+          {
+            id: "blob",
+            filePath: "assets/originals/blob",
+            sha256: createHash("sha256").update("different").digest("hex"),
+            sizeBytes: bytes.length,
+            contentEncoding: null,
+          },
+        ],
+        assets: [
+          {
+            id: "asset",
+            blobId: "blob",
+            kind: "PDF",
+            originalName: "document.pdf",
+            mimeType: "application/pdf",
+            pageCount: 1,
+            status: "READY",
+          },
+        ],
+        drawingAssets: [
+          { drawingId: "drawing", assetId: "asset", state: "ACTIVE", expiresAt: null },
+        ],
+        snapshots: [],
+      }),
+    );
+    zip.file(
+      "board.excalidraw",
+      JSON.stringify({
+        elements: [{ customData: { assetId: "asset" } }],
+        appState: {},
+        files: {},
+      }),
+    );
     zip.file("assets/originals/blob", bytes);
 
     const harness = await makeHarness();
@@ -188,14 +231,17 @@ describe("streaming .excalidash import", () => {
 
   it("rejects a small compressed archive whose declared extracted size exceeds the total limit", async () => {
     const zip = new JSZip();
-    zip.file("excalidash.manifest.json", JSON.stringify({
-      format: "excalidash",
-      formatVersion: 1,
-      exportedAt: new Date().toISOString(),
-      unorganizedFolder: "Unorganized",
-      collections: [],
-      drawings: [],
-    }));
+    zip.file(
+      "excalidash.manifest.json",
+      JSON.stringify({
+        format: "excalidash",
+        formatVersion: 1,
+        exportedAt: new Date().toISOString(),
+        unorganizedFolder: "Unorganized",
+        collections: [],
+        drawings: [],
+      }),
+    );
     zip.file("bomb.txt", Buffer.alloc(4096, "x"));
     const archive = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
     expect(archive.length).toBeLessThan(1024);

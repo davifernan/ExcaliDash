@@ -29,9 +29,7 @@ export const useAdminCollections = (navigate: NavigateFunction) => {
 
   const handleEditCollection = async (id: string, name: string) => {
     setCollections((prev) =>
-      prev.map((collection) =>
-        collection.id === id ? { ...collection, name } : collection,
-      ),
+      prev.map((collection) => (collection.id === id ? { ...collection, name } : collection)),
     );
     await api.updateCollection(id, name);
   };

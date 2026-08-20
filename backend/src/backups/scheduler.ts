@@ -4,11 +4,7 @@ import archiver from "archiver";
 import { pipeline } from "node:stream/promises";
 import { resolveStoragePath } from "../assets/assetStorage";
 import type { PrismaClient } from "../generated/client";
-import {
-  type BackupLimitOptions,
-  enforceBackupLimits,
-  prepareBackupSpace,
-} from "./backupLimits";
+import { type BackupLimitOptions, enforceBackupLimits, prepareBackupSpace } from "./backupLimits";
 
 const Database = require("better-sqlite3") as any;
 
@@ -50,8 +46,7 @@ const parseDatabasePath = (databaseUrl?: string): string | null => {
   return path.resolve(raw);
 };
 
-const timestampForFilename = (date: Date): string =>
-  date.toISOString().replace(/[:.]/g, "-");
+const timestampForFilename = (date: Date): string => date.toISOString().replace(/[:.]/g, "-");
 
 const parseCronPart = (raw: string, min: number, max: number): CronPart => {
   const values = new Set<number>();
@@ -77,7 +72,13 @@ const parseCronPart = (raw: string, min: number, max: number): CronPart => {
       const [startRaw, endRaw] = rangeToken.split("-");
       const start = Number(startRaw);
       const end = Number(endRaw);
-      if (!Number.isInteger(start) || !Number.isInteger(end) || start < min || end > max || start > end) {
+      if (
+        !Number.isInteger(start) ||
+        !Number.isInteger(end) ||
+        start < min ||
+        end > max ||
+        start > end
+      ) {
         throw new Error(`Invalid cron range: ${trimmed}`);
       }
       addRange(start, end, step);
@@ -130,10 +131,12 @@ const pruneOldBackups = async (backupDir: string, retentionDays: number): Promis
   const entries = await fs.promises.readdir(backupDir, { withFileTypes: true });
   await Promise.allSettled(
     entries
-      .filter((entry) => entry.isFile() && (
-        /^excalidash-(?:sqlite-.*\.db|backup-.*\.zip(?:\.part)?)$/.test(entry.name) ||
-        /^\.excalidash-.*\.sqlite\.part$/.test(entry.name)
-      ))
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          (/^excalidash-(?:sqlite-.*\.db|backup-.*\.zip(?:\.part)?)$/.test(entry.name) ||
+            /^\.excalidash-.*\.sqlite\.part$/.test(entry.name)),
+      )
       .map(async (entry) => {
         const filePath = path.join(backupDir, entry.name);
         const stat = await fs.promises.stat(filePath);
@@ -178,7 +181,9 @@ export const createSqliteBackup = async ({
 }: Omit<BackupSchedulerOptions, "schedule">): Promise<string | null> => {
   const databasePath = parseDatabasePath(databaseUrl);
   if (!databasePath) {
-    console.warn("[backup] Scheduled backups currently support SQLite file: DATABASE_URL values only.");
+    console.warn(
+      "[backup] Scheduled backups currently support SQLite file: DATABASE_URL values only.",
+    );
     return null;
   }
 
@@ -253,14 +258,21 @@ export const createSqliteBackup = async ({
     const output = fs.createWriteStream(partialTarget, { mode: 0o600 });
     const writing = pipeline(archive, output);
     archive.append(fs.createReadStream(databaseCopy), { name: "database.sqlite" });
-    archive.append(JSON.stringify({
-      format: "excalidash-server-backup",
-      formatVersion: 2,
-      createdAt: new Date().toISOString(),
-      database: "database.sqlite",
-      originals: originals.length,
-      secrets: secrets.map((secret) => secret.archivePath),
-    }, null, 2), { name: "backup.manifest.json" });
+    archive.append(
+      JSON.stringify(
+        {
+          format: "excalidash-server-backup",
+          formatVersion: 2,
+          createdAt: new Date().toISOString(),
+          database: "database.sqlite",
+          originals: originals.length,
+          secrets: secrets.map((secret) => secret.archivePath),
+        },
+        null,
+        2,
+      ),
+      { name: "backup.manifest.json" },
+    );
     for (const original of originals) {
       // Stored originals are usually already PDF/Brotli-compressed. Store mode
       // avoids wasting CPU and keeps the entire operation stream-based.
@@ -351,31 +363,41 @@ export const startScheduledMaintenance = (
   const addJob = (name: string, schedule: string | null, run: () => Promise<unknown>) => {
     if (!schedule) return;
     try {
-      jobs.push({ name, cron: parseCronSchedule(schedule, name), run, lastRunKey: null, running: false });
+      jobs.push({
+        name,
+        cron: parseCronSchedule(schedule, name),
+        run,
+        lastRunKey: null,
+        running: false,
+      });
     } catch (error) {
       console.error(`[maintenance] Invalid ${name}; job disabled:`, error);
     }
   };
 
   addJob("BACKUP_SCHEDULE", options.backups.schedule, () => createSqliteBackup(options.backups));
-  addJob("AUTH_CLEANUP_SCHEDULE", options.authCleanup.schedule, () => cleanupExpiredAuthData(options.authCleanup));
+  addJob("AUTH_CLEANUP_SCHEDULE", options.authCleanup.schedule, () =>
+    cleanupExpiredAuthData(options.authCleanup),
+  );
   if (jobs.length === 0) return null;
 
   const tick = async () => {
     const now = new Date();
     const runKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
-    await Promise.all(jobs.map(async (job) => {
-      if (!cronMatches(job.cron, now) || job.lastRunKey === runKey || job.running) return;
-      job.lastRunKey = runKey;
-      job.running = true;
-      try {
-        await job.run();
-      } catch (error) {
-        console.error(`[maintenance] ${job.name} failed:`, error);
-      } finally {
-        job.running = false;
-      }
-    }));
+    await Promise.all(
+      jobs.map(async (job) => {
+        if (!cronMatches(job.cron, now) || job.lastRunKey === runKey || job.running) return;
+        job.lastRunKey = runKey;
+        job.running = true;
+        try {
+          await job.run();
+        } catch (error) {
+          console.error(`[maintenance] ${job.name} failed:`, error);
+        } finally {
+          job.running = false;
+        }
+      }),
+    );
   };
 
   const interval = setInterval(() => void tick(), 1000);

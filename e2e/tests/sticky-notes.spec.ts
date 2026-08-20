@@ -39,7 +39,7 @@ const scene = (page: Page) =>
 const notes = async (page: Page) => (await scene(page)).filter((e: any) => e.sticky);
 const labels = async (page: Page) => (await scene(page)).filter((e: any) => e.containerId);
 
-const stickyButton = (page: Page) => page.getByRole("button", { name: "Sticky note" });
+const stickyButton = (page: Page) => page.getByTestId("toolbar-sticky");
 
 /** Place a note by arming the tool and clicking the canvas, as a person would. */
 const armTool = async (page: Page) => {

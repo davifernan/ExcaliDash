@@ -13,9 +13,27 @@ import { useEffect, useState } from "react";
 import { insertStickyNote } from "./stickyPlacement";
 import {
   DEFAULT_STICKY_COLOR,
+  STICKY_SHORTCUT,
   createStickyNote,
   type StickyColor,
 } from "./stickyNote";
+
+/**
+ * Whether a keystroke belongs to something being typed into.
+ *
+ * A shortcut that fires while somebody is renaming a board would put the letter
+ * on the canvas instead of in the name.
+ */
+const isTyping = (target: EventTarget | null): boolean => {
+  const element = target as HTMLElement | null;
+  if (!element?.tagName) return false;
+  return (
+    element.tagName === "INPUT" ||
+    element.tagName === "TEXTAREA" ||
+    element.isContentEditable === true
+  );
+};
+
 
 export const STICKY_TOOL = "sticky";
 
@@ -88,6 +106,36 @@ export function useStickyNotes({
       );
     });
   }, [armed, canEdit, color, containerRef, excalidrawAPI, onTypingUnavailable]);
+
+  // The tool answers to a key like every other tool does. It lives here rather
+  // than with the other shortcuts because toggling needs to know whether the
+  // tool is already in hand, and that is this hook's state.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !canEdit) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== STICKY_SHORTCUT) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isTyping(event.target)) return;
+      if (excalidrawAPI.current?.getAppState?.()?.editingTextElement) return;
+
+      event.preventDefault();
+      if (armed) {
+        setArmed(false);
+        excalidrawAPI.current?.setActiveTool?.({ type: "selection" });
+      } else {
+        setArmed(true);
+        excalidrawAPI.current?.setActiveTool?.({
+          type: "custom",
+          customType: STICKY_TOOL,
+        });
+      }
+    };
+
+    container.addEventListener("keydown", onKeyDown);
+    return () => container.removeEventListener("keydown", onKeyDown);
+  }, [armed, canEdit, containerRef, excalidrawAPI]);
 
   // Leaving the tool armed with no way out would trap somebody who changed
   // their mind, and Escape is where everyone reaches first.

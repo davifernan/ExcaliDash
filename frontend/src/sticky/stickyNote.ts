@@ -18,6 +18,9 @@ import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 /** Namespaced so a board shared with another ExcaliDash cannot collide. */
 export const STICKY_KEY = "excalidashSticky";
 
+/** Miro's key for the same tool, and free in Excalidraw's own bindings. */
+export const STICKY_SHORTCUT = "n";
+
 export const STICKY_SIZE = 200;
 export const STICKY_BASE_FONT_SIZE = 20;
 

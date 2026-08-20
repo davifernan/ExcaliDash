@@ -145,11 +145,19 @@ test.describe("Real-time Collaboration", () => {
       ]);
       expect(remoteId).toEqual(localId);
 
-      // Deleting it there must reach browser 1 and the server, which proves
-      // the channel carries changes in both directions.
+      // Deleting it in browser 2 must show up in browser 1's own scene. The
+      // server going empty is not enough on its own: browser 2's own save
+      // produces exactly that, so a break in the 2 -> 1 direction would still
+      // look fine. Browser 1 can only know through the live update.
       await interactiveCanvas(page2).click({ position: { x: 400, y: 300 } });
       await page2.keyboard.press("Control+A");
       await page2.keyboard.press("Delete");
+
+      await expect.poll(
+        () => sceneElementCount(page1),
+        { timeout: 15_000, intervals: [250, 500, 1_000] },
+      ).toBe(0);
+
       await expect.poll(async () =>
         activeElements(await getDrawing(request, drawing.id)).length,
       { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(0);

@@ -1,8 +1,11 @@
 import React from 'react';
-import { Shield, LogIn, KeyRound } from 'lucide-react';
+import { LogIn, KeyRound } from 'lucide-react';
 import type { AdminUser } from './types';
+import { AdminTabsHeader, type AdminTab } from './AdminTabsHeader';
 
 type UsersTableProps = {
+  activeTab: AdminTab;
+  onTabChange: (tab: AdminTab) => void;
   users: AdminUser[];
   loading: boolean;
   currentUserId?: string;
@@ -17,6 +20,8 @@ type UsersTableProps = {
 export const UsersTable: React.FC<UsersTableProps> = ({
   users,
   loading,
+  activeTab,
+  onTabChange,
   currentUserId,
   resetPasswordLoadingId,
   onRoleChange,
@@ -26,15 +31,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
   onResetPassword,
 }) => (
   <div className="bg-white dark:bg-neutral-900 border-2 border-black dark:border-neutral-700 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] overflow-hidden">
-    <div className="px-4 sm:px-6 py-4 border-b-2 border-slate-200 dark:border-neutral-700 flex items-center gap-3">
-      <div className="w-10 h-10 bg-indigo-50 dark:bg-neutral-800 rounded-xl flex items-center justify-center border-2 border-indigo-100 dark:border-neutral-700">
-        <Shield size={20} className="text-indigo-600 dark:text-indigo-400" />
-      </div>
-      <h2 className="text-xl font-bold text-slate-900 dark:text-white">Users</h2>
-      {loading && (
-        <span className="text-sm text-slate-500 dark:text-neutral-500 font-medium">Loading…</span>
-      )}
-    </div>
+    <AdminTabsHeader active={activeTab} onChange={onTabChange} loading={loading} />
 
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">

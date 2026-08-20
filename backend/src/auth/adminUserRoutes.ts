@@ -90,6 +90,78 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
         });
     }
   });
+  /**
+   * Every API key on the instance, with its owner.
+   *
+   * The per-account routes deliberately scope to the caller, so an admin had
+   * no way to see which machine credentials exist — only to hear about them.
+   */
+  router.get("/users/api-keys", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureAuthEnabled(res))) return;
+      if (!requireAdmin(req, res)) return;
+      const keys = await prisma.apiKey.findMany({
+        orderBy: [{ createdAt: "desc" }],
+        select: {
+          id: true,
+          name: true,
+          prefix: true,
+          scopes: true,
+          lastUsedAt: true,
+          revokedAt: true,
+          createdAt: true,
+          user: { select: { id: true, name: true, email: true, username: true } },
+        },
+      });
+      res.json({ apiKeys: keys });
+    } catch (error) {
+      console.error("List API keys error:", error);
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Failed to list API keys",
+      });
+    }
+  });
+
+  /** Revoking is kept separate from deleting: the record stays auditable. */
+  router.delete("/users/api-keys/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureAuthEnabled(res))) return;
+      if (!requireCsrf(req, res)) return;
+      if (!requireAdmin(req, res)) return;
+      const existing = await prisma.apiKey.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, revokedAt: true, userId: true },
+      });
+      if (!existing) {
+        return res.status(404).json({ error: "Not found", message: "API key not found" });
+      }
+      if (!existing.revokedAt) {
+        await prisma.apiKey.update({
+          where: { id: existing.id },
+          data: { revokedAt: new Date() },
+        });
+      }
+      if (config.enableAuditLogging) {
+        await logAuditEvent({
+          userId: req.user!.id,
+          action: "admin_api_key_revoked",
+          resource: `apiKey:${existing.id}`,
+          ipAddress: req.ip || req.connection.remoteAddress || undefined,
+          userAgent: req.headers["user-agent"] || undefined,
+          details: { ownerUserId: existing.userId },
+        });
+      }
+      res.json({ revoked: true });
+    } catch (error) {
+      console.error("Revoke API key error:", error);
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Failed to revoke API key",
+      });
+    }
+  });
+
   router.get("/users", requireAuth, async (req: Request, res: Response) => {
     try {
       if (!(await ensureAuthEnabled(res))) return;

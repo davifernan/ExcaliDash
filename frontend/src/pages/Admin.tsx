@@ -11,6 +11,8 @@ import { CreateUserForm } from "./admin/CreateUserForm";
 import { LoginRateLimitCard } from "./admin/LoginRateLimitCard";
 import { UserActionModals } from "./admin/UserActionModals";
 import { UsersTable } from "./admin/UsersTable";
+import { AgentsTable, type AdminApiKey } from "./admin/AgentsTable";
+import type { AdminTab } from "./admin/AdminTabsHeader";
 import type { AdminUser } from "./admin/types";
 import { useAccessControlSettings } from "./admin/useAccessControlSettings";
 import { useAdminCollections } from "./admin/useAdminCollections";
@@ -35,6 +37,10 @@ export const Admin: React.FC = () => {
     handleDeleteCollection,
   } = useAdminCollections(navigate);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [adminTab, setAdminTab] = useState<AdminTab>("users");
+  const [apiKeys, setApiKeys] = useState<AdminApiKey[]>([]);
+  const [loadingApiKeys, setLoadingApiKeys] = useState(false);
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -75,6 +81,48 @@ export const Admin: React.FC = () => {
       return;
     }
   }, [authEnabled, isAdmin, navigate]);
+  // Agents are fetched when the tab is first opened, not on every admin visit.
+  useEffect(() => {
+    if (adminTab === "agents" && apiKeys.length === 0 && !loadingApiKeys) {
+      void loadApiKeys();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTab]);
+
+  const loadApiKeys = async () => {
+    setLoadingApiKeys(true);
+    try {
+      const response = await api.api.get<{ apiKeys: AdminApiKey[] }>(
+        "/auth/users/api-keys",
+      );
+      setApiKeys(response.data.apiKeys || []);
+    } catch {
+      setError("Failed to load agents");
+    } finally {
+      setLoadingApiKeys(false);
+    }
+  };
+
+  const revokeApiKey = async (key: AdminApiKey) => {
+    setRevokingKeyId(key.id);
+    try {
+      await api.api.delete(`/auth/users/api-keys/${key.id}`);
+      // Revoked keys stay listed on purpose, so the record remains visible.
+      setApiKeys((prev) =>
+        prev.map((entry) =>
+          entry.id === key.id
+            ? { ...entry, revokedAt: new Date().toISOString() }
+            : entry,
+        ),
+      );
+      setSuccess(`Agent "${key.name}" revoked`);
+    } catch {
+      setError("Failed to revoke agent");
+    } finally {
+      setRevokingKeyId(null);
+    }
+  };
+
   const loadUsers = async () => {
     setLoadingUsers(true);
     setError("");
@@ -334,7 +382,19 @@ export const Admin: React.FC = () => {
         onResetIdentifierChange={loginRateLimit.setResetIdentifier}
         onReset={loginRateLimit.reset}
       />{" "}
+      {adminTab === "agents" ? (
+        <AgentsTable
+          apiKeys={apiKeys}
+          loading={loadingApiKeys}
+          revokingId={revokingKeyId}
+          activeTab={adminTab}
+          onTabChange={setAdminTab}
+          onRevoke={revokeApiKey}
+        />
+      ) : (
       <UsersTable
+        activeTab={adminTab}
+        onTabChange={setAdminTab}
         users={users}
         loading={loadingUsers}
         currentUserId={authUser?.id}
@@ -348,7 +408,8 @@ export const Admin: React.FC = () => {
         }
         onImpersonate={setImpersonateTarget}
         onResetPassword={generateTempPassword}
-      />{" "}
+      />
+      )}{" "}
       <UserActionModals
         impersonateTarget={impersonateTarget}
         resetPasswordResult={resetPasswordResult}

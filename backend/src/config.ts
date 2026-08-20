@@ -94,6 +94,27 @@ interface Config {
   backups: BackupConfig;
   mail: MailConfig;
   s3: S3Config;
+  assets: AssetConfig;
+}
+
+/**
+ * Uploaded documents.
+ *
+ * `storageDir` sits under the existing backend-data volume, so an instance that
+ * already backs that volume up keeps working without a new mount.
+ *
+ * `fileBaseUrl` is empty by default, which serves documents from the app's own
+ * origin. Pointing it at a cookie-free host later reduces what a mistake in
+ * this area could reach, and needs no code change.
+ */
+export interface AssetConfig {
+  storageDir: string;
+  fileBaseUrl: string | null;
+  maxUploadBytes: number;
+  maxPerUserBytes: number;
+  cacheBudgetBytes: number;
+  minFreeDiskPercent: number;
+  renderConcurrency: number;
 }
 
 export type AuthMode = "local" | "hybrid" | "oidc_enforced";
@@ -442,6 +463,23 @@ export const config: Config = {
     },
   },
   s3: resolveS3Config(),
+  assets: {
+    storageDir: getOptionalEnv("ASSET_STORAGE_DIR", "/app/prisma/assets"),
+    fileBaseUrl: getOptionalTrimmedEnv("ASSET_FILE_BASE_URL"),
+    // Miro refuses uploads past 30 MB; matching that keeps expectations sane
+    // and keeps a single document from filling a small VPS.
+    maxUploadBytes: getRequiredEnvNumber("ASSET_MAX_UPLOAD_MB", 30) * 1024 * 1024,
+    maxPerUserBytes: getRequiredEnvNumber("ASSET_MAX_PER_USER_MB", 2048) * 1024 * 1024,
+    // Page previews are recomputable, so this is a ceiling to evict against,
+    // not a quota to respect.
+    cacheBudgetBytes: getRequiredEnvNumber("ASSET_CACHE_BUDGET_MB", 512) * 1024 * 1024,
+    // Stop rendering before the disk is full: a machine that cannot write is
+    // worse than a document that is slow to open.
+    minFreeDiskPercent: getRequiredEnvNumber("ASSET_MIN_FREE_DISK_PERCENT", 20),
+    // One page at a time. Rendering foreign PDFs is the expensive and risky
+    // part; doing several at once is how a small machine falls over.
+    renderConcurrency: getRequiredEnvNumber("ASSET_RENDER_CONCURRENCY", 1),
+  },
 };
 
 if (config.nodeEnv === "production") {

@@ -49,10 +49,13 @@ export function resolveStoragePath(root: string, storageKey: string): string {
 /**
  * Two levels of hex directories keep any single directory from collecting
  * hundreds of thousands of entries, which some filesystems handle badly.
+ *
+ * Keyed by blob rather than by asset: the same document uploaded to three
+ * boards is one file here and three assets in the database.
  */
-export function originalKey(assetId: string): string {
-  const safe = assetId.replace(/[^a-zA-Z0-9_-]/g, "");
-  if (safe.length < 4) throw new Error("Asset id is too short to derive a storage key.");
+export function originalKey(blobId: string): string {
+  const safe = blobId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (safe.length < 4) throw new Error("Blob id is too short to derive a storage key.");
   return join("originals", safe.slice(0, 2), safe.slice(2, 4), safe);
 }
 

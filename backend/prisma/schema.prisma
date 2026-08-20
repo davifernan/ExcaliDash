@@ -10,14 +10,14 @@ datasource db {
 }
 
 model User {
-  id                  String              @id @default(uuid())
-  username            String?             @unique
-  email               String              @unique
+  id                  String               @id @default(uuid())
+  username            String?              @unique
+  email               String               @unique
   passwordHash        String
   name                String
-  role                String              @default("USER")
-  mustResetPassword   Boolean             @default(false)
-  isActive            Boolean             @default(true)
+  role                String               @default("USER")
+  mustResetPassword   Boolean              @default(false)
+  isActive            Boolean              @default(true)
   preferences         String?
   authIdentities      AuthIdentity[]
   drawings            Drawing[]
@@ -28,25 +28,27 @@ model User {
   refreshTokens       RefreshToken[]
   apiKeys             ApiKey[]
   auditLogs           AuditLog[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  ownedAssets         Asset[]              @relation("AssetOwner")
+  uploadedAssets      Asset[]              @relation("AssetUploader")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model SystemConfig {
-  id                         String   @id @default("default")
-  authEnabled                Boolean  @default(false)
-  authOnboardingCompleted    Boolean  @default(false)
-  registrationEnabled        Boolean  @default(false)
-  oidcJitProvisioningEnabled Boolean?
-  authLoginRateLimitEnabled  Boolean  @default(true)
-  authLoginRateLimitWindowMs Int      @default(900000)
-  authLoginRateLimitMax      Int      @default(20)
-  bootstrapSetupCodeHash     String?
-  bootstrapSetupCodeIssuedAt DateTime?
-  bootstrapSetupCodeExpiresAt DateTime?
-  bootstrapSetupCodeFailedAttempts Int @default(0)
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                               String    @id @default("default")
+  authEnabled                      Boolean   @default(false)
+  authOnboardingCompleted          Boolean   @default(false)
+  registrationEnabled              Boolean   @default(false)
+  oidcJitProvisioningEnabled       Boolean?
+  authLoginRateLimitEnabled        Boolean   @default(true)
+  authLoginRateLimitWindowMs       Int       @default(900000)
+  authLoginRateLimitMax            Int       @default(20)
+  bootstrapSetupCodeHash           String?
+  bootstrapSetupCodeIssuedAt       DateTime?
+  bootstrapSetupCodeExpiresAt      DateTime?
+  bootstrapSetupCodeFailedAttempts Int       @default(0)
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
 }
 
 model Collection {
@@ -63,36 +65,38 @@ model Collection {
 }
 
 model Drawing {
-  id           String      @id @default(uuid())
+  id           String              @id @default(uuid())
   name         String
   elements     String
   appState     String
-  files        String      @default("{}")
+  files        String              @default("{}")
   preview      String?
-  version      Int         @default(1)
+  version      Int                 @default(1)
   userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   collectionId String?
-  collection   Collection? @relation(fields: [collectionId], references: [id])
+  collection   Collection?         @relation(fields: [collectionId], references: [id])
   permissions  DrawingPermission[]
   linkShares   DrawingLinkShare[]
   snapshots    DrawingSnapshot[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  assets       DrawingAsset[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([userId, updatedAt])
   @@index([userId, collectionId, updatedAt])
 }
 
 model DrawingSnapshot {
-  id        String   @id @default(uuid())
+  id        String                 @id @default(uuid())
   drawingId String
-  drawing   Drawing  @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+  drawing   Drawing                @relation(fields: [drawingId], references: [id], onDelete: Cascade)
   version   Int
-  elements  String   // JSON string (state before update)
-  appState  String   // JSON string
-  files     String   @default("{}")
-  createdAt DateTime @default(now())
+  elements  String // JSON string (state before update)
+  appState  String // JSON string
+  files     String                 @default("{}")
+  createdAt DateTime               @default(now())
+  assets    DrawingSnapshotAsset[]
 
   @@index([drawingId, createdAt])
   @@index([createdAt])
@@ -229,13 +233,101 @@ model AuthIdentity {
 /// includes drawingId to keep each reference accounted for separately.
 model S3File {
   drawingId String
-  fileId    String   // Excalidraw fileId (same id used in Drawing.files)
-  userId    String   // owner who uploaded the file
-  s3Key     String   // full object key, e.g. "excalidash/userId/drawingId/fileId.png"
+  fileId    String // Excalidraw fileId (same id used in Drawing.files)
+  userId    String // owner who uploaded the file
+  s3Key     String // full object key, e.g. "excalidash/userId/drawingId/fileId.png"
   mimeType  String
   createdAt DateTime @default(now())
 
   @@id([drawingId, fileId])
   @@index([userId])
   @@index([drawingId])
+}
+
+/// Bytes on disk, addressed by their content hash.
+///
+/// Separate from Asset on purpose: the same document dropped onto three boards
+/// by three people is one file on disk but three assets, each with its own
+/// name, owner and quota. Sharing Asset rows across owners instead would make
+/// deleting one person's document able to take away someone else's.
+model StoredBlob {
+  id          String    @id @default(uuid())
+  sha256      String    @unique
+  sizeBytes   Int
+  storageKey  String    @unique
+  /// STAGING while the upload is still running, READY once it is usable,
+  /// DELETING once nothing references it any more.
+  state       String    @default("STAGING")
+  /// Set when the last reference goes away. A grace period means a board
+  /// deleted by mistake and restored from a snapshot still finds its bytes.
+  deleteAfter DateTime?
+  assets      Asset[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([state, deleteAfter])
+}
+
+/// A document as a person thinks of it: a name, an owner, a page count.
+model Asset {
+  id               String    @id @default(uuid())
+  ownerUserId      String
+  /// Whoever performed the upload. May differ from the owner when someone with
+  /// edit access drops a file onto a board that is not theirs; quota is still
+  /// charged to the board owner.
+  uploadedByUserId String?
+  blobId           String
+  /// PDF, MARKDOWN or TEXT.
+  kind             String
+  /// Shown to people and used as the download name. Never used as a path.
+  originalName     String
+  /// Determined by the server from the bytes, never taken from the request.
+  mimeType         String
+  pageCount        Int?
+  status           String    @default("READY")
+  deleteAfter      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  owner      User                   @relation("AssetOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  uploadedBy User?                  @relation("AssetUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  blob       StoredBlob             @relation(fields: [blobId], references: [id], onDelete: Restrict)
+  drawings   DrawingAsset[]
+  snapshots  DrawingSnapshotAsset[]
+
+  @@index([ownerUserId, createdAt])
+  @@index([blobId])
+  @@index([status, deleteAfter])
+}
+
+/// Which documents a board currently uses.
+///
+/// PENDING covers the gap between uploading a file and saving the board that
+/// refers to it. An upload nobody ever saved is swept up rather than kept.
+model DrawingAsset {
+  drawingId String
+  assetId   String
+  state     String    @default("PENDING")
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  drawing Drawing @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@id([drawingId, assetId])
+  @@index([assetId])
+  @@index([state, expiresAt])
+}
+
+/// Which documents a snapshot needs, so restoring an old version still finds
+/// the file it referred to.
+model DrawingSnapshotAsset {
+  snapshotId String
+  assetId    String
+
+  snapshot DrawingSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  asset    Asset           @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@id([snapshotId, assetId])
+  @@index([assetId])
 }

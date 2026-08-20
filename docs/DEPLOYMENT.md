@@ -217,6 +217,9 @@ Base values are documented in `backend/.env.example`. Common ones to care about:
 | `PASSWORD_MIN_LENGTH` | `12` | Local-auth password minimum length. Combine with `PASSWORD_REQUIRE_*` flags to relax or enforce complexity. |
 | `BACKUP_SCHEDULE` | unset | Optional 5- or 6-field cron expression for scheduled SQLite backups, e.g. `0 0 4 * * *`. |
 | `BACKUP_DIR` | `/app/backups` | Directory where scheduled SQLite backup files are written. Mount this to persistent storage. |
+| `BACKUP_MAX_COUNT` | `7` | Maximum number of completed full-backup archives. Oldest archives are removed first. |
+| `BACKUP_MAX_TOTAL_MB` | `30720` | Maximum combined archive budget. A single backup that cannot fit is refused before its working copy is written. |
+| `BACKUP_MIN_FREE_DISK_PERCENT` | `20` | Free-space floor that must remain throughout creation of the SQLite copy and archive. |
 | `AUTH_CLEANUP_SCHEDULE` | `0 0 3 * * *` | Daily maintenance schedule for expired/revoked auth tokens and audit retention. |
 | `AUTH_TOKEN_RETENTION_DAYS` | `30` | Keep expired/used/revoked auth-token records this many days before deletion. Live tokens are never deleted. |
 | `AUDIT_LOG_RETENTION_DAYS` | `365` | Keep audit events for this many days. Increase this to meet company or legal retention requirements. |
@@ -291,7 +294,12 @@ Per-user theme and dashboard sort preferences are stored server-side once a user
 
 The app-shell display font can be replaced at build time with `VITE_EXCALIDASH_UI_FONT_FAMILY` and a self-hosted WOFF2 file via `VITE_EXCALIDASH_UI_FONT_URL`. Excalidraw canvas font support remains governed by the embedded Excalidraw package.
 
-For scheduled SQLite backups, mount a host path and configure a cron schedule:
+The production Compose file enables a daily 03:00 backup by default. It writes
+to `${BACKUP_HOST_DIR:-./backups}` on the host, retains at most seven archives,
+uses at most 30 GiB for completed archives, and refuses a run that would leave
+less than 20% free space. Override those values only after measuring the VPS.
+
+For other deployments, mount a host path and configure the same bounds:
 
 ```yaml
 backend:
@@ -300,10 +308,22 @@ backend:
     - BACKUP_SCHEDULE=0 0 4 * * *
     - BACKUP_DIR=/app/backups
     - BACKUP_RETENTION_DAYS=14
+    - BACKUP_MAX_COUNT=7
+    - BACKUP_MAX_TOTAL_MB=30720
+    - BACKUP_MIN_FREE_DISK_PERCENT=20
   volumes:
     - /mnt/user/appdata/excalidash/prisma:/app/prisma
     - /mnt/user/backups/excalidash:/app/backups
 ```
+
+Each archive contains the consistent SQLite copy, referenced original assets,
+and the persisted JWT/CSRF secret files. The page cache is deliberately omitted
+because it is regenerated. A host bind mount is still on the same failure domain
+as the VPS: replicate completed `.zip` files and their SHA-256 sums to another
+server or object store after every run.
+
+For a tested disaster restore and the safe upgrade/rollback sequence, follow
+[the restore runbook](RESTORE.md).
 
 For Unraid or other Docker templates, map the host directory to container path `/app/prisma` and keep `DATABASE_URL=file:/app/prisma/dev.db`; named volumes are harder to inspect and easier to accidentally recreate.
 

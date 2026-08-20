@@ -1,3 +1,9 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
     build:
@@ -51,6 +57,7 @@ services:
     networks:
       - excalidash-network
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       # Use IPv4 loopback explicitly to avoid IPv6 localhost resolution issues.
       test:
@@ -80,6 +87,7 @@ services:
     networks:
       - excalidash-network
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       # Use IPv4 loopback explicitly to avoid IPv6 localhost resolution issues.
       test:

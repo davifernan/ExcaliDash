@@ -38,6 +38,8 @@ export type PageCacheDeps = {
   storageDir: string;
   cacheBudgetBytes: number;
   minFreeDiskPercent: number;
+  /** Maximum number of Poppler page-render jobs running in this process. */
+  renderConcurrency?: number;
   /** Swappable so tests do not need poppler. */
   render?: typeof renderPage;
   now?: () => number;
@@ -77,6 +79,52 @@ export async function freeDiskPercent(path: string): Promise<number | null> {
 /** Renders in flight, so concurrent readers of the same page share one. */
 const inFlight = new Map<string, Promise<CachedPage>>();
 
+type RenderJob<T> = {
+  limit: number;
+  work: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+};
+
+/**
+ * One process-wide queue protects the VPS even when requests target different
+ * assets and pages. Each job contains a complete renderPage call, so its SVG
+ * process and possible PNG fallback occupy one slot together.
+ */
+class GlobalRenderQueue {
+  private active = 0;
+  private readonly waiting: Array<RenderJob<unknown>> = [];
+
+  run<T>(limit: number, work: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.waiting.push({ limit, work, resolve, reject } as RenderJob<unknown>);
+      this.drain();
+    });
+  }
+
+  private drain(): void {
+    const next = this.waiting[0];
+    if (!next || this.active >= next.limit) return;
+
+    this.waiting.shift();
+    this.active += 1;
+    void next.work()
+      .then(next.resolve, next.reject)
+      .finally(() => {
+        this.active -= 1;
+        this.drain();
+      });
+    this.drain();
+  }
+}
+
+const globalRenderQueue = new GlobalRenderQueue();
+
+const renderConcurrency = (configured?: number): number => {
+  const value = configured ?? Number(process.env.ASSET_RENDER_CONCURRENCY ?? "1");
+  return Number.isInteger(value) && value > 0 ? value : 1;
+};
+
 export async function getPage(
   deps: PageCacheDeps,
   asset: { id: string; blob: { storageKey: string } },
@@ -111,7 +159,10 @@ async function produce(
 
   const render = deps.render ?? renderPage;
   const source = resolveStoragePath(deps.storageDir, asset.blob.storageKey);
-  const rendered = await render(source, page);
+  const rendered = await globalRenderQueue.run(
+    renderConcurrency(deps.renderConcurrency),
+    () => render(source, page),
+  );
 
   const compress = shouldCompress(rendered.mimeType);
   const body = compress

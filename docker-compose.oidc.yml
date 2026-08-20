@@ -1,3 +1,9 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # Local OIDC provider for development (Keycloak).
   #
@@ -26,6 +32,7 @@ services:
     networks:
       - excalidash-network
     restart: unless-stopped
+    logging: *default-logging
 
 networks:
   excalidash-network:

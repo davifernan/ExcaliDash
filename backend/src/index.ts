@@ -4,7 +4,8 @@ import { registerAssetRoutes } from "./assets/assetRoutes";
 import { getPage as getAssetPage } from "./assets/pageCache";
 import { inspectPdf } from "./assets/pdfRenderer";
 import { resolveStoragePath } from "./assets/assetStorage";
-import { sweepUnclaimed, collectExpired } from "./assets/assetService"; import { prisma, configureSqlite, reclaimSqliteFreeSpace } from "./db/prisma"; import { createDrawingsCacheStore } from "./server/drawingsCache"; import { registerCsrfProtection } from "./server/csrf"; import { registerSocketHandlers } from "./server/socket"; import { createHttpsRedirectPolicy, getHttpsRedirectUrl, } from "./server/httpsRedirectPolicy"; import { issueBootstrapSetupCodeIfRequired } from "./auth/bootstrapSetupCode"; import { processFilesForS3 as processFilesForS3WithPrisma } from "./fileProcessing"; import { initS3 } from "./s3"; import { startScheduledMaintenance } from "./backups/scheduler";
+import { sweepUnclaimed, collectExpired } from "./assets/assetService";
+import { describeShrink, shrinkPdf } from "./assets/pdfShrink"; import { prisma, configureSqlite, reclaimSqliteFreeSpace } from "./db/prisma"; import { createDrawingsCacheStore } from "./server/drawingsCache"; import { registerCsrfProtection } from "./server/csrf"; import { registerSocketHandlers } from "./server/socket"; import { createHttpsRedirectPolicy, getHttpsRedirectUrl, } from "./server/httpsRedirectPolicy"; import { issueBootstrapSetupCodeIfRequired } from "./auth/bootstrapSetupCode"; import { processFilesForS3 as processFilesForS3WithPrisma } from "./fileProcessing"; import { initS3 } from "./s3"; import { startScheduledMaintenance } from "./backups/scheduler";
 const backendRoot = path.resolve(__dirname, "../"); const redactDatabaseUrl = (value: string | undefined): string => { if (!value) return "<unset>"; if (value.startsWith("file:")) return value; try { const parsed = new URL(value); if (parsed.username) parsed.username = "***"; if (parsed.password) parsed.password = "***"; return parsed.toString(); } catch { return "<redacted>"; } }; console.log("Resolved DATABASE_URL:", redactDatabaseUrl(process.env.DATABASE_URL)); if (config.s3.bucket) { initS3({ bucket: config.s3.bucket, region: config.s3.region, endpoint: config.s3.endpoint ?? undefined, publicUrl: config.s3.publicUrl ?? undefined, forcePathStyle: config.s3.forcePathStyle, accessKeyId: config.s3.accessKeyId ?? undefined, secretAccessKey: config.s3.secretAccessKey ?? undefined, }); console.log("S3 image storage enabled", { bucket: config.s3.bucket, region: config.s3.region }); }
 const normalizeOrigins = (rawOrigins?: string | null): string[] => { const fallback = "http://localhost:6767"; if (!rawOrigins || rawOrigins.trim().length === 0) { return [fallback]; } const ensureProtocol = (origin: string) =>
 /^https?:\/\//i.test(origin) ? origin : `http://${origin}`; const removeTrailingSlash = (origin: string) => origin.endsWith("/") ? origin.slice(0, -1) : origin; const parsed = rawOrigins
@@ -70,6 +71,16 @@ registerAssetRoutes({
       resolveStoragePath(config.assets.storageDir, asset.blob.storageKey),
     );
     return { pageCount: info.pageCount };
+  },
+  optimizeUpload: async (asset) => {
+    const result = await shrinkPdf(
+      resolveStoragePath(config.assets.storageDir, asset.blob.storageKey),
+      {
+        level: config.assets.pdfShrinkLevel,
+        minBytes: config.assets.pdfShrinkMinBytes,
+      },
+    );
+    return { finalBytes: result.finalBytes, note: describeShrink(result) };
   },
 }); registerImportExportRoutes({ app, prisma, requireAuth, asyncHandler, upload, uploadDir, backendRoot, getBackendVersion, parseJsonField, sanitizeText, validateImportedDrawing, ensureTrashCollection, invalidateDrawingsCache, removeFileIfExists, verifyDatabaseIntegrityAsync, MAX_IMPORT_ARCHIVE_ENTRIES, MAX_IMPORT_ARCHIVE_BYTES: MAX_UPLOAD_SIZE_BYTES, MAX_IMPORT_COLLECTIONS, MAX_IMPORT_DRAWINGS, MAX_IMPORT_MANIFEST_BYTES, MAX_IMPORT_DRAWING_BYTES, MAX_IMPORT_TOTAL_EXTRACTED_BYTES, }); app.use(errorHandler); export { app, httpServer }; const isMain = typeof require !== "undefined" && require.main === module; /**
  * Documents nobody reaches any more.

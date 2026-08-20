@@ -122,6 +122,14 @@ export interface AssetConfig {
   cacheBudgetBytes: number;
   minFreeDiskPercent: number;
   renderConcurrency: number;
+  /**
+   * Rebuilding an uploaded PDF re-encodes its images and can make an
+   * image-heavy document a fraction of its size. "printer" keeps 300 dpi and
+   * is not distinguishable at normal viewing size; "off" leaves every upload
+   * byte-for-byte as it arrived.
+   */
+  pdfShrinkLevel: "printer" | "ebook" | "screen" | "off";
+  pdfShrinkMinBytes: number;
 }
 
 export type AuthMode = "local" | "hybrid" | "oidc_enforced";
@@ -491,6 +499,14 @@ export const config: Config = {
     // One page at a time. Rendering foreign PDFs is the expensive and risky
     // part; doing several at once is how a small machine falls over.
     renderConcurrency: getRequiredEnvNumber("ASSET_RENDER_CONCURRENCY", 1),
+    // Only files where the saving is worth it. Below this a rebuild risks
+    // changing a document for a gain nobody would notice.
+    pdfShrinkLevel: (["printer", "ebook", "screen", "off"] as const).includes(
+      getOptionalEnv("ASSET_PDF_SHRINK", "printer") as any,
+    )
+      ? (getOptionalEnv("ASSET_PDF_SHRINK", "printer") as "printer" | "ebook" | "screen" | "off")
+      : "printer",
+    pdfShrinkMinBytes: getRequiredEnvNumber("ASSET_PDF_SHRINK_MIN_MB", 4) * 1024 * 1024,
   },
 };
 

@@ -5,7 +5,9 @@ import debounce from "lodash/debounce";
 import { toast } from "sonner";
 import * as api from "../../api";
 import { compressExcalidrawFiles } from "../../utils/imageCompression";
+import { reconcileElements } from "../../utils/sync";
 import {
+  CAPTURE_UPDATE_NEVER,
   getFilesDelta,
   getPersistedAppState,
   hasRenderableElements,
@@ -153,39 +155,74 @@ export const useEditorPersistence = ({
       const normalizedElementsForSave = Array.from(
         normalizeImageElementStatus(persistableElements, persistableFiles),
       );
-      const persistScene = async (attempt: number): Promise<void> => {
+      const persistScene = async (
+        elementsToSave: readonly any[],
+        filesToSave: Record<string, any> | undefined,
+        attempt: number,
+      ): Promise<void> => {
         try {
           const updated = await api.updateDrawing(drawingId, {
-            elements: normalizedElementsForSave,
+            elements: elementsToSave,
             appState: persistableAppState,
-            ...(filesChangedSincePersist ? { files: persistableFiles } : {}),
+            ...(filesToSave ? { files: filesToSave } : {}),
             version: refs.currentDrawingVersion.current ?? undefined,
           });
           if (typeof updated.version === "number") {
             refs.currentDrawingVersion.current = updated.version;
           }
-          refs.lastPersistedElements.current = normalizedElementsForSave;
-          if (filesChangedSincePersist) {
-            refs.lastPersistedFiles.current = persistableFiles;
+          refs.lastPersistedElements.current = elementsToSave;
+          if (filesToSave) {
+            refs.lastPersistedFiles.current = filesToSave;
           }
         } catch (err) {
           if (api.isAxiosError(err) && err.response?.status === 409) {
-            const reportedVersion = Number(err.response?.data?.currentVersion);
-            const hasReportedVersion =
-              Number.isInteger(reportedVersion) && reportedVersion > 0;
-            if (hasReportedVersion) {
-              refs.currentDrawingVersion.current = reportedVersion;
+            // A version is a token for a particular scene. Taking the number
+            // out of the conflict response and resending the same elements
+            // claims to be based on a scene this editor never saw, and
+            // overwrites whatever the other writer just saved. The live socket
+            // is not a safety net here: it is a separate channel with its own
+            // ordering, and an update can arrive after the payload was built,
+            // or not at all after a reconnect.
+            //
+            // So load the scene behind that version, merge it in with the same
+            // rule the live updates use, and save the result.
+            if (attempt > 0) throw new DrawingSaveConflictError();
+
+            const latest = await api.getDrawing(drawingId);
+            const latestVersion = Number(latest?.version);
+            if (!Number.isInteger(latestVersion)) {
+              throw new DrawingSaveConflictError();
             }
-            if (attempt === 0 && hasReportedVersion) {
-              await persistScene(1);
-              return;
-            }
-            throw new DrawingSaveConflictError();
+
+            const merged = reconcileElements(
+              elementsToSave,
+              Array.isArray(latest?.elements) ? latest.elements : [],
+            );
+            const mergedFiles = filesToSave
+              ? { ...(latest?.files || {}), ...filesToSave }
+              : undefined;
+
+            refs.currentDrawingVersion.current = latestVersion;
+            // Show the merged scene. Without this the editor still holds the
+            // pre-merge elements, and the next save would drop the other
+            // writer's work all over again.
+            refs.excalidrawAPI.current?.updateScene({
+              elements: merged,
+              captureUpdate: CAPTURE_UPDATE_NEVER,
+            });
+            refs.latestElements.current = merged;
+
+            await persistScene(merged, mergedFiles, 1);
+            return;
           }
           throw err;
         }
       };
-      await persistScene(0);
+      await persistScene(
+        normalizedElementsForSave,
+        filesChangedSincePersist ? persistableFiles : undefined,
+        0,
+      );
     } catch (err) {
       if (err instanceof DrawingSaveConflictError) {
         toast.error("Drawing changed in another tab. Refresh to load latest.");

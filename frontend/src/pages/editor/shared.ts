@@ -43,7 +43,7 @@ export const getElementContentSig = (element: any): string => {
  * Kept as a local constant so that shared.ts doesn't pull in the full
  * excalidraw UI bundle, which breaks jsdom-based unit tests.
  */
-const CAPTURE_UPDATE_NEVER = "NEVER" as const;
+export const CAPTURE_UPDATE_NEVER = "NEVER" as const;
 
 type RemoteSceneUpdate =
   | {

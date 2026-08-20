@@ -14,6 +14,7 @@ export const registerCollectionRoutes = (
     sanitizeText,
     ensureTrashCollection,
     invalidateDrawingsCache,
+    collaborationAccess,
     config,
     logAuditEvent,
   } = deps;
@@ -335,10 +336,13 @@ export const registerCollectionRoutes = (
       if (!collection)
         return res.status(404).json({ error: "Collection not found" });
 
-      await prisma.collectionShare.deleteMany({
+      const deleted = await prisma.collectionShare.deleteMany({
         where: { collectionId: id, granteeUserId: userId },
       });
       invalidateDrawingsCache();
+      if (deleted.count > 0) {
+        await collaborationAccess.recheckUserAccess(userId);
+      }
       return res.json({ success: true });
     }),
   );

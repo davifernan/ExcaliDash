@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import { PrismaClient } from "../generated/client";
+import { isApiKeyToken, resolveApiKeyUser } from "../auth/apiKeys";
 import { AuthModeService } from "../auth/authMode";
 import { ACCESS_TOKEN_COOKIE_NAME, parseCookieHeader } from "../auth/cookies";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
@@ -69,6 +70,18 @@ export const registerSocketHandlers = ({
     }
 
     if (!token) return null;
+
+    // Machine clients authenticate with an API key rather than a JWT. Without
+    // this they could read and write over REST but never receive live updates.
+    if (isApiKeyToken(token)) {
+      try {
+        const resolved = await resolveApiKeyUser(prisma, token);
+        return resolved ? resolved.user.id : null;
+      } catch (error) {
+        console.error("Socket API key verification failed:", error);
+        return null;
+      }
+    }
 
     try {
       const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;

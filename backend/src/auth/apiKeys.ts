@@ -85,3 +85,45 @@ export const isNonBrowserApiKeyBearerRequest = (req: {
   if (!hasBearerApiKey(req.headers.authorization)) return false;
   return !req.headers.origin && !req.headers.referer;
 };
+
+type ApiKeyClient = {
+  apiKey: {
+    findUnique: (args: any) => Promise<any>;
+    update: (args: any) => Promise<any>;
+  };
+};
+
+/**
+ * Resolve an API key to the user it belongs to.
+ *
+ * Shared by the HTTP middleware and the websocket handshake so both accept
+ * exactly the same credentials — a key that works for REST but not for live
+ * updates would be worse than one that works nowhere.
+ */
+export const resolveApiKeyUser = async (
+  prisma: ApiKeyClient,
+  token: string,
+): Promise<{ user: any; scopes: string[] } | null> => {
+  const keyId = extractApiKeyId(token);
+  if (!keyId) return null;
+
+  const apiKey = await prisma.apiKey.findUnique({
+    where: { keyId },
+    include: { user: true },
+  });
+  if (!apiKey || apiKey.revokedAt) return null;
+  if (!apiKeyHashMatches(token, apiKey.tokenHash)) return null;
+  if (!apiKey.user.isActive) return null;
+
+  try {
+    await prisma.apiKey.update({
+      where: { id: apiKey.id },
+      data: { lastUsedAt: new Date() },
+    });
+  } catch (error) {
+    // Bookkeeping must never cost a caller their request.
+    console.warn("Failed to update API key lastUsedAt:", error);
+  }
+
+  return { user: apiKey.user, scopes: parseApiKeyScopes(apiKey.scopes) };
+};

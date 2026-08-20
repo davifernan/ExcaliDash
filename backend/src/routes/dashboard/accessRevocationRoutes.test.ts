@@ -1,15 +1,54 @@
 import express from "express";
 import { describe, expect, it, vi } from "vitest";
+import { generateApiKey, serializeApiKeyScopes } from "../../auth/apiKeys";
+import { registerSocketHandlers } from "../../server/socket";
 import { registerCollectionRoutes } from "./collections";
+import { registerDrawingDeleteDuplicateRoutes } from "./drawingDeleteDuplicateRoutes";
 import { registerDrawingSharingRoutes } from "./drawingSharingRoutes";
+
+class FakeOperator {
+  constructor(private events: any[], private scope: string) {}
+  get volatile() { return this; }
+  emit(event: string, payload: any) { this.events.push({ scope: this.scope, event, payload }); }
+}
+
+class FakeSocket {
+  readonly rooms = new Set([this.id]);
+  readonly handshake: any;
+  readonly disconnect = vi.fn();
+  private handlers = new Map<string, (...args: any[]) => any>();
+  constructor(readonly id: string, private events: any[], token?: string) {
+    this.handshake = { auth: token ? { token } : {}, headers: {} };
+  }
+  get volatile() { return this; }
+  on(event: string, handler: (...args: any[]) => any) { this.handlers.set(event, handler); }
+  emit(event: string, payload: any) { this.events.push({ scope: this.id, event, payload }); }
+  to(scope: string) { return new FakeOperator(this.events, scope); }
+  async join(scope: string) { this.rooms.add(scope); }
+  async leave(scope: string) { this.rooms.delete(scope); }
+  trigger(event: string, ...args: any[]) { return this.handlers.get(event)?.(...args); }
+}
+
+class FakeIo {
+  readonly events: any[] = [];
+  private middleware: any;
+  private onConnection: any;
+  use(handler: any) { this.middleware = handler; }
+  on(event: string, handler: any) { if (event === "connection") this.onConnection = handler; }
+  to(scope: string) { return new FakeOperator(this.events, scope); }
+  async connect(id: string, token?: string) {
+    const socket = new FakeSocket(id, this.events, token);
+    await new Promise<void>((resolve, reject) => {
+      this.middleware(socket, (error?: Error) => error ? reject(error) : resolve());
+    });
+    this.onConnection(socket);
+    return socket;
+  }
+}
 
 const asyncHandler = (handler: any) =>
   async (req: any, res: any, next: any) => {
-    try {
-      await handler(req, res, next);
-    } catch (error) {
-      next(error);
-    }
+    try { await handler(req, res, next); } catch (error) { next(error); }
   };
 
 const requireAuth = (req: any, _res: any, next: any) => {
@@ -23,20 +62,13 @@ const invokeDeleteRoute = async (
   params: Record<string, string>,
 ) => {
   const layer = (app as any).router.stack.find(
-    (candidate: any) =>
-      candidate.route?.path === path && candidate.route.methods.delete,
+    (candidate: any) => candidate.route?.path === path && candidate.route.methods.delete,
   );
   const req: any = { params, body: {}, headers: {}, connection: {} };
   const res: any = {
     statusCode: 200,
-    status(code: number) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: unknown) {
-      this.payload = payload;
-      return this;
-    },
+    status(code: number) { this.statusCode = code; return this; },
+    json(payload: unknown) { this.payload = payload; return this; },
   };
   for (const handlerLayer of layer.route.stack) {
     await handlerLayer.handle(req, res, () => undefined);
@@ -44,98 +76,184 @@ const invokeDeleteRoute = async (
   return res;
 };
 
+const createHarness = async () => {
+  let drawingExists = true;
+  let directShare = true;
+  let collectionShare = true;
+  let publicLink = true;
+  const viewerKey = generateApiKey();
+  const ownerKey = generateApiKey();
+  const keyRows = new Map([
+    [viewerKey.keyId, { id: "viewer-key", token: viewerKey, userId: "viewer" }],
+    [ownerKey.keyId, { id: "owner-key", token: ownerKey, userId: "owner" }],
+  ]);
+  const prisma: any = {
+    apiKey: {
+      findUnique: vi.fn(async ({ where }: any) => {
+        const entry = keyRows.get(where.keyId);
+        return entry ? {
+          id: entry.id,
+          keyId: entry.token.keyId,
+          tokenHash: entry.token.tokenHash,
+          scopes: serializeApiKeyScopes(),
+          revokedAt: null,
+          user: { id: entry.userId, isActive: true },
+        } : null;
+      }),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    user: { findUnique: vi.fn(async ({ where }: any) => ({ name: where.id })) },
+    drawing: {
+      findUnique: vi.fn(async () => drawingExists
+        ? { id: "drawing-1", userId: "owner", collectionId: "collection-1" }
+        : null),
+      findFirst: vi.fn(async () => drawingExists
+        ? { id: "drawing-1", userId: "owner", collectionId: "collection-1", name: "Board" }
+        : null),
+      updateMany: vi.fn(async () => ({ count: drawingExists ? 1 : 0 })),
+      deleteMany: vi.fn(async () => {
+        if (!drawingExists) return { count: 0 };
+        drawingExists = false;
+        return { count: 1 };
+      }),
+    },
+    drawingPermission: {
+      findUnique: vi.fn(async ({ where }: any) =>
+        directShare && where.drawingId_granteeUserId.granteeUserId === "viewer"
+          ? { permission: "view" }
+          : null),
+      findFirst: vi.fn(async () => directShare ? { granteeUserId: "viewer" } : null),
+      deleteMany: vi.fn(async () => {
+        const count = directShare ? 1 : 0;
+        directShare = false;
+        return { count };
+      }),
+    },
+    collection: {
+      findFirst: vi.fn(async ({ where }: any) => {
+        if (where.userId === "owner") return { id: "collection-1", name: "Shared" };
+        return null;
+      }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    collectionShare: {
+      findFirst: vi.fn(async ({ where }: any) =>
+        collectionShare && where.granteeUserId === "viewer" ? { role: "view" } : null),
+      findMany: vi.fn(async () => collectionShare ? [{ granteeUserId: "viewer" }] : []),
+      deleteMany: vi.fn(async () => {
+        const count = collectionShare ? 1 : 0;
+        collectionShare = false;
+        return { count };
+      }),
+    },
+    drawingLinkShare: {
+      findFirst: vi.fn(async () => publicLink ? { permission: "view" } : null),
+      updateMany: vi.fn(async () => {
+        const count = publicLink ? 1 : 0;
+        publicLink = false;
+        return { count };
+      }),
+    },
+    $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+  };
+  const io = new FakeIo();
+  const collaborationAccess = registerSocketHandlers({
+    io: io as any,
+    prisma,
+    authModeService: { getAuthEnabled: async () => true } as any,
+    jwtSecret: "test-secret",
+  });
+  const viewer = await io.connect("viewer-socket", viewerKey.token);
+  const owner = await io.connect("owner-socket", ownerKey.token);
+  const join = (socket: FakeSocket) => socket.trigger(
+    "join-room", { drawingId: "drawing-1", user: { name: socket.id } },
+  );
+  await Promise.all([join(viewer), join(owner)]);
+  const baseDeps = {
+    prisma,
+    requireAuth,
+    asyncHandler,
+    invalidateDrawingsCache: vi.fn(),
+    collaborationAccess,
+    config: { enableAuditLogging: false },
+    logAuditEvent: vi.fn(),
+  };
+  return {
+    prisma, io, viewer, owner, join, collaborationAccess, baseDeps,
+    disableDirectShare: () => { directShare = false; },
+    disableCollectionShare: () => { collectionShare = false; },
+    disablePublicLink: () => { publicLink = false; },
+  };
+};
+
 describe("sharing route collaboration revocation", () => {
-  it("rechecks the affected user after deleting a drawing permission", async () => {
-    const recheckDrawingAccess = vi.fn().mockResolvedValue(undefined);
+  it("evicts the affected drawing grantee and retains the owner", async () => {
+    const harness = await createHarness();
+    harness.disablePublicLink();
+    harness.disableCollectionShare();
     const app = express();
-    app.use(express.json());
-    registerDrawingSharingRoutes(app, {
-      prisma: {
-        drawing: { findUnique: vi.fn().mockResolvedValue({ userId: "owner" }) },
-        drawingPermission: {
-          findFirst: vi.fn().mockResolvedValue({ granteeUserId: "viewer" }),
-          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-        },
-      },
-      requireAuth,
-      asyncHandler,
-      invalidateDrawingsCache: vi.fn(),
-      collaborationAccess: {
-        recheckDrawingAccess,
-        recheckUserAccess: vi.fn(),
-      },
-      config: { enableAuditLogging: false },
-    } as any);
+    registerDrawingSharingRoutes(app, harness.baseDeps as any);
 
     const response = await invokeDeleteRoute(
-      app,
-      "/drawings/:id/permissions/:permId",
+      app, "/drawings/:id/permissions/:permId",
       { id: "drawing-1", permId: "permission-1" },
     );
 
     expect(response.statusCode).toBe(200);
-    expect(recheckDrawingAccess).toHaveBeenCalledWith("drawing-1", "viewer");
+    expect(harness.viewer.rooms.has("drawing_drawing-1")).toBe(false);
+    expect(harness.owner.rooms.has("drawing_drawing-1")).toBe(true);
   });
 
-  it("rechecks every drawing socket after revoking a public link", async () => {
-    const recheckDrawingAccess = vi.fn().mockResolvedValue(undefined);
+  it("evicts an anonymous passive viewer after public-link revocation", async () => {
+    const harness = await createHarness();
+    harness.disableDirectShare();
+    harness.disableCollectionShare();
+    const anonymous = await harness.io.connect("anonymous");
+    await harness.join(anonymous);
     const app = express();
-    app.use(express.json());
-    registerDrawingSharingRoutes(app, {
-      prisma: {
-        drawing: { findUnique: vi.fn().mockResolvedValue({ userId: "owner" }) },
-        drawingLinkShare: {
-          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        },
-      },
-      requireAuth,
-      asyncHandler,
-      invalidateDrawingsCache: vi.fn(),
-      collaborationAccess: {
-        recheckDrawingAccess,
-        recheckUserAccess: vi.fn(),
-      },
-      config: { enableAuditLogging: false },
-    } as any);
+    registerDrawingSharingRoutes(app, harness.baseDeps as any);
 
     const response = await invokeDeleteRoute(
-      app,
-      "/drawings/:id/link-shares/:shareId",
+      app, "/drawings/:id/link-shares/:shareId",
       { id: "drawing-1", shareId: "link-1" },
     );
 
     expect(response.statusCode).toBe(200);
-    expect(recheckDrawingAccess).toHaveBeenCalledWith("drawing-1");
+    expect(anonymous.rooms.has("drawing_drawing-1")).toBe(false);
+    expect(harness.owner.rooms.has("drawing_drawing-1")).toBe(true);
   });
 
-  it("rechecks the affected user's active drawings after a collection revoke", async () => {
-    const recheckUserAccess = vi.fn().mockResolvedValue(undefined);
+  it("evicts former collection grantees when the collection is deleted", async () => {
+    const harness = await createHarness();
+    harness.disableDirectShare();
+    harness.disablePublicLink();
     const app = express();
-    app.use(express.json());
-    registerCollectionRoutes(app, {
-      prisma: {
-        collection: { findFirst: vi.fn().mockResolvedValue({ id: "collection-1" }) },
-        collectionShare: {
-          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-        },
-      },
-      requireAuth,
-      asyncHandler,
-      invalidateDrawingsCache: vi.fn(),
-      collaborationAccess: {
-        recheckDrawingAccess: vi.fn(),
-        recheckUserAccess,
-      },
-      config: { enableAuditLogging: false },
-    } as any);
+    registerCollectionRoutes(app, harness.baseDeps as any);
 
     const response = await invokeDeleteRoute(
-      app,
-      "/collections/:id/shares/:userId",
-      { id: "collection-1", userId: "viewer" },
+      app, "/collections/:id", { id: "collection-1" },
     );
 
     expect(response.statusCode).toBe(200);
-    expect(recheckUserAccess).toHaveBeenCalledWith("viewer");
+    expect(harness.viewer.rooms.has("drawing_drawing-1")).toBe(false);
+    expect(harness.owner.rooms.has("drawing_drawing-1")).toBe(true);
+  });
+
+  it("evicts every socket from a drawing after the drawing is deleted", async () => {
+    const harness = await createHarness();
+    const app = express();
+    registerDrawingDeleteDuplicateRoutes(app, {
+      ...harness.baseDeps,
+      cleanupS3FilesForDrawing: vi.fn(),
+      cloneS3FileReferences: vi.fn(),
+      ensureTrashCollection: vi.fn(),
+      parseJsonField: vi.fn(),
+    } as any);
+
+    const response = await invokeDeleteRoute(app, "/drawings/:id", { id: "drawing-1" });
+
+    expect(response.statusCode).toBe(200);
+    expect(harness.viewer.rooms.has("drawing_drawing-1")).toBe(false);
+    expect(harness.owner.rooms.has("drawing_drawing-1")).toBe(false);
   });
 });

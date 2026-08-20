@@ -10,6 +10,7 @@ import {
   serializeApiKeyScopes,
 } from "./apiKeys";
 import type { RegisterAccountRoutesDeps } from "./accountRoutes";
+import { disconnectApiKeySockets } from "../server/socketRevocation";
 
 const serializeApiKeyMetadata = (apiKey: {
   id: string;
@@ -192,6 +193,7 @@ export const registerAccountApiKeyRoutes = (deps: RegisterAccountRoutesDeps) => 
           data: { revokedAt: new Date() },
         });
       }
+      await disconnectApiKeySockets(apiKey.id);
 
       if (config.enableAuditLogging) {
         await logAuditEvent({

@@ -5,7 +5,14 @@ import { hashTokenForStorage } from "../auth/tokenSecurity";
 export type DrawingPermission = "view" | "edit";
 export type DrawingAccess = "none" | DrawingPermission | "owner";
 
-export type DrawingPrincipal = { kind: "user"; userId: string };
+export type DrawingPrincipal = {
+  kind: "user";
+  userId: string;
+  apiKey?: {
+    id: string;
+    scopes: readonly string[];
+  };
+};
 
 export const normalizeDrawingPermission = (
   input: unknown,

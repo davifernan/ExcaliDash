@@ -174,6 +174,11 @@ export const registerCollectionRoutes = (
       if (!collection)
         return res.status(404).json({ error: "Collection not found" });
 
+      const affectedShares = await prisma.collectionShare.findMany({
+        where: { collectionId: id },
+        select: { granteeUserId: true },
+      });
+
       await prisma.$transaction([
         prisma.drawing.updateMany({
           where: { collectionId: id, userId: req.user.id },
@@ -183,6 +188,10 @@ export const registerCollectionRoutes = (
         prisma.collection.deleteMany({ where: { id, userId: req.user.id } }),
       ]);
       invalidateDrawingsCache();
+      await Promise.all(
+        Array.from(new Set(affectedShares.map((share) => share.granteeUserId)))
+          .map((userId) => collaborationAccess.recheckUserAccess(userId)),
+      );
 
       if (config.enableAuditLogging) {
         await logAuditEvent({
@@ -194,7 +203,6 @@ export const registerCollectionRoutes = (
           details: { collectionId: id, collectionName: collection.name },
         });
       }
-
       return res.json({ success: true });
     }),
   );

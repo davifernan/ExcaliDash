@@ -14,6 +14,7 @@ import {
   toPublicTrashCollectionId,
 } from "./trash";
 import { encodeSnapshotField } from "../../snapshots/snapshotCodec";
+import { captureSnapshotAssets, referencedAssetIds, syncDrawingAssets } from "../../assets/assetService";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
 export const registerDrawingCreateUpdateRoutes = (
@@ -261,7 +262,7 @@ export const registerDrawingCreateUpdateRoutes = (
         if (isSceneUpdate) {
           updatedDrawing = await prisma.$transaction(async (tx) => {
             const compress = config.enableSnapshotCompression;
-            await tx.drawingSnapshot.create({
+            const snapshot = await tx.drawingSnapshot.create({
               data: {
                 drawingId: id,
                 version: existingDrawing.version,
@@ -283,6 +284,19 @@ export const registerDrawingCreateUpdateRoutes = (
             });
             if (updateResult.count === 0) {
               throw versionConflictError;
+            }
+
+            // The version being replaced keeps whatever documents it used, so
+            // restoring it later still finds them.
+            await captureSnapshotAssets(tx, snapshot.id, id);
+
+            // And the board now claims exactly the documents its elements name.
+            // Inside the transaction, so a board and its document list can
+            // never disagree; ids this board never had are refused rather than
+            // ignored, because a client naming someone else's document is not
+            // a mistake to paper over.
+            if (payload.elements !== undefined) {
+              await syncDrawingAssets(tx, id, referencedAssetIds(payload.elements));
             }
 
             return tx.drawing.findFirst({ where: { id } });

@@ -225,3 +225,90 @@ test.describe("sticky notes", () => {
     expect(await versionOf()).toBe(before);
   });
 });
+
+test.describe("where a new note lands in the stack", () => {
+  let drawingId: string;
+  let api: APIRequestContext;
+
+  const rect = (id: string, index: string, x: number) => ({
+    id, type: "rectangle", x, y: 200, width: 120, height: 120, angle: 0,
+    strokeColor: "#1e1e1e", backgroundColor: "transparent", fillStyle: "solid",
+    strokeWidth: 1, strokeStyle: "solid", roughness: 1, opacity: 100,
+    seed: 1, version: 1, versionNonce: 1, index, isDeleted: false,
+    groupIds: [], frameId: null, roundness: null, boundElements: null,
+    updated: 1, link: null, locked: false,
+  });
+
+  test.afterEach(async () => {
+    if (drawingId) await deleteDrawing(api, drawingId).catch(() => {});
+  });
+
+  test("goes on top without disturbing the order of what is already there", async ({
+    page,
+    request,
+  }) => {
+    api = request;
+    const drawing = await createDrawing(request, {
+      name: `e2e-sticky-z-${Date.now()}`,
+      elements: [rect("r1", "a1", 300), rect("r2", "a2", 500), rect("r3", "a3", 700)],
+    });
+    drawingId = drawing.id;
+
+    await openEditor(page, drawingId);
+    await settle(page);
+    await page.locator("canvas").last().click({ position: { x: 950, y: 520 } });
+    await placeNote(page, { x: 560, y: 260 });
+    await page.keyboard.press("Escape");
+    await settle(page);
+
+    const stack = await page.evaluate(() =>
+      (window as any).__EXCALIDASH_EXCALIDRAW_API__
+        .getSceneElements()
+        .filter((e: any) => !e.isDeleted)
+        .map((e: any) => [
+          e.customData?.excalidashSticky ? "NOTE" : e.id,
+          e.index,
+        ]),
+    );
+
+    // The three that were there keep the indices they came with...
+    expect(stack.slice(0, 3)).toEqual([
+      ["r1", "a1"],
+      ["r2", "a2"],
+      ["r3", "a3"],
+    ]);
+    // ...and the note is above all of them.
+    expect(stack[3][0]).toBe("NOTE");
+    expect(stack[3][1] > "a3").toBe(true);
+  });
+
+  test("each note lands above the one before it", async ({ page, request }) => {
+    api = request;
+    const drawing = await createDrawing(request, {
+      name: `e2e-sticky-stack-${Date.now()}`,
+      elements: [],
+    });
+    drawingId = drawing.id;
+
+    await openEditor(page, drawingId);
+    await page.locator("canvas").last().click({ position: { x: 950, y: 520 } });
+    for (const at of [
+      { x: 500, y: 220 },
+      { x: 560, y: 260 },
+      { x: 620, y: 300 },
+    ]) {
+      await placeNote(page, at);
+      await page.keyboard.press("Escape");
+      await settle(page);
+    }
+
+    const notes = await page.evaluate(() =>
+      (window as any).__EXCALIDASH_EXCALIDRAW_API__
+        .getSceneElements()
+        .filter((e: any) => e.customData?.excalidashSticky)
+        .map((e: any) => e.index),
+    );
+    expect(notes).toHaveLength(3);
+    expect([...notes].sort()).toEqual(notes);
+  });
+});

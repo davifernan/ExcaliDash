@@ -268,3 +268,68 @@ test.describe("dragging an arrow out of a note", () => {
     expect(after).not.toEqual(before);
   });
 });
+
+test.describe("a note dropped into a frame", () => {
+  let drawingId: string;
+  let api: APIRequestContext;
+
+  test.beforeEach(async ({ request }) => {
+    api = request;
+    const drawing = await createDrawing(request, { name: `e2e-sticky-frame-${Date.now()}` });
+    drawingId = drawing.id;
+  });
+
+  test.afterEach(async () => {
+    if (drawingId) await deleteDrawing(api, drawingId).catch(() => {});
+  });
+
+  test("becomes part of it, and travels with it", async ({ page }) => {
+    // Excalidraw does this for every shape it draws inside a frame. A note that
+    // skipped it sat on the frame without belonging to it and stayed behind the
+    // moment the frame was moved.
+    await openEditor(page, drawingId);
+    const canvas = page.locator("canvas.excalidraw__canvas.interactive");
+    const box = (await canvas.boundingBox())!;
+
+    await canvas.click({ position: { x: 950, y: 560 } });
+    await page.keyboard.press("f");
+    await page.mouse.move(box.x + 380, box.y + 100);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+    await page.mouse.move(box.x + 800, box.y + 420, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+
+    await placeNote(page, { x: 600, y: 260 });
+    await page.keyboard.press("Escape");
+    await settle(page);
+
+    const joined = await page.evaluate(() => {
+      const els = (window as any).__EXCALIDASH_EXCALIDRAW_API__.getSceneElements();
+      const frame = els.find((e: any) => e.type === "frame");
+      const note = els.find((e: any) => e.customData?.excalidashSticky);
+      return { belongs: note?.frameId === frame?.id, y: note?.y };
+    });
+    expect(joined.belongs).toBe(true);
+
+    // Move the frame with the keyboard rather than a drag: selecting it by its
+    // name bar and pulling depends on pixel geometry that shifts with the
+    // window, and this asks the same question without any of that.
+    await page.evaluate(() => {
+      const api = (window as any).__EXCALIDASH_EXCALIDRAW_API__;
+      const frame = api.getSceneElements().find((e: any) => e.type === "frame");
+      api.updateScene({ appState: { selectedElementIds: { [frame.id]: true } } });
+    });
+    await page.waitForTimeout(300);
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowDown");
+    await settle(page);
+
+    const movedTo = await page.evaluate(
+      () =>
+        (window as any).__EXCALIDASH_EXCALIDRAW_API__
+          .getSceneElements()
+          .find((e: any) => e.customData?.excalidashSticky)?.y,
+    );
+    expect(movedTo).toBeGreaterThan(joined.y);
+  });
+});

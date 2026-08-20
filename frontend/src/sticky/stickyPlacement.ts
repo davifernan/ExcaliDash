@@ -28,6 +28,46 @@ function pressEnter(container: HTMLElement | null): void {
 
 export type InsertResult = { typing: boolean };
 
+/**
+ * The frame a note is being dropped into, if any.
+ *
+ * Excalidraw does this for every element it creates itself: a shape drawn
+ * inside a frame becomes part of it, and moving the frame takes the shape
+ * along. A note placed by this code skipped that step, so it sat on a frame
+ * without belonging to it and stayed behind whenever the frame was moved.
+ *
+ * Topmost first, because frames can be nested and the innermost one is the one
+ * under the pointer.
+ */
+export function frameAt(elements: readonly any[], x: number, y: number): any | null {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const element = elements[i];
+    if (element.isDeleted || element.type !== "frame") continue;
+    if (
+      x >= element.x &&
+      x <= element.x + element.width &&
+      y >= element.y &&
+      y <= element.y + element.height
+    ) {
+      return element;
+    }
+  }
+  return null;
+}
+
+/**
+ * The board with the note in it, in the place that board keeps its members.
+ *
+ * A frame's children sit immediately before it in the element list; appending
+ * elsewhere leaves a note that claims membership the ordering does not reflect.
+ */
+export function withNoteInserted(elements: readonly any[], note: any): any[] {
+  if (!note.frameId) return [...elements, note];
+  const at = elements.findIndex((element) => element.id === note.frameId);
+  if (at < 0) return [...elements, note];
+  return [...elements.slice(0, at), note, ...elements.slice(at)];
+}
+
 export function insertStickyNote(
   api: any,
   containerEl: HTMLElement | null,
@@ -37,10 +77,14 @@ export function insertStickyNote(
 ): void {
   if (!api) return;
 
+  const scene = api.getSceneElementsIncludingDeleted();
+  const frame = frameAt(scene, note.x + note.width / 2, note.y + note.height / 2);
+  const placed = frame ? { ...note, frameId: frame.id } : note;
+
   api.updateScene({
-    elements: [...api.getSceneElementsIncludingDeleted(), note],
+    elements: withNoteInserted(scene, placed),
     appState: {
-      selectedElementIds: { [note.id]: true },
+      selectedElementIds: { [placed.id]: true },
       // The label Excalidraw is about to create takes its size and colour from
       // these, and the note's upkeep expects to start from that size.
       currentItemFontSize: STICKY_BASE_FONT_SIZE,
@@ -52,7 +96,7 @@ export function insertStickyNote(
   // committed, or Excalidraw finds nothing selected to type into.
   requestAnimationFrame(() => {
     pressEnter(containerEl);
-    const typing = api.getAppState?.()?.editingTextElement?.containerId === note.id;
+    const typing = api.getAppState?.()?.editingTextElement?.containerId === placed.id;
     onDone?.({ typing });
   });
 }

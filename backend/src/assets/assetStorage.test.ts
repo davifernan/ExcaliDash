@@ -9,6 +9,7 @@ import {
   pageCacheKey,
   removeStored,
   resolveStoragePath,
+  shouldCompress,
   storeStream,
   storedSize,
 } from "./assetStorage";
@@ -157,5 +158,56 @@ describe("reading and removing", () => {
     await expect(removeStored(root, "../bystander.txt")).rejects.toThrow(/outside the asset directory/);
     expect(await readFile(bystander, "utf8")).toBe("keep me");
     await rm(bystander, { force: true });
+  });
+});
+
+describe("storing compressed", () => {
+  it("leaves a PDF alone, because PDFs compress their own contents already", () => {
+    expect(shouldCompress("application/pdf")).toBe(false);
+    expect(shouldCompress("image/png")).toBe(false);
+    expect(shouldCompress("image/jpeg")).toBe(false);
+  });
+
+  it("compresses text and the page previews", () => {
+    expect(shouldCompress("text/plain")).toBe(true);
+    expect(shouldCompress("text/markdown; charset=utf-8")).toBe(true);
+    expect(shouldCompress("image/svg+xml")).toBe(true);
+  });
+
+  it("writes fewer bytes than it received", async () => {
+    const text = "the same sentence over and over. ".repeat(200);
+    const stored = await storeStream(root, originalKey("aabbccdd"), streamOf(text), 1_000_000, {
+      compress: true,
+    });
+
+    expect(stored.sizeBytes).toBe(text.length);
+    expect(stored.storedBytes).toBeLessThan(text.length / 4);
+    expect(stored.contentEncoding).toBe("br");
+    expect(await storedSize(root, stored.storageKey)).toBe(stored.storedBytes);
+  });
+
+  it("hashes the original, so the same file deduplicates either way", async () => {
+    const text = "identical content";
+    const plain = await storeStream(root, originalKey("11112222"), streamOf(text), 1024);
+    const packed = await storeStream(root, originalKey("33334444"), streamOf(text), 1024, {
+      compress: true,
+    });
+
+    expect(packed.sha256).toBe(plain.sha256);
+    expect(packed.storedBytes).not.toBe(plain.storedBytes);
+  });
+
+  it("measures the limit against the original, not the compressed size", async () => {
+    // Compresses to almost nothing, but the caller asked for a 100 byte cap.
+    await expect(
+      storeStream(root, originalKey("aabbccdd"), streamOf("a".repeat(5000)), 100, { compress: true }),
+    ).rejects.toBeInstanceOf(AssetTooLargeError);
+  });
+
+  it("reports the uncompressed size, which is what a reader receives", async () => {
+    const stored = await storeStream(root, originalKey("aabbccdd"), streamOf("x".repeat(900)), 10_000, {
+      compress: true,
+    });
+    expect(stored.sizeBytes).toBe(900);
   });
 });

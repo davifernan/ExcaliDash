@@ -253,7 +253,12 @@ model S3File {
 model StoredBlob {
   id          String    @id @default(uuid())
   sha256      String    @unique
+  /// Size of the original content — what a reader receives.
   sizeBytes   Int
+  /// Size on disk. Smaller when the content was worth compressing.
+  storedBytes Int
+  /// Set when the file is stored compressed and must be served that way.
+  contentEncoding String?
   storageKey  String    @unique
   /// STAGING while the upload is still running, READY once it is usable,
   /// DELETING once nothing references it any more.

@@ -15,7 +15,13 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import { AssetTooLargeError, originalKey, removeStored, storeStream } from "./assetStorage";
+import {
+  AssetTooLargeError,
+  originalKey,
+  removeStored,
+  shouldCompress,
+  storeStream,
+} from "./assetStorage";
 
 export type AssetKind = "PDF" | "MARKDOWN" | "TEXT";
 
@@ -42,16 +48,20 @@ type Deps = {
   now?: () => number;
 };
 
-/** How many bytes of unique storage this owner's documents occupy. */
+/**
+ * How many bytes of disk this owner's documents occupy.
+ *
+ * Counted per blob and by what is actually written, so an owner who put the
+ * same file on two boards pays for it once, and a file stored compressed costs
+ * what it costs rather than what it would have cost.
+ */
 export async function usedBytesFor(prisma: any, ownerUserId: string): Promise<number> {
   const assets = await prisma.asset.findMany({
     where: { ownerUserId },
-    select: { blobId: true, blob: { select: { sizeBytes: true } } },
+    select: { blobId: true, blob: { select: { storedBytes: true } } },
   });
-  // An owner who put the same file on two boards pays for it once, matching
-  // what it actually costs the disk.
   const byBlob = new Map<string, number>();
-  for (const asset of assets) byBlob.set(asset.blobId, asset.blob?.sizeBytes ?? 0);
+  for (const asset of assets) byBlob.set(asset.blobId, asset.blob?.storedBytes ?? 0);
   return [...byBlob.values()].reduce((sum, bytes) => sum + bytes, 0);
 }
 
@@ -90,6 +100,7 @@ export async function createAsset(deps: Deps, input: CreateAssetInput) {
     originalKey(provisionalId),
     input.source,
     Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
+    { compress: shouldCompress(input.mimeType) },
   );
 
   let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
@@ -109,6 +120,8 @@ export async function createAsset(deps: Deps, input: CreateAssetInput) {
           id: provisionalId,
           sha256: stored.sha256,
           sizeBytes: stored.sizeBytes,
+          storedBytes: stored.storedBytes,
+          contentEncoding: stored.contentEncoding,
           storageKey: stored.storageKey,
           state: "READY",
         },
@@ -144,7 +157,7 @@ export async function createAsset(deps: Deps, input: CreateAssetInput) {
     },
   });
 
-  return { asset, blob, sizeBytes: stored.sizeBytes };
+  return { asset, blob, sizeBytes: stored.sizeBytes, storedBytes: stored.storedBytes };
 }
 
 /**

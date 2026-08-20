@@ -15,7 +15,7 @@ import { LanguageSelector } from "../../components/LanguageSelector";
 import type { UserIdentity } from "../../utils/identity";
 import { UIOptions } from "./shared";
 import { PdfWidget } from "./PdfWidget";
-import { getPdfWidgetAssetId, isPdfWidgetLink } from "./pdfWidgetElements";
+import { getPdfWidgetAssetId, validateEmbeddableLink } from "./pdfWidgetElements";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
 
@@ -265,7 +265,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
             excalidrawAPI={onSetExcalidrawAPI}
             UIOptions={UIOptions}
             viewModeEnabled={!canEdit}
-            validateEmbeddable={isPdfWidgetLink}
+            validateEmbeddable={validateEmbeddableLink}
             renderEmbeddable={(element, appState) => {
               const assetId = getPdfWidgetAssetId(element);
               return assetId && id ? (

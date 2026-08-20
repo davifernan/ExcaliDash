@@ -18,6 +18,18 @@ type EmbeddableLike = {
 
 export const isPdfWidgetLink = (link: string) => link === PDF_WIDGET_LINK;
 
+/**
+ * Whether Excalidraw may embed this link.
+ *
+ * Returning a boolean here answers for every link, which is why wiring
+ * `isPdfWidgetLink` in directly switched off Excalidraw's own embeds: pasting a
+ * YouTube or Vimeo link stopped producing a player and fell back to plain text.
+ * `undefined` means "no opinion", so anything that is not our own widget is
+ * judged by Excalidraw's normal rules again.
+ */
+export const validateEmbeddableLink = (link: string): true | undefined =>
+  isPdfWidgetLink(link) ? true : undefined;
+
 export const getPdfWidgetAssetId = (element: EmbeddableLike): string | null => {
   const customData = element.customData;
   if (

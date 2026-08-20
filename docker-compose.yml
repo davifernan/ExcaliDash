@@ -10,6 +10,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: excalidash-backend
+    # A container without a memory limit can take the whole host with it. This
+    # instance froze exactly that way: rendering a PDF spawned unbounded
+    # Ghostscript processes, the machine ran out of RAM, started thrashing swap
+    # and became unreachable — the container survived, the server did not.
+    # memswap_limit equal to mem_limit means no swap at all for this container:
+    # being killed is recoverable, dragging the host into swap is not.
+    mem_limit: 1500m
+    memswap_limit: 1500m
     environment:
       - DATABASE_PROVIDER=sqlite
       - DATABASE_URL=file:/app/prisma/dev.db
@@ -76,6 +84,8 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     container_name: excalidash-frontend
+    mem_limit: 256m
+    memswap_limit: 256m
     ports:
       - "6767:80"
     environment:

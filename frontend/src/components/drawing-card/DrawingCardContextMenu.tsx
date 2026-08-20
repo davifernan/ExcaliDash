@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRight,
@@ -51,8 +51,22 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
   onDelete,
   onManageStorage,
   onExport,
-}) =>
-  createPortal(
+}) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50"
       onClick={onClose}
@@ -62,6 +76,9 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
       }}
     >
       <div
+        ref={menuRef}
+        role="menu"
+        aria-label={`Actions for ${drawing.name}`}
         className="absolute bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-lg py-1 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
         style={{ top: position.y, left: position.x }}
         onClick={(e) => e.stopPropagation()}
@@ -71,6 +88,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
           drawing.accessLevel === "edit" ||
           drawing.accessLevel === "owner") ? (
           <button
+            role="menuitem"
             onClick={onRename}
             className="w-full px-3 py-2 text-sm text-left text-slate-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white flex items-center gap-2"
           >
@@ -83,14 +101,20 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
             onMouseEnter={() => onShowMoveSubmenu(true)}
             onMouseLeave={() => onShowMoveSubmenu(false)}
           >
-            <button className="w-full px-3 py-2 text-sm text-left text-slate-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white flex items-center justify-between">
+            <button
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={showMoveSubmenu}
+              onClick={() => onShowMoveSubmenu(!showMoveSubmenu)}
+              className="w-full px-3 py-2 text-sm text-left text-slate-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white flex items-center justify-between"
+            >
               <span className="flex items-center gap-2">
                 <FolderInput size={14} /> Move to...
               </span>
               <ArrowRight size={12} />
             </button>
             {showMoveSubmenu && (
-              <div className="absolute left-full top-0 ml-1 w-40 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-lg py-1 max-h-64 overflow-y-auto">
+              <div role="menu" aria-label="Move drawing to" className="absolute left-full top-0 ml-1 w-40 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-lg py-1 max-h-64 overflow-y-auto">
                 <CollectionMoveOptions
                   collections={collections}
                   currentCollectionId={drawing.collectionId}
@@ -110,6 +134,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
           <>
             <div className="border-t border-slate-50 dark:border-slate-800 my-1"></div>
             <button
+              role="menuitem"
               onClick={() => {
                 onDuplicate(drawing.id);
                 onClose();
@@ -123,6 +148,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
         {!isShared && storageAvailable ? (
           <>
             <button
+              role="menuitem"
               onClick={onManageStorage}
               className="w-full px-3 py-2 text-sm text-left text-slate-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white flex items-center gap-2"
             >
@@ -132,6 +158,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
           </>
         ) : null}
         <button
+          role="menuitem"
           onClick={onExport}
           disabled={isExporting}
           className="w-full px-3 py-2 text-sm text-left text-slate-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -152,6 +179,7 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
           <>
             <div className="border-t border-slate-50 dark:border-slate-800 my-1"></div>
             <button
+              role="menuitem"
               onClick={() => {
                 onDelete(drawing.id);
                 onClose();
@@ -166,3 +194,4 @@ export const DrawingCardContextMenu: React.FC<DrawingCardContextMenuProps> = ({
     </div>,
     document.body,
   );
+};

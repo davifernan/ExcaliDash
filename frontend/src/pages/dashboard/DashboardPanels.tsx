@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { AlertTriangle, Folder, Inbox, Loader2, Trash2 } from "lucide-react";
 import { DrawingCard } from "../../components/DrawingCard";
 import type { Collection, DrawingSummary } from "../../types";
+import { useDashboardDataStatus } from "./dashboardDataStatus";
 
 type DragPreviewProps = {
   drawings: DrawingSummary[];
@@ -141,6 +142,8 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
   onDragStart,
   onPreviewGenerated,
 }) => {
+  const dataStatus = useDashboardDataStatus();
+
   if (isLoading && drawings.length === 0) {
     return (
       <div className="flex justify-center items-center h-64 text-indigo-600">
@@ -149,14 +152,34 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
     );
   }
 
+  const errorNotice = dataStatus.drawingsError ? (
+    <DataFailureNotice
+      message={dataStatus.drawingsError}
+      onRetry={dataStatus.retryDrawings}
+    />
+  ) : null;
+
+  if (dataStatus.drawingsError && drawings.length === 0) {
+    return errorNotice;
+  }
+
   return (
-    <div
-      className={clsx(
-        "grid gap-3 sm:gap-4 pb-16 sm:pb-24 transition-all duration-300",
-        isDraggingFile && "opacity-20 blur-sm",
+    <>
+      {errorNotice}
+      {dataStatus.collectionsError && (
+        <DataFailureNotice
+          message={dataStatus.collectionsError}
+          onRetry={dataStatus.retryCollections}
+          compact
+        />
       )}
-      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
-    >
+      <div
+        className={clsx(
+          "grid gap-3 sm:gap-4 pb-16 sm:pb-24 transition-all duration-300",
+          isDraggingFile && "opacity-20 blur-sm",
+        )}
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+      >
       {drawings.length === 0 ? (
         <div className="col-span-full flex flex-col items-center justify-center py-16 sm:py-32 text-slate-400 dark:text-neutral-500 border-2 border-dashed border-slate-200 dark:border-neutral-700 rounded-3xl bg-slate-50/50 dark:bg-neutral-800/50">
           <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mb-6">
@@ -229,6 +252,47 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
           );
         })
       )}
-    </div>
+        {dataStatus.loadMoreError && (
+          <div className="col-span-full">
+            <DataFailureNotice
+              message={dataStatus.loadMoreError}
+              onRetry={dataStatus.retryMore}
+              compact
+            />
+          </div>
+        )}
+      </div>
+    </>
   );
 };
+
+const DataFailureNotice: React.FC<{
+  message: string;
+  onRetry?: () => void;
+  compact?: boolean;
+}> = ({ message, onRetry, compact = false }) => (
+  <div
+    role="alert"
+    className={clsx(
+      "mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-2 border-amber-500 bg-amber-50 dark:bg-amber-950/30 text-amber-950 dark:text-amber-100 rounded-xl",
+      compact ? "px-4 py-3" : "px-5 py-5",
+    )}
+  >
+    <div className="flex items-start gap-3">
+      <AlertTriangle
+        size={20}
+        className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+      />
+      <span className="text-sm font-bold">{message}</span>
+    </div>
+    {onRetry && (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="shrink-0 rounded-lg border-2 border-black dark:border-neutral-600 bg-white dark:bg-neutral-900 px-4 py-2 text-sm font-bold text-neutral-900 dark:text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+      >
+        Try again
+      </button>
+    )}
+  </div>
+);

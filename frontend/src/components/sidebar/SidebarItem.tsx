@@ -15,6 +15,7 @@ interface SidebarItemProps {
   onEditChange?: (val: string) => void;
   onEditSubmit?: (e: React.FormEvent) => void;
   onEditBlur?: () => void;
+  isEditPending?: boolean;
   onDrop?: (e: React.DragEvent, collectionId: string | null) => void;
 }
 
@@ -32,6 +33,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
   onEditChange,
   onEditSubmit,
   onEditBlur,
+  isEditPending = false,
   onDrop,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -44,10 +46,16 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
             autoFocus
             type="text"
             value={editValue}
+            disabled={isEditPending}
             onChange={(e) => onEditChange?.(e.target.value)}
             className="w-full px-3 py-2 text-sm bg-white dark:bg-neutral-800 border-2 border-black dark:border-neutral-700 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)] outline-none font-bold text-slate-900 dark:text-white"
             onBlur={onEditBlur}
           />
+          {isEditPending && (
+            <span aria-live="polite" className="mt-1 block text-xs font-bold text-indigo-600 dark:text-indigo-300">
+              Renaming collection...
+            </span>
+          )}
         </form>
       ) : (
         <div

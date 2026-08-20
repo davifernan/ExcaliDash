@@ -9,15 +9,16 @@ import { UpdateBanner } from './UpdateBanner';
 import type { Collection } from '../types';
 import clsx from 'clsx';
 import { displayFontFamily } from "../utils/displayFont";
+import { Toaster } from "sonner";
 
 interface LayoutProps {
   children: React.ReactNode;
   collections: Collection[];
   selectedCollectionId: string | null | undefined;
   onSelectCollection: (id: string | null | undefined) => void;
-  onCreateCollection: (name: string) => void;
-  onEditCollection: (id: string, name: string) => void;
-  onDeleteCollection: (id: string) => void;
+  onCreateCollection: (name: string) => void | Promise<void>;
+  onEditCollection: (id: string, name: string) => void | Promise<void>;
+  onDeleteCollection: (id: string) => void | Promise<void>;
   onDrop?: (e: React.DragEvent, collectionId: string | null) => void;
 }
 
@@ -207,6 +208,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       )}
       <UploadStatus />
+      <Toaster position="bottom-center" richColors closeButton />
     </div>
   );
 };

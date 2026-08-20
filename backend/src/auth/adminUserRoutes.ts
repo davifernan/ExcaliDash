@@ -5,9 +5,24 @@ import { logAuditEvent } from "../utils/audit";
 import type { RegisterAdminRoutesDeps } from "./adminRoutes";
 import { registerAdminUserPasswordRoutes } from "./adminUserPasswordRoutes";
 import { adminCreateUserSchema, adminRoleUpdateSchema, adminUpdateUserSchema } from "./schemas";
+import crypto from "crypto";
+import { hashTokenForStorage } from "./tokenSecurity";
+import { buildUserInviteEmail } from "../mail/templates/userInvite";
 
+export const INVITE_VALID_DAYS = 7;
 export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
-  const { router, prisma, requireAuth, accountActionRateLimiter, ensureAuthEnabled, requireAdmin, findUserByIdentifier, countActiveAdmins, sanitizeText, config, requireCsrf } = deps;
+  const { router, prisma, requireAuth, accountActionRateLimiter, ensureAuthEnabled, requireAdmin, findUserByIdentifier, countActiveAdmins, sanitizeText, config, requireCsrf, mailer } = deps;
+
+  /** Invitation links always point at the first configured frontend origin. */
+  const resolveFrontendBaseUrl = (): string => {
+    const raw = config.frontendUrl?.split(",")[0]?.trim();
+    const withProtocol = raw
+      ? /^https?:\/\//i.test(raw)
+        ? raw
+        : `http://${raw}`
+      : "http://localhost:6767";
+    return withProtocol.replace(/\/$/, "");
+  };
   router.post("/admins", requireAuth, async (req: Request, res: Response) => {
     try {
       if (!(await ensureAuthEnabled(res))) return;
@@ -131,6 +146,7 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
           mustResetPassword,
           isActive,
           oidcOnly,
+          sendInvite,
         } = parsed.data;
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
@@ -188,6 +204,42 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             updatedAt: true,
           },
         });
+        // An invitation carries a single-use link, never a password: a mailbox
+        // keeps its contents indefinitely.
+        let invited = false;
+        if (sendInvite && !oidcOnly && mailer?.enabled) {
+          const inviteToken = crypto.randomBytes(32).toString("hex");
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + INVITE_VALID_DAYS);
+          await prisma.passwordResetToken.create({
+            data: {
+              userId: user.id,
+              token: hashTokenForStorage(inviteToken),
+              expiresAt,
+            },
+          });
+
+          const baseUrl = resolveFrontendBaseUrl();
+          const mail = buildUserInviteEmail({
+            inviteUrl: `${baseUrl}/reset-password-confirm?token=${inviteToken}`,
+            instanceUrl: baseUrl,
+            expiresInDays: INVITE_VALID_DAYS,
+          });
+          const result = await mailer.send({
+            to: user.email,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
+            idempotencyKey: `user-invite/${crypto.randomUUID()}`,
+          });
+          invited = result.delivered;
+          if (result.delivered === false) {
+            console.error(
+              `[mail] Invitation for ${user.email} was not delivered: ${result.reason}`,
+            );
+          }
+        }
+
         if (config.enableAuditLogging) {
           await logAuditEvent({
             userId: req.user.id,
@@ -198,7 +250,8 @@ export const registerAdminUserRoutes = (deps: RegisterAdminRoutesDeps) => {
             details: { createdUserId: user.id },
           });
         }
-        res.status(201).json({ user });
+        // The admin needs to know whether they still have to pass credentials on.
+        res.status(201).json({ user, invited });
       } catch (error) {
         console.error("Create user error:", error);
         res

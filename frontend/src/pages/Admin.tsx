@@ -23,7 +23,7 @@ import {
 } from "../utils/impersonation";
 export const Admin: React.FC = () => {
   const navigate = useNavigate();
-  const { user: authUser, authEnabled } = useAuth();
+  const { user: authUser, authEnabled, passwordResetEnabled } = useAuth();
   const isAdmin = authUser?.role === "ADMIN";
   const passwordPolicy = getPasswordPolicy();
   const {
@@ -42,6 +42,7 @@ export const Admin: React.FC = () => {
   const [createEmail, setCreateEmail] = useState("");
   const [createName, setCreateName] = useState("");
   const [createUsername, setCreateUsername] = useState("");
+  const [createSendInvite, setCreateSendInvite] = useState(true);
   const [createPassword, setCreatePassword] = useState("");
   const [createOidcOnly, setCreateOidcOnly] = useState(false);
   const [createRole, setCreateRole] = useState<"ADMIN" | "USER">("USER");
@@ -144,8 +145,9 @@ export const Admin: React.FC = () => {
         role: createRole,
         mustResetPassword: createOidcOnly ? false : createMustReset,
         isActive: createActive,
+        sendInvite: createOidcOnly ? false : createSendInvite,
       };
-      const response = await api.api.post<{ user: AdminUser }>(
+      const response = await api.api.post<{ user: AdminUser; invited?: boolean }>(
         "/auth/users",
         payload,
       );
@@ -154,7 +156,11 @@ export const Admin: React.FC = () => {
           a.createdAt.localeCompare(b.createdAt),
         ),
       );
-      setSuccess("User created");
+      setSuccess(
+        response.data.invited
+          ? "User created — invitation sent"
+          : "User created",
+      );
       setCreateEmail("");
       setCreateName("");
       setCreateUsername("");
@@ -278,6 +284,8 @@ export const Admin: React.FC = () => {
           oidcEnabled={accessControl.oidcEnabled}
           role={createRole}
           mustReset={createMustReset}
+          sendInvite={createSendInvite}
+          mailEnabled={passwordResetEnabled}
           active={createActive}
           passwordPolicy={passwordPolicy}
           onSubmit={handleCreateUser}
@@ -289,6 +297,7 @@ export const Admin: React.FC = () => {
           onOidcOnlyChange={setCreateOidcOnly}
           onRoleChange={setCreateRole}
           onMustResetChange={setCreateMustReset}
+          onSendInviteChange={setCreateSendInvite}
           onActiveChange={setCreateActive}
         />
       )}{" "}

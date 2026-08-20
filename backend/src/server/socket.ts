@@ -1,25 +1,21 @@
-import jwt from "jsonwebtoken";
-import { Server } from "socket.io";
-import { PrismaClient } from "../generated/client";
-import { isApiKeyToken, resolveApiKeyUser } from "../auth/apiKeys";
-import { AuthModeService } from "../auth/authMode";
-import { ACCESS_TOKEN_COOKIE_NAME, parseCookieHeader } from "../auth/cookies";
-import { BOOTSTRAP_USER_ID } from "../auth/authMode";
+import type { Server, Socket } from "socket.io";
+import type { PrismaClient } from "../generated/client";
+import { BOOTSTRAP_USER_ID, type AuthModeService } from "../auth/authMode";
 import {
-  getDrawingAccess,
   canEditDrawing,
   canViewDrawing,
+  getDrawingAccess,
   type DrawingPrincipal,
 } from "../authz/sharing";
-
-interface User {
-  id: string;
-  name: string;
-  initials: string;
-  color: string;
-  socketId: string;
-  isActive: boolean;
-}
+import { createSocketAuthenticator } from "./socketAuth";
+import {
+  createRateLimiter,
+  parseCursorPayload,
+  parseDrawingId,
+  parseElementUpdatePayload,
+  parseSceneBounds,
+  type PresenceUser,
+} from "./socketProtocol";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -28,279 +24,361 @@ type RegisterSocketHandlersDeps = {
   jwtSecret: string;
 };
 
+const roomName = (drawingId: string) => `drawing_${drawingId}`;
+
+const toPresenceName = (value: unknown): string => {
+  if (typeof value !== "string") return "User";
+  const trimmed = value.trim().slice(0, 120);
+  return trimmed || "User";
+};
+
+const toPresenceInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return name.trim().slice(0, 2).toUpperCase() || "U";
+};
+
+const toPresenceColor = (value: unknown): string => {
+  if (typeof value !== "string") return "#4f46e5";
+  return /^#[0-9a-fA-F]{3,8}$/.test(value.trim()) ? value.trim() : "#4f46e5";
+};
+
 export const registerSocketHandlers = ({
   io,
   prisma,
   authModeService,
   jwtSecret,
 }: RegisterSocketHandlersDeps) => {
-  const roomUsers = new Map<string, User[]>();
-  const socketPrincipalMap = new Map<string, DrawingPrincipal>();
+  const principals = new Map<string, DrawingPrincipal>();
+  const connectedSockets = new Map<string, Socket>();
+  const drawingBySocket = new Map<string, string>();
+  const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
+  const followingBySocket = new Map<string, string>();
+  const followersBySocket = new Map<string, Set<string>>();
+  const viewportSequenceBySocket = new Map<string, number>();
 
-  const toPresenceName = (value: unknown): string => {
-    if (typeof value !== "string") return "User";
-    const trimmed = value.trim().slice(0, 120);
-    return trimmed.length > 0 ? trimmed : "User";
+  io.use(
+    createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }),
+  );
+
+  const emitPresence = (drawingId: string) => {
+    const users = Array.from(presencesByDrawing.get(drawingId)?.values() || []);
+    io.to(roomName(drawingId)).emit("presence-update", users);
   };
 
-  const toPresenceInitials = (name: string): string => {
-    // Keep consistent with frontend `getInitialsFromName`.
-    const trimmed = name.trim();
-    if (!trimmed) return "U";
-    const parts = trimmed.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-    }
-    return trimmed.slice(0, 2).toUpperCase();
+  const getPresence = (socketId: string): PresenceUser | null => {
+    const drawingId = drawingBySocket.get(socketId);
+    return drawingId
+      ? presencesByDrawing.get(drawingId)?.get(socketId) || null
+      : null;
   };
 
-  const toPresenceColor = (value: unknown): string => {
-    if (typeof value !== "string") return "#4f46e5";
-    const trimmed = value.trim();
-    if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) {
-      return trimmed;
-    }
-    return "#4f46e5";
+  const emitFollowedBy = (targetId: string) => {
+    const drawingId = drawingBySocket.get(targetId);
+    if (!drawingId) return;
+    const followers = Array.from(followersBySocket.get(targetId) || [])
+      .filter((id) => drawingBySocket.get(id) === drawingId)
+      .map(getPresence)
+      .filter((user): user is PresenceUser => Boolean(user))
+      .map((user) => ({ presenceId: user.presenceId, name: user.name }));
+    io.to(targetId).emit("followed-by-update", { drawingId, followers });
   };
 
-  const getSocketAuthUserId = async (token?: string): Promise<string | null> => {
-    const authEnabled = await authModeService.getAuthEnabled();
-    if (!authEnabled) {
-      return BOOTSTRAP_USER_ID;
-    }
-
-    if (!token) return null;
-
-    // Machine clients authenticate with an API key rather than a JWT. Without
-    // this they could read and write over REST but never receive live updates.
-    if (isApiKeyToken(token)) {
-      try {
-        const resolved = await resolveApiKeyUser(prisma, token);
-        return resolved ? resolved.user.id : null;
-      } catch (error) {
-        console.error("Socket API key verification failed:", error);
-        return null;
+  const clearFollower = (
+    followerId: string,
+    reason: string,
+    notifyFollower: boolean,
+  ) => {
+    const targetId = followingBySocket.get(followerId);
+    if (!targetId) return;
+    followingBySocket.delete(followerId);
+    const followers = followersBySocket.get(targetId);
+    followers?.delete(followerId);
+    if (followers?.size === 0) followersBySocket.delete(targetId);
+    emitFollowedBy(targetId);
+    if (notifyFollower) {
+      const drawingId = drawingBySocket.get(followerId);
+      if (drawingId) {
+        io.to(followerId).emit("follow-status", {
+          drawingId,
+          followingPresenceId: null,
+          reason,
+        });
       }
     }
+  };
 
-    try {
-      const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
-      if (
-        typeof decoded.userId !== "string" ||
-        typeof decoded.email !== "string" ||
-        decoded.type !== "access"
-      ) {
-        return null;
+  const clearFollowEdges = (socketId: string, reason: string) => {
+    clearFollower(socketId, reason, false);
+    const followers = Array.from(followersBySocket.get(socketId) || []);
+    followersBySocket.delete(socketId);
+    for (const followerId of followers) {
+      if (followingBySocket.get(followerId) !== socketId) continue;
+      followingBySocket.delete(followerId);
+      const drawingId = drawingBySocket.get(followerId);
+      if (drawingId) {
+        io.to(followerId).emit("follow-status", {
+          drawingId,
+          followingPresenceId: null,
+          reason,
+        });
       }
+    }
+  };
 
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-        select: { id: true, isActive: true },
-      });
+  const removeFromDrawing = async (
+    socket: Socket,
+    reason: string,
+    leaveSocketRoom = true,
+  ) => {
+    const drawingId = drawingBySocket.get(socket.id);
+    if (!drawingId) return;
+    clearFollowEdges(socket.id, reason);
+    viewportSequenceBySocket.delete(socket.id);
+    drawingBySocket.delete(socket.id);
+    const presences = presencesByDrawing.get(drawingId);
+    presences?.delete(socket.id);
+    if (presences?.size === 0) presencesByDrawing.delete(drawingId);
+    if (leaveSocketRoom) await socket.leave(roomName(drawingId));
+    emitPresence(drawingId);
+  };
 
-      if (!user || !user.isActive) return null;
-      return user.id;
-    } catch {
+  const getAccess = (socketId: string, drawingId: string) =>
+    getDrawingAccess({
+      prisma,
+      principal: principals.get(socketId) || null,
+      drawingId,
+    });
+
+  const requireAccess = async (
+    socket: Socket,
+    drawingId: string,
+    requireEdit = false,
+  ) => {
+    if (
+      drawingBySocket.get(socket.id) !== drawingId ||
+      !socket.rooms.has(roomName(drawingId))
+    ) {
       return null;
     }
+    const access = await getAccess(socket.id, drawingId);
+    if (!canViewDrawing(access)) {
+      await removeFromDrawing(socket, "access-revoked");
+      socket.emit("error", { message: "You do not have access to this drawing" });
+      return null;
+    }
+    if (requireEdit && !canEditDrawing(access)) {
+      socket.emit("error", { message: "Read-only access: cannot edit this drawing" });
+      return null;
+    }
+    return access;
   };
 
-  io.use(async (socket, next) => {
-    try {
-      const tokenFromAuth = socket.handshake.auth?.token as string | undefined;
-      const tokenFromCookie = (() => {
-        const cookies = parseCookieHeader(socket.handshake.headers.cookie);
-        const value = cookies[ACCESS_TOKEN_COOKIE_NAME];
-        return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-      })();
-      const token = tokenFromAuth || tokenFromCookie;
-      const authEnabled = await authModeService.getAuthEnabled();
-      const userId = await getSocketAuthUserId(token);
-
-      if (userId) {
-        socketPrincipalMap.set(socket.id, { kind: "user", userId });
-        return next();
-      }
-
-      // Google-Docs-style "anyone with the link": allow anonymous sockets and enforce access on join-room
-      // using getDrawingAccess (which consults active link-share policies).
-      if (authEnabled) return next();
-
-      return next(new Error("Authentication required"));
-    } catch {
-      next(new Error("Authentication failed"));
-    }
-  });
-
   io.on("connection", (socket) => {
-    const principal = socketPrincipalMap.get(socket.id) || null;
-    const authorizedDrawingAccess = new Map<
-      string,
-      { access: "view" | "edit" | "owner"; checkedAtMs: number }
-    >();
-    const ACCESS_CACHE_TTL_MS = 1500;
+    connectedSockets.set(socket.id, socket);
+    const allowJoin = createRateLimiter(10, 60_000);
+    const allowCursor = createRateLimiter(40, 1_000);
+    const allowElements = createRateLimiter(120, 1_000);
+    const allowActivity = createRateLimiter(20, 10_000);
+    const allowFollow = createRateLimiter(12, 60_000);
+    const allowViewport = createRateLimiter(30, 1_000);
 
-    const getCachedOrFreshAccess = async (
-      drawingId: string
-    ): Promise<"view" | "edit" | "owner" | null> => {
-      const cached = authorizedDrawingAccess.get(drawingId);
-      const now = Date.now();
-      if (cached && now - cached.checkedAtMs < ACCESS_CACHE_TTL_MS) {
-        return cached.access;
-      }
-      const access = await getDrawingAccess({
-        prisma,
-        principal,
-        drawingId,
-      });
+    socket.on("join-room", async (data: unknown, ack?: (value: unknown) => void) => {
+      if (!allowJoin() || !data || typeof data !== "object") return;
+      const payload = data as Record<string, unknown>;
+      const drawingId = parseDrawingId(payload.drawingId);
+      if (!drawingId) return;
+      const access = await getAccess(socket.id, drawingId);
       if (!canViewDrawing(access)) {
-        authorizedDrawingAccess.delete(drawingId);
-        return null;
-      }
-      const normalized = access === "owner" ? "owner" : access;
-      authorizedDrawingAccess.set(drawingId, { access: normalized, checkedAtMs: now });
-      return normalized;
-    };
-
-    socket.on(
-      "join-room",
-      async (
-        {
-          drawingId,
-          user,
-        }: {
-          drawingId: string;
-          user: Omit<User, "socketId" | "isActive">;
-        },
-        ack?: (payload: { user: Omit<User, "socketId" | "isActive"> }) => void
-      ) => {
-        try {
-          const access = await getCachedOrFreshAccess(drawingId);
-          if (!access) {
-            socket.emit("error", { message: "You do not have access to this drawing" });
-            return;
-          }
-
-          const roomId = `drawing_${drawingId}`;
-          socket.join(roomId);
-
-          let trustedUserId =
-            typeof user?.id === "string" && user.id.trim().length > 0
-              ? user.id.trim().slice(0, 200)
-              : socket.id;
-          let trustedName = toPresenceName(user?.name);
-
-          if (!principal) {
-            // Never trust client-provided ids for anonymous/share-link sessions; prevent spoofing/collisions.
-            trustedUserId = `anon:${socket.id}`.slice(0, 200);
-          } else if (principal?.kind === "user" && principal.userId !== BOOTSTRAP_USER_ID) {
-            const account = await prisma.user.findUnique({
-              where: { id: principal.userId },
-              select: { id: true, name: true },
-            });
-            if (account) {
-              trustedUserId = account.id;
-              trustedName = toPresenceName(account.name);
-            }
-          }
-
-          const newUser: User = {
-            id: trustedUserId,
-            name: trustedName,
-            initials: toPresenceInitials(trustedName),
-            color: toPresenceColor(user?.color),
-            socketId: socket.id,
-            isActive: true,
-          };
-
-          const currentUsers = roomUsers.get(roomId) || [];
-          const filteredUsers = currentUsers.filter((u) => u.id !== newUser.id);
-          filteredUsers.push(newUser);
-          roomUsers.set(roomId, filteredUsers);
-
-          io.to(roomId).emit("presence-update", filteredUsers);
-          // Let the client know what the server will use as its canonical presence identity.
-          if (typeof ack === "function") {
-            ack({
-              user: {
-                id: newUser.id,
-                name: newUser.name,
-                initials: newUser.initials,
-                color: newUser.color,
-              },
-            });
-          }
-        } catch (err) {
-          console.error("Error in join-room handler:", err);
-          socket.emit("error", { message: "Failed to join room" });
-        }
-      }
-    );
-
-    socket.on("cursor-move", (data) => {
-      const drawingId = typeof data?.drawingId === "string" ? data.drawingId : null;
-      if (!drawingId || !authorizedDrawingAccess.has(drawingId)) {
+        socket.emit("error", { message: "You do not have access to this drawing" });
         return;
       }
-      const roomId = `drawing_${drawingId}`;
-      // Don't trust client-provided identity fields; use the server-side presence user.
-      const users = roomUsers.get(roomId) || [];
-      const self = users.find((u) => u.socketId === socket.id);
+      const previousDrawingId = drawingBySocket.get(socket.id);
+      if (previousDrawingId && previousDrawingId !== drawingId) {
+        await removeFromDrawing(socket, "board-changed");
+      }
+      await socket.join(roomName(drawingId));
+      const clientUser =
+        payload.user && typeof payload.user === "object"
+          ? (payload.user as Record<string, unknown>)
+          : {};
+      const principal = principals.get(socket.id) || null;
+      let name = toPresenceName(clientUser.name);
+      if (principal?.userId && principal.userId !== BOOTSTRAP_USER_ID) {
+        const account = await prisma.user.findUnique({
+          where: { id: principal.userId },
+          select: { name: true },
+        });
+        if (account) name = toPresenceName(account.name);
+      }
+      const presence: PresenceUser = {
+        presenceId: socket.id,
+        accountId: principal?.userId || null,
+        name,
+        initials: toPresenceInitials(name),
+        color: toPresenceColor(clientUser.color),
+        isActive: true,
+      };
+      drawingBySocket.set(socket.id, drawingId);
+      const presences = presencesByDrawing.get(drawingId) || new Map();
+      presences.set(socket.id, presence);
+      presencesByDrawing.set(drawingId, presences);
+      emitPresence(drawingId);
+      ack?.({ presence });
+    });
+
+    socket.on("cursor-move", async (data: unknown) => {
+      if (!allowCursor()) return;
+      const payload = parseCursorPayload(data);
+      if (!payload || !(await requireAccess(socket, payload.drawingId))) return;
+      const self = getPresence(socket.id);
       if (!self) return;
-      socket.volatile.to(roomId).emit("cursor-move", {
-        ...data,
-        drawingId,
-        userId: self.id,
+      socket.volatile.to(roomName(payload.drawingId)).emit("cursor-move", {
+        drawingId: payload.drawingId,
+        presenceId: socket.id,
+        pointer: payload.pointer,
+        button: payload.button,
         username: self.name,
         color: self.color,
       });
     });
 
-    socket.on("element-update", async (data) => {
-      const drawingId = typeof data?.drawingId === "string" ? data.drawingId : null;
-      if (!drawingId || !authorizedDrawingAccess.has(drawingId)) {
-        return;
-      }
-
-      // Enforce edit permission for every mutation event.
-      const joinedAccess = await getCachedOrFreshAccess(drawingId);
-      if (!joinedAccess || !canEditDrawing(joinedAccess)) {
-        socket.emit("error", { message: "Read-only access: cannot edit this drawing" });
-        return;
-      }
-
-      const roomId = `drawing_${drawingId}`;
-      socket.to(roomId).emit("element-update", data);
+    socket.on("element-update", async (data: unknown) => {
+      if (!allowElements()) return;
+      const payload = parseElementUpdatePayload(data);
+      if (!payload || !(await requireAccess(socket, payload.drawingId, true))) return;
+      socket.to(roomName(payload.drawingId)).emit("element-update", {
+        elements: payload.elements,
+        files: payload.files,
+        elementOrder: payload.elementOrder,
+      });
     });
 
-    socket.on(
-      "user-activity",
-      ({ drawingId, isActive }: { drawingId: string; isActive: boolean }) => {
-        if (!authorizedDrawingAccess.has(drawingId)) {
-          return;
-        }
-        const roomId = `drawing_${drawingId}`;
-        const users = roomUsers.get(roomId);
-        if (users) {
-          const user = users.find((u) => u.socketId === socket.id);
-          if (user) {
-            user.isActive = isActive;
-            io.to(roomId).emit("presence-update", users);
-          }
-        }
+    socket.on("user-activity", async (data: unknown) => {
+      if (!allowActivity() || !data || typeof data !== "object") return;
+      const payload = data as Record<string, unknown>;
+      const drawingId = parseDrawingId(payload.drawingId);
+      if (
+        !drawingId ||
+        typeof payload.isActive !== "boolean" ||
+        !(await requireAccess(socket, drawingId))
+      ) {
+        return;
       }
-    );
+      const user = presencesByDrawing.get(drawingId)?.get(socket.id);
+      if (user) {
+        user.isActive = payload.isActive;
+        emitPresence(drawingId);
+      }
+    });
 
-    socket.on("disconnect", () => {
-      socketPrincipalMap.delete(socket.id);
-      roomUsers.forEach((users, roomId) => {
-        const index = users.findIndex((u) => u.socketId === socket.id);
-        if (index !== -1) {
-          users.splice(index, 1);
-          roomUsers.set(roomId, users);
-          io.to(roomId).emit("presence-update", users);
+    socket.on("follow-user", async (data: unknown) => {
+      if (!allowFollow() || !data || typeof data !== "object") return;
+      const payload = data as Record<string, unknown>;
+      const drawingId = parseDrawingId(payload.drawingId);
+      if (!drawingId || !(await requireAccess(socket, drawingId))) return;
+      if (payload.action === "UNFOLLOW") {
+        clearFollower(socket.id, "unfollowed", false);
+        socket.emit("follow-status", { drawingId, followingPresenceId: null });
+        return;
+      }
+      const targetId =
+        typeof payload.targetPresenceId === "string" &&
+        payload.targetPresenceId.length <= 200
+          ? payload.targetPresenceId
+          : null;
+      if (payload.action !== "FOLLOW" || !targetId || targetId === socket.id) {
+        socket.emit("follow-status", {
+          drawingId,
+          followingPresenceId: null,
+          reason: targetId === socket.id ? "self-follow" : "invalid-request",
+        });
+        return;
+      }
+      const targetSocket = connectedSockets.get(targetId);
+      if (
+        !targetSocket ||
+        drawingBySocket.get(targetId) !== drawingId ||
+        !targetSocket.rooms.has(roomName(drawingId))
+      ) {
+        socket.emit("follow-status", {
+          drawingId,
+          followingPresenceId: null,
+          reason: "target-unavailable",
+        });
+        return;
+      }
+      const targetAccess = await getAccess(targetId, drawingId);
+      if (!canViewDrawing(targetAccess)) {
+        await removeFromDrawing(targetSocket, "access-revoked");
+        socket.emit("follow-status", {
+          drawingId,
+          followingPresenceId: null,
+          reason: "target-unavailable",
+        });
+        return;
+      }
+      clearFollower(socket.id, "target-changed", false);
+      followingBySocket.set(socket.id, targetId);
+      const followers = followersBySocket.get(targetId) || new Set<string>();
+      followers.add(socket.id);
+      followersBySocket.set(targetId, followers);
+      emitFollowedBy(targetId);
+      socket.emit("follow-status", { drawingId, followingPresenceId: targetId });
+    });
+
+    socket.on("viewport-bounds", async (data: unknown) => {
+      if (!allowViewport() || !data || typeof data !== "object") return;
+      const payload = data as Record<string, unknown>;
+      const drawingId = parseDrawingId(payload.drawingId);
+      const sceneBounds = parseSceneBounds(payload.sceneBounds);
+      if (!drawingId || !sceneBounds || !(await requireAccess(socket, drawingId))) {
+        return;
+      }
+      const sequence = (viewportSequenceBySocket.get(socket.id) || 0) + 1;
+      viewportSequenceBySocket.set(socket.id, sequence);
+      for (const followerId of Array.from(followersBySocket.get(socket.id) || [])) {
+        const followerSocket = connectedSockets.get(followerId);
+        if (
+          !followerSocket ||
+          followingBySocket.get(followerId) !== socket.id ||
+          drawingBySocket.get(followerId) !== drawingId ||
+          !followerSocket.rooms.has(roomName(drawingId))
+        ) {
+          clearFollower(followerId, "relationship-invalid", false);
+          continue;
         }
-      });
+        const followerAccess = await getAccess(followerId, drawingId);
+        if (!canViewDrawing(followerAccess)) {
+          await removeFromDrawing(followerSocket, "access-revoked");
+          continue;
+        }
+        io.to(followerId).volatile.emit("viewport-bounds", {
+          drawingId,
+          presenceId: socket.id,
+          sceneBounds,
+          sequence,
+        });
+      }
+    });
+
+    socket.on("leave-room", async (data: unknown) => {
+      if (!allowJoin()) return;
+      const drawingId =
+        data && typeof data === "object"
+          ? parseDrawingId((data as Record<string, unknown>).drawingId)
+          : null;
+      if (drawingId && drawingBySocket.get(socket.id) === drawingId) {
+        await removeFromDrawing(socket, "left-room");
+      }
+    });
+
+    socket.on("disconnect", async () => {
+      await removeFromDrawing(socket, "disconnected", false);
+      connectedSockets.delete(socket.id);
+      principals.delete(socket.id);
     });
   });
 };

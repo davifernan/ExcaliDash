@@ -41,6 +41,7 @@ type EditorViewProps = {
   theme: string;
   onBackClick: () => void;
   onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
+  renderTopRightUI?: (isMobile: boolean, appState: any) => React.ReactNode;
   onCanvasDropCapture: (event: React.DragEvent<HTMLDivElement>) => void;
   onExportClick: () => void;
   onLibraryChange: (items: readonly any[]) => void;
@@ -103,6 +104,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onBackClick,
   onCanvasChange,
   onCanvasDropCapture,
+  renderTopRightUI,
   onExportClick,
   onLibraryChange,
   onNavigateHome,
@@ -253,6 +255,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           onLibraryChange={onLibraryChange}
           excalidrawAPI={onSetExcalidrawAPI}
           UIOptions={UIOptions}
+          renderTopRightUI={renderTopRightUI as any}
           viewModeEnabled={!canEdit}
         >
           <MainMenu>

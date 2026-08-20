@@ -162,7 +162,7 @@ export const useEditorPersistence = ({
       ): Promise<void> => {
         try {
           const updated = await api.updateDrawing(drawingId, {
-            elements: elementsToSave,
+            elements: Array.from(elementsToSave),
             appState: persistableAppState,
             ...(filesToSave ? { files: filesToSave } : {}),
             version: refs.currentDrawingVersion.current ?? undefined,

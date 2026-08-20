@@ -16,6 +16,8 @@ import {
 } from "../../components/LanguageSelector";
 import type { UserIdentity } from "../../utils/identity";
 import { UIOptions } from "./shared";
+import { PdfWidget } from "./PdfWidget";
+import { getPdfWidgetAssetId, isPdfWidgetLink } from "./pdfWidgetElements";
 
 interface Peer extends UserIdentity {
   isActive: boolean;
@@ -254,6 +256,17 @@ export const EditorView: React.FC<EditorViewProps> = ({
           excalidrawAPI={onSetExcalidrawAPI}
           UIOptions={UIOptions}
           viewModeEnabled={!canEdit}
+          validateEmbeddable={isPdfWidgetLink}
+          renderEmbeddable={(element, appState) => {
+            const assetId = getPdfWidgetAssetId(element);
+            return assetId && id ? (
+              <PdfWidget
+                assetId={assetId}
+                drawingId={id}
+                theme={appState.theme}
+              />
+            ) : null;
+          }}
         >
           <MainMenu>
             <MainMenu.DefaultItems.ToggleTheme />

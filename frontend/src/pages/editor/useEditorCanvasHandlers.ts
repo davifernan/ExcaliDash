@@ -11,6 +11,7 @@ import {
   loadDroppedImageData,
   MULTI_IMAGE_DROP_GAP,
 } from "./droppedImages";
+import { addDroppedPdfWidgets, isPdfFile } from "./pdfDrop";
 import {
   hasRenderableElements,
   haveSameElements,
@@ -148,8 +149,34 @@ export const useEditorCanvasHandlers = ({
 
   const handleCanvasDropCapture = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
-      if (!canEdit || !excalidrawAPIRef.current) return;
       const allDroppedFiles = Array.from(event.dataTransfer?.files || []);
+      const isPdfOnlyDrop =
+        allDroppedFiles.length > 0 && allDroppedFiles.every(isPdfFile);
+      if (isPdfOnlyDrop) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!canEdit) {
+          toast.error(
+            "You can view this board, but you cannot add anything to it.",
+          );
+          return;
+        }
+        if (!drawingId || !excalidrawAPIRef.current) return;
+        const appState = excalidrawAPIRef.current.getAppState?.();
+        if (!appState) return;
+        const dropPoint = viewportCoordsToSceneCoords(
+          { clientX: event.clientX, clientY: event.clientY },
+          appState,
+        );
+        await addDroppedPdfWidgets({
+          canvasApi: excalidrawAPIRef.current,
+          drawingId,
+          files: allDroppedFiles,
+          point: dropPoint,
+        });
+        return;
+      }
+      if (!canEdit || !excalidrawAPIRef.current) return;
       const droppedImages = getDroppedImageFiles(event.dataTransfer);
       if (
         droppedImages.length <= 1 ||
@@ -212,7 +239,7 @@ export const useEditorCanvasHandlers = ({
         toast.error("Failed to import dropped images");
       }
     },
-    [canEdit, excalidrawAPIRef],
+    [canEdit, drawingId, excalidrawAPIRef],
   );
 
   useEffect(() => {

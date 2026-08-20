@@ -55,9 +55,12 @@ export const StickyTool: React.FC<StickyToolProps> = ({
         "h-9 w-9 flex items-center justify-center transition-colors",
         "bg-white dark:bg-neutral-800",
         armed
-          ? "ring-2 ring-indigo-500 dark:ring-indigo-400"
+          ? "outline outline-2 outline-indigo-500 dark:outline-indigo-400"
           : "hover:bg-gray-50 dark:hover:bg-neutral-700",
       )}
+      // An outline rather than a ring: Tailwind draws rings with box-shadow,
+      // and the island shadow below is a box-shadow too, so the ring would be
+      // overwritten and the armed state would show nothing at all.
       style={islandStyle}
     >
       <Swatch color={color} size={18} />

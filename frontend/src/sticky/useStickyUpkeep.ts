@@ -25,8 +25,15 @@ export function useStickyUpkeep({ excalidrawAPI, canEdit }: Options) {
   const queued = useRef(false);
   const alive = useRef(true);
 
-  useEffect(() => () => {
-    alive.current = false;
+  // Set on the way in as well as cleared on the way out. React mounts an effect
+  // twice in development, and a flag only ever cleared would stay cleared after
+  // that second pass — the upkeep would then quietly do nothing at all, which
+  // is exactly what it did until a browser test caught it.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
   }, []);
 
   const onSceneChange = useCallback(

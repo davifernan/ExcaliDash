@@ -54,13 +54,19 @@ export function useStickyNotes({
     });
   };
 
-  // Placement lives inside the subscription rather than in a callback above it,
-  // so the handler always holds the colour the button currently shows. The
-  // subscription is torn down and remade when that changes, which is cheap and
-  // leaves no stale closure to reason about.
+  // Subscribed only while the tool is armed.
+  //
+  // That is not an optimisation. On mount the editor has not handed over its
+  // API yet, so an effect that ran once would find nothing to subscribe to and
+  // never try again — the button would arm the tool and the click would do
+  // nothing. Arming happens long after the editor is ready, which makes it the
+  // right moment to attach.
+  //
+  // It also means the handler always holds the colour the button currently
+  // shows, with no stale closure to reason about.
   useEffect(() => {
     const api = excalidrawAPI.current;
-    if (!api?.onPointerDown || !canEdit) return;
+    if (!armed || !canEdit || !api?.onPointerDown) return;
 
     return api.onPointerDown((activeTool: any, pointerDownState: any) => {
       if (activeTool?.type !== "custom" || activeTool.customType !== STICKY_TOOL) return;
@@ -81,7 +87,7 @@ export function useStickyNotes({
         },
       );
     });
-  }, [canEdit, color, containerRef, excalidrawAPI, onTypingUnavailable]);
+  }, [armed, canEdit, color, containerRef, excalidrawAPI, onTypingUnavailable]);
 
   // Leaving the tool armed with no way out would trap somebody who changed
   // their mind, and Escape is where everyone reaches first.

@@ -1,5 +1,8 @@
 import fs from "fs";
 import path from "path";
+import archiver from "archiver";
+import { pipeline } from "node:stream/promises";
+import { resolveStoragePath } from "../assets/assetStorage";
 import type { PrismaClient } from "../generated/client";
 
 const Database = require("better-sqlite3") as any;
@@ -9,6 +12,7 @@ type BackupSchedulerOptions = {
   databaseUrl?: string;
   schedule: string | null;
   backupDir: string;
+  assetStorageDir: string;
   retentionDays: number;
 };
 
@@ -116,16 +120,25 @@ const cronMatches = (cron: ParsedCron, date: Date): boolean => {
 };
 
 const pruneOldBackups = async (backupDir: string, retentionDays: number): Promise<void> => {
-  if (!Number.isFinite(retentionDays) || retentionDays <= 0) return;
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  const partialCutoff = Date.now() - 24 * 60 * 60 * 1000;
   const entries = await fs.promises.readdir(backupDir, { withFileTypes: true });
   await Promise.allSettled(
     entries
-      .filter((entry) => entry.isFile() && /^excalidash-sqlite-.*\.db$/.test(entry.name))
+      .filter((entry) => entry.isFile() && (
+        /^excalidash-(?:sqlite-.*\.db|backup-.*\.zip(?:\.part)?)$/.test(entry.name) ||
+        /^\.excalidash-.*\.sqlite\.part$/.test(entry.name)
+      ))
       .map(async (entry) => {
         const filePath = path.join(backupDir, entry.name);
         const stat = await fs.promises.stat(filePath);
-        if (stat.mtimeMs < cutoff) await fs.promises.unlink(filePath);
+        const partial = entry.name.endsWith(".part");
+        if (
+          (partial && stat.mtimeMs < partialCutoff) ||
+          (!partial && Number.isFinite(retentionDays) && retentionDays > 0 && stat.mtimeMs < cutoff)
+        ) {
+          await fs.promises.unlink(filePath);
+        }
       }),
   );
 };
@@ -134,6 +147,7 @@ export const createSqliteBackup = async ({
   prisma,
   databaseUrl,
   backupDir,
+  assetStorageDir,
   retentionDays,
 }: Omit<BackupSchedulerOptions, "schedule">): Promise<string | null> => {
   const databasePath = parseDatabasePath(databaseUrl);
@@ -145,19 +159,89 @@ export const createSqliteBackup = async ({
   // Backups contain a full copy of the database (password hashes, API-key
   // hashes, OIDC secrets), so restrict the directory and files to the owner.
   await fs.promises.mkdir(backupDir, { recursive: true, mode: 0o700 });
+  // Prune before allocating another complete copy. Otherwise a full disk can
+  // make retention ineffective precisely when it is needed most.
+  await pruneOldBackups(backupDir, retentionDays);
   await prisma.$executeRawUnsafe("PRAGMA wal_checkpoint(PASSIVE)");
 
-  const target = path.join(backupDir, `excalidash-sqlite-${timestampForFilename(new Date())}.db`);
+  const timestamp = timestampForFilename(new Date());
+  const target = path.join(backupDir, `excalidash-backup-${timestamp}.zip`);
+  const partialTarget = `${target}.part`;
+  const databaseCopy = path.join(backupDir, `.excalidash-${timestamp}-${process.pid}.sqlite.part`);
   const source = new Database(databasePath, { readonly: true, fileMustExist: true });
   try {
-    await source.backup(target);
+    await source.backup(databaseCopy);
   } finally {
     source.close();
   }
-  await fs.promises.chmod(target, 0o600);
-  await pruneOldBackups(backupDir, retentionDays);
-  console.log(`[backup] Wrote SQLite backup: ${target}`);
-  return target;
+
+  try {
+    const copied = new Database(databaseCopy, { readonly: true, fileMustExist: true });
+    let storageKeys: string[] = [];
+    try {
+      try {
+        storageKeys = copied
+          .prepare('SELECT "storageKey" FROM "StoredBlob" WHERE "state" = ? ORDER BY "storageKey"')
+          .all("READY")
+          .map((row: { storageKey: string }) => row.storageKey);
+      } catch (error: any) {
+        // Databases from before document assets existed remain backupable.
+        if (!String(error?.message ?? error).includes("no such table")) throw error;
+      }
+    } finally {
+      copied.close();
+    }
+
+    const originalsRoot = resolveStoragePath(assetStorageDir, "originals");
+    const originals: Array<{ sourcePath: string; archivePath: string }> = [];
+    for (const storageKey of storageKeys) {
+      const sourcePath = resolveStoragePath(assetStorageDir, storageKey);
+      const relative = path.relative(originalsRoot, sourcePath);
+      if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error(`Stored blob is not under originals/: ${storageKey}`);
+      }
+      const stat = await fs.promises.lstat(sourcePath);
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new Error(`Stored blob is not a regular file: ${storageKey}`);
+      }
+      originals.push({
+        sourcePath,
+        archivePath: `assets/originals/${relative.split(path.sep).join("/")}`,
+      });
+    }
+
+    const archive = archiver("zip", { zlib: { level: 6 } });
+    const output = fs.createWriteStream(partialTarget, { mode: 0o600 });
+    const writing = pipeline(archive, output);
+    archive.append(fs.createReadStream(databaseCopy), { name: "database.sqlite" });
+    archive.append(JSON.stringify({
+      format: "excalidash-server-backup",
+      formatVersion: 1,
+      createdAt: new Date().toISOString(),
+      database: "database.sqlite",
+      originals: originals.length,
+    }, null, 2), { name: "backup.manifest.json" });
+    for (const original of originals) {
+      // Stored originals are usually already PDF/Brotli-compressed. Store mode
+      // avoids wasting CPU and keeps the entire operation stream-based.
+      archive.append(fs.createReadStream(original.sourcePath), {
+        name: original.archivePath,
+        store: true,
+      });
+    }
+    await archive.finalize();
+    await writing;
+    await fs.promises.rename(partialTarget, target);
+    await fs.promises.chmod(target, 0o600);
+    await pruneOldBackups(backupDir, retentionDays);
+    console.log(`[backup] Wrote database and ${originals.length} originals: ${target}`);
+    return target;
+  } catch (error) {
+    await fs.promises.rm(partialTarget, { force: true });
+    throw error;
+  } finally {
+    await fs.promises.rm(databaseCopy, { force: true });
+  }
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

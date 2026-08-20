@@ -41,6 +41,17 @@ describe("ExcaliDash backup round trip", () => {
         create: async () => undefined,
         update: async () => undefined,
       },
+      storedBlob: {
+        create: async () => undefined,
+        update: async () => undefined,
+      },
+      asset: { create: async () => undefined },
+      drawingAsset: {
+        create: async () => undefined,
+        deleteMany: async () => undefined,
+      },
+      drawingSnapshot: { create: async () => undefined },
+      drawingSnapshotAsset: { create: async () => undefined },
       drawing: {
         findUnique: async () => null,
         create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -59,6 +70,9 @@ describe("ExcaliDash backup round trip", () => {
         findMany: async () => [],
         findFirst: async () => null,
       },
+      drawingAsset: { findMany: async () => [] },
+      drawingSnapshot: { findMany: async () => [] },
+      storedBlob: { findUnique: async () => null },
       s3File: {},
       $transaction: async (callback: (client: typeof tx) => unknown) => callback(tx),
     } as any;
@@ -81,6 +95,7 @@ describe("ExcaliDash backup round trip", () => {
       asyncHandler,
       upload: { single: () => (_req: any, _res: any, next: any) => next() },
       uploadDir,
+      assetStorageDir: uploadDir,
       backendRoot: path.resolve(__dirname, "../../.."),
       getBackendVersion: () => "test",
       parseJsonField: (raw: string | null | undefined, fallback: unknown) => raw ? JSON.parse(raw) : fallback,
@@ -98,6 +113,7 @@ describe("ExcaliDash backup round trip", () => {
       MAX_IMPORT_DRAWINGS: 5000,
       MAX_IMPORT_MANIFEST_BYTES: 2 * MIB,
       MAX_IMPORT_DRAWING_BYTES: 100 * MIB,
+      MAX_IMPORT_ENTRY_BYTES: 100 * MIB,
       MAX_IMPORT_TOTAL_EXTRACTED_BYTES: 120 * MIB,
     };
     registerExcalidashExportRoute(deps);
@@ -145,7 +161,7 @@ describe("ExcaliDash backup round trip", () => {
       file: { filename: stagedFilename },
     }, importResponse);
 
-    expect(importResponse.statusCode).toBe(200);
+    expect(importResponse.statusCode, JSON.stringify(importResponse.body)).toBe(200);
     expect(imported).toHaveLength(1);
     expect(Buffer.byteLength(exportedDrawing.files, "utf8")).toBeGreaterThan(5 * MIB);
     expect(JSON.parse(imported[0].files as string).image.dataURL).toBe(largeDataUrl);

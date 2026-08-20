@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import { promises as fsPromises } from "fs";
-import JSZip from "jszip";
 import { z } from "zod";
 import { Prisma, PrismaClient } from "../../generated/client";
 import { sanitizeDrawingData } from "../../security";
@@ -45,6 +44,57 @@ export const excalidashManifestSchemaV1 = z.object({
   ),
 });
 
+const manifestCollectionSchema = excalidashManifestSchemaV1.shape.collections.element;
+const manifestDrawingSchema = excalidashManifestSchemaV1.shape.drawings.element;
+
+export const excalidashManifestSchemaV2 = z.object({
+  format: z.literal("excalidash"),
+  formatVersion: z.literal(2),
+  exportedAt: z.string().min(1),
+  excalidashBackendVersion: z.string().optional(),
+  userId: z.string().optional(),
+  unorganizedFolder: z.string().min(1),
+  collections: z.array(manifestCollectionSchema),
+  drawings: z.array(manifestDrawingSchema),
+  blobs: z.array(z.object({
+    id: z.string().min(1),
+    filePath: z.string().min(1),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    sizeBytes: z.number().int().nonnegative(),
+    contentEncoding: z.enum(["br"]).nullable(),
+  })),
+  assets: z.array(z.object({
+    id: z.string().min(1),
+    blobId: z.string().min(1),
+    kind: z.enum(["PDF", "MARKDOWN", "TEXT"]),
+    originalName: z.string(),
+    mimeType: z.string().min(1),
+    pageCount: z.number().int().positive().nullable(),
+    status: z.string().min(1),
+  })),
+  drawingAssets: z.array(z.object({
+    drawingId: z.string().min(1),
+    assetId: z.string().min(1),
+    state: z.enum(["PENDING", "ACTIVE"]),
+    expiresAt: z.iso.datetime().nullable(),
+  })),
+  snapshots: z.array(z.object({
+    id: z.string().min(1),
+    drawingId: z.string().min(1),
+    filePath: z.string().min(1),
+    version: z.number().int(),
+    createdAt: z.iso.datetime().optional(),
+    assetIds: z.array(z.string().min(1)),
+  })),
+});
+
+export const excalidashManifestSchema = z.discriminatedUnion("formatVersion", [
+  excalidashManifestSchemaV1,
+  excalidashManifestSchemaV2,
+]);
+
+export type ExcalidashManifest = z.infer<typeof excalidashManifestSchema>;
+
 export type RegisterImportExportDeps = {
   app: express.Express;
   prisma: PrismaClient;
@@ -54,6 +104,7 @@ export type RegisterImportExportDeps = {
   ) => express.RequestHandler;
   upload: any;
   uploadDir: string;
+  assetStorageDir: string;
   backendRoot: string;
   getBackendVersion: () => string;
   parseJsonField: <T>(rawValue: string | null | undefined, fallback: T) => T;
@@ -72,19 +123,23 @@ export type RegisterImportExportDeps = {
   MAX_IMPORT_DRAWINGS: number;
   MAX_IMPORT_MANIFEST_BYTES: number;
   MAX_IMPORT_DRAWING_BYTES: number;
+  MAX_IMPORT_ENTRY_BYTES: number;
   MAX_IMPORT_TOTAL_EXTRACTED_BYTES: number;
 };
-
-const getZipEntries = (zip: JSZip) => Object.values(zip.files).filter((entry) => !entry.dir);
 
 export const normalizeArchivePath = (filePath: string): string =>
   path.posix.normalize(filePath.replace(/\\/g, "/"));
 
 export const assertSafeArchivePath = (filePath: string) => {
+  const slashPath = filePath.replace(/\\/g, "/");
   const normalized = normalizeArchivePath(filePath);
   if (
+    slashPath.split("/").includes("..") ||
     normalized.length === 0 ||
+    normalized.length > 1024 ||
     path.posix.isAbsolute(normalized) ||
+    /^[a-zA-Z]:\//.test(normalized) ||
+    normalized === "." ||
     normalized === ".." ||
     normalized.startsWith("../") ||
     normalized.includes("\0")
@@ -93,21 +148,6 @@ export const assertSafeArchivePath = (filePath: string) => {
   }
 };
 
-export const assertSafeZipArchive = (zip: JSZip, maxEntries: number) => {
-  const entries = getZipEntries(zip);
-  if (entries.length > maxEntries) {
-    throw new ImportValidationError("Archive contains too many files");
-  }
-  for (const entry of entries) {
-    assertSafeArchivePath(entry.name);
-  }
-};
-
-export const getSafeZipEntry = (zip: JSZip, filePath: string) => {
-  const normalizedPath = normalizeArchivePath(filePath);
-  assertSafeArchivePath(normalizedPath);
-  return zip.file(normalizedPath);
-};
 
 export const sanitizePathSegment = (input: string, fallback: string): string => {
   const value = typeof input === "string" ? input.trim() : "";

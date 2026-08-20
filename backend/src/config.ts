@@ -68,6 +68,12 @@ interface BackupConfig {
   retentionDays: number;
 }
 
+interface ImportConfig {
+  maxArchiveBytes: number;
+  maxEntryBytes: number;
+  maxExtractedBytes: number;
+}
+
 interface MaintenanceConfig {
   authCleanupSchedule: string;
   authTokenRetentionDays: number;
@@ -98,6 +104,7 @@ interface Config {
   bootstrapSetupCodeMaxAttempts: number;
   passwordPolicy: PasswordPolicyConfig;
   backups: BackupConfig;
+  imports: ImportConfig;
   maintenance: MaintenanceConfig;
   mail: MailConfig;
   s3: S3Config;
@@ -461,6 +468,13 @@ export const config: Config = {
   ),
   passwordPolicy: resolvePasswordPolicyConfig(getRequiredEnvNumber, getOptionalBoolean),
   backups: resolveBackupConfig(),
+  imports: {
+    // Archives stay on disk. These limits bound disk usage and each inflated
+    // stream independently, including highly-compressible ZIP bombs.
+    maxArchiveBytes: getRequiredEnvNumber("IMPORT_MAX_ARCHIVE_MB", 2300) * 1024 * 1024,
+    maxEntryBytes: getRequiredEnvNumber("IMPORT_MAX_ENTRY_MB", 128) * 1024 * 1024,
+    maxExtractedBytes: getRequiredEnvNumber("IMPORT_MAX_EXTRACTED_MB", 2200) * 1024 * 1024,
+  },
   maintenance: {
     authCleanupSchedule: getOptionalEnv("AUTH_CLEANUP_SCHEDULE", "0 0 3 * * *"),
     authTokenRetentionDays: getRequiredEnvNumber("AUTH_TOKEN_RETENTION_DAYS", 30),

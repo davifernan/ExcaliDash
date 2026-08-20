@@ -52,7 +52,9 @@ describe("scheduled backups", () => {
     db.close();
 
     const target = await createSqliteBackup({
-      prisma: { $executeRawUnsafe: vi.fn().mockResolvedValue(undefined) } as any,
+      // The checkpoint goes through queryRaw because the PRAGMA answers with a
+      // row; a stub without it hides that the real client would refuse.
+      prisma: { $queryRawUnsafe: vi.fn().mockResolvedValue([]) } as any,
       databaseUrl: `file:${databasePath}`,
       backupDir,
       assetStorageDir,

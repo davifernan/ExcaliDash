@@ -162,7 +162,11 @@ export const createSqliteBackup = async ({
   // Prune before allocating another complete copy. Otherwise a full disk can
   // make retention ineffective precisely when it is needed most.
   await pruneOldBackups(backupDir, retentionDays);
-  await prisma.$executeRawUnsafe("PRAGMA wal_checkpoint(PASSIVE)");
+  // queryRaw rather than executeRaw: this PRAGMA answers with a row, and
+  // SQLite refuses a statement that returns results through executeRaw. It
+  // threw on every scheduled run, and the scheduler only logs what a job
+  // throws — so the backup has been failing quietly.
+  await prisma.$queryRawUnsafe("PRAGMA wal_checkpoint(PASSIVE)");
 
   const timestamp = timestampForFilename(new Date());
   const target = path.join(backupDir, `excalidash-backup-${timestamp}.zip`);

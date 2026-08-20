@@ -1,49 +1,346 @@
-import { promises as fsPromises } from "fs"; import path from "path"; import JSZip from "jszip"; import { v4 as uuidv4 } from "uuid"; import { RegisterImportExportDeps, ImportValidationError, assertSafeZipArchive, excalidashManifestSchemaV1, findFirstDuplicate, getSafeZipEntry, getUserTrashCollectionId, sanitizeDrawingData, } from "./shared"; import { processFilesForS3 } from "../../fileProcessing"; const isSafeMulterTempFilename = (value: string): boolean => /^[a-f0-9]{32}$/.test(value); const resolveStagedUploadPath = async ( file: { filename?: unknown; path?: unknown }, uploadRoot: string ): Promise<string> => { const absoluteUploadRoot = path.resolve(uploadRoot); let canonicalUploadRoot = absoluteUploadRoot; try { canonicalUploadRoot = await fsPromises.realpath(absoluteUploadRoot); } catch { throw new ImportValidationError("Invalid upload path"); }
-const rawPath = typeof file.path === "string" ? file.path : ""; const rawFilename = typeof file.filename === "string" ? file.filename : ""; const basename = path.basename(rawPath || rawFilename); if (!isSafeMulterTempFilename(basename)) { throw new ImportValidationError("Invalid upload path"); } const candidatePath = path.resolve(canonicalUploadRoot, basename); const rootPrefix = canonicalUploadRoot.endsWith(path.sep) ? canonicalUploadRoot
-    : `${canonicalUploadRoot}${path.sep}`;
-if (!candidatePath.startsWith(rootPrefix)) { throw new ImportValidationError("Invalid upload path"); } return candidatePath; }; const readBoundedArchive = async (filePath: string, maxBytes: number): Promise<Buffer> => { const stat = await fsPromises.stat(filePath); if (stat.size > maxBytes) { throw new ImportValidationError("Backup archive exceeds maximum upload size", 413); } return fsPromises.readFile(filePath); }; export const registerExcalidashImportRoutes = (deps: RegisterImportExportDeps) => { const { app, prisma, requireAuth, asyncHandler, upload, uploadDir, sanitizeText, validateImportedDrawing, ensureTrashCollection, invalidateDrawingsCache, removeFileIfExists, MAX_IMPORT_ARCHIVE_ENTRIES, MAX_IMPORT_ARCHIVE_BYTES, MAX_IMPORT_COLLECTIONS, MAX_IMPORT_DRAWINGS, MAX_IMPORT_MANIFEST_BYTES, MAX_IMPORT_DRAWING_BYTES, MAX_IMPORT_TOTAL_EXTRACTED_BYTES, } = deps; app.post("/import/excalidash/verify", requireAuth, upload.single("archive"), asyncHandler(async (req, res) => { if (!req.user) return res.status(401).json({ error: "Unauthorized" }); if (!req.file) return res.status(400).json({ error: "No file uploaded" }); let stagedPath: string; try {
-stagedPath = await resolveStagedUploadPath({ filename: req.file.filename }, uploadDir); } catch (error) { if (error instanceof ImportValidationError) { return res.status(error.status).json({ error: "Invalid upload", message: error.message }); } throw error; } try { const buffer = await readBoundedArchive(stagedPath, MAX_IMPORT_ARCHIVE_BYTES); const zip = await JSZip.loadAsync(buffer); try { assertSafeZipArchive(zip, MAX_IMPORT_ARCHIVE_ENTRIES); } catch (error) { if (error instanceof ImportValidationError) { return res.status(error.status).json({ error: "Invalid backup", message: error.message }); } throw error; } const manifestFile = getSafeZipEntry(zip, "excalidash.manifest.json"); if (!manifestFile) { return res.status(400).json({ error: "Invalid backup", message: "Missing excalidash.manifest.json" }); } const rawManifest = await manifestFile.async("string");
-if (Buffer.byteLength(rawManifest, "utf8") > MAX_IMPORT_MANIFEST_BYTES) { return res.status(400).json({ error: "Invalid backup manifest", message: "excalidash.manifest.json is too large", }); } let manifestJson: unknown; try { manifestJson = JSON.parse(rawManifest); } catch { return res.status(400).json({ error: "Invalid backup manifest", message: "excalidash.manifest.json is not valid JSON", }); } const parsed = excalidashManifestSchemaV1.safeParse(manifestJson); if (!parsed.success) { return res.status(400).json({ error: "Invalid backup manifest", message: "Malformed excalidash.manifest.json", }); } const manifest = parsed.data; if (manifest.collections.length > MAX_IMPORT_COLLECTIONS) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Too many collections (max ${MAX_IMPORT_COLLECTIONS})`,
-}); } if (manifest.drawings.length > MAX_IMPORT_DRAWINGS) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Too many drawings (max ${MAX_IMPORT_DRAWINGS})`,
-}); } const duplicateCollectionId = findFirstDuplicate(manifest.collections.map((c) => c.id)); if (duplicateCollectionId) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Duplicate collection id in manifest: ${duplicateCollectionId}`,
-}); } const duplicateDrawingId = findFirstDuplicate(manifest.drawings.map((d) => d.id)); if (duplicateDrawingId) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Duplicate drawing id in manifest: ${duplicateDrawingId}`,
-}); } const duplicateDrawingPath = findFirstDuplicate(manifest.drawings.map((d) => d.filePath)); if (duplicateDrawingPath) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Duplicate drawing file path in manifest: ${duplicateDrawingPath}`,
-}); } for (const drawing of manifest.drawings) { if (!getSafeZipEntry(zip, drawing.filePath)) { return res.status(400).json({ error: "Invalid backup",
-            message: `Missing drawing file: ${drawing.filePath}`,
-}); } } return res.json({ valid: true, formatVersion: manifest.formatVersion, exportedAt: manifest.exportedAt, excalidashBackendVersion: manifest.excalidashBackendVersion || null, collections: manifest.collections.length, drawings: manifest.drawings.length, }); } finally { await removeFileIfExists(stagedPath); } })); app.post("/import/excalidash", requireAuth, upload.single("archive"), asyncHandler(async (req, res) => { if (!req.user) return res.status(401).json({ error: "Unauthorized" }); if (!req.file) return res.status(400).json({ error: "No file uploaded" }); let stagedPath: string; try { stagedPath = await resolveStagedUploadPath({ filename: req.file.filename }, uploadDir); } catch (error) { if (error instanceof ImportValidationError) { return res.status(error.status).json({ error: "Invalid upload", message: error.message }); } throw error; } try {
-const buffer = await readBoundedArchive(stagedPath, MAX_IMPORT_ARCHIVE_BYTES); const zip = await JSZip.loadAsync(buffer); try { assertSafeZipArchive(zip, MAX_IMPORT_ARCHIVE_ENTRIES); } catch (error) { if (error instanceof ImportValidationError) { return res.status(error.status).json({ error: "Invalid backup", message: error.message }); } throw error; } const manifestFile = getSafeZipEntry(zip, "excalidash.manifest.json"); if (!manifestFile) { return res.status(400).json({ error: "Invalid backup", message: "Missing excalidash.manifest.json" }); } const rawManifest = await manifestFile.async("string"); if (Buffer.byteLength(rawManifest, "utf8") > MAX_IMPORT_MANIFEST_BYTES) { return res.status(400).json({ error: "Invalid backup manifest", message: "excalidash.manifest.json is too large", }); } let manifestJson: unknown; try { manifestJson = JSON.parse(rawManifest); } catch { return res.status(400).json({
-error: "Invalid backup manifest", message: "excalidash.manifest.json is not valid JSON", }); } const parsed = excalidashManifestSchemaV1.safeParse(manifestJson); if (!parsed.success) { return res.status(400).json({ error: "Invalid backup manifest", message: "Malformed excalidash.manifest.json", }); } const manifest = parsed.data; if (manifest.collections.length > MAX_IMPORT_COLLECTIONS) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Too many collections (max ${MAX_IMPORT_COLLECTIONS})`,
-}); } if (manifest.drawings.length > MAX_IMPORT_DRAWINGS) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Too many drawings (max ${MAX_IMPORT_DRAWINGS})`,
-}); } const duplicateCollectionId = findFirstDuplicate(manifest.collections.map((c) => c.id)); if (duplicateCollectionId) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Duplicate collection id in manifest: ${duplicateCollectionId}`,
-}); } const duplicateDrawingId = findFirstDuplicate(manifest.drawings.map((d) => d.id)); if (duplicateDrawingId) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Duplicate drawing id in manifest: ${duplicateDrawingId}`,
-}); } const duplicateDrawingPath = findFirstDuplicate(manifest.drawings.map((d) => d.filePath)); if (duplicateDrawingPath) { return res.status(400).json({ error: "Invalid backup manifest",
-          message: `Duplicate drawing file path in manifest: ${duplicateDrawingPath}`,
-}); } type PreparedImportDrawing = { id: string; name: string; version: number | undefined; collectionId: string | null; sanitized: ReturnType<typeof sanitizeDrawingData>; }; const preparedDrawings: PreparedImportDrawing[] = []; let extractedBytes = Buffer.byteLength(rawManifest, "utf8"); try { for (const d of manifest.drawings) { const entry = getSafeZipEntry(zip, d.filePath);
-          if (!entry) throw new ImportValidationError(`Missing drawing file: ${d.filePath}`);
-const raw = await entry.async("string"); const rawSize = Buffer.byteLength(raw, "utf8"); if (rawSize > MAX_IMPORT_DRAWING_BYTES) {
-            throw new ImportValidationError(`Drawing is too large: ${d.filePath}`);
-} extractedBytes += rawSize; if (extractedBytes > MAX_IMPORT_TOTAL_EXTRACTED_BYTES) { throw new ImportValidationError("Backup contents exceed maximum import size"); } let parsedJson: any; try { parsedJson = JSON.parse(raw) as any; } catch {
-            throw new ImportValidationError(`Drawing JSON is invalid: ${d.filePath}`);
-} const imported = { name: d.name, elements: Array.isArray(parsedJson?.elements) ? parsedJson.elements : [], appState: typeof parsedJson?.appState === "object" && parsedJson.appState !== null ? parsedJson.appState : {}, files: typeof parsedJson?.files === "object" && parsedJson.files !== null ? parsedJson.files : {}, preview: null as string | null, collectionId: d.collectionId, }; if (!validateImportedDrawing(imported)) {
-            throw new ImportValidationError(`Drawing failed validation: ${d.filePath}`);
-} preparedDrawings.push({ id: d.id, name: sanitizeText(imported.name, 255) || "Untitled Drawing", version: typeof d.version === "number" ? d.version : undefined, collectionId: d.collectionId, sanitized: sanitizeDrawingData(imported), }); } } catch (error) { if (error instanceof ImportValidationError) { return res.status(error.status).json({ error: "Invalid backup", message: error.message }); } throw error; } const finalDrawingIdMap = new Map<number, string>(); for (let i = 0; i < preparedDrawings.length; i++) { const prepared = preparedDrawings[i]; const existing = await prisma.drawing.findUnique({ where: { id: prepared.id }, select: { userId: true }, }); const finalId = existing && existing.userId !== req.user!.id ? uuidv4() : prepared.id; finalDrawingIdMap.set(i, finalId); } const S3_UPLOAD_CONCURRENCY = 8; const processedFilesMap = new Map<number, Record<string, any>>();
-for (let start = 0; start < preparedDrawings.length; start += S3_UPLOAD_CONCURRENCY) { const batch = preparedDrawings
-.slice(start, start + S3_UPLOAD_CONCURRENCY)
-.map((prepared, offset) => { const i = start + offset; const files = prepared.sanitized.files || {}; const finalId = finalDrawingIdMap.get(i)!; return processFilesForS3(files, req.user!.id, finalId, prisma).then(
-(processed) => ({ i, processed }) ); }); const results = await Promise.all(batch); for (const { i, processed } of results) { processedFilesMap.set(i, processed); } } const result = await prisma.$transaction(async (tx) => { const trashCollectionId = getUserTrashCollectionId(req.user!.id); const collectionIdMap = new Map<string, string>(); let collectionsCreated = 0; let collectionsUpdated = 0; let collectionIdConflicts = 0; let drawingsCreated = 0; let drawingsUpdated = 0; let drawingIdConflicts = 0; const needsTrash = manifest.collections.some((c) => c.id === "trash") || preparedDrawings.some((d) => d.collectionId === "trash"); if (needsTrash) await ensureTrashCollection(tx, req.user!.id); for (const c of manifest.collections) { if (c.id === "trash") { collectionIdMap.set("trash", trashCollectionId); continue; } const existing = await tx.collection.findUnique({ where: { id: c.id } });
-if (!existing) { await tx.collection.create({ data: { id: c.id, name: sanitizeText(c.name, 100) || "Collection", userId: req.user!.id }, }); collectionIdMap.set(c.id, c.id); collectionsCreated += 1; continue; } if (existing.userId === req.user!.id) { await tx.collection.update({ where: { id: c.id }, data: { name: sanitizeText(c.name, 100) || "Collection" }, }); collectionIdMap.set(c.id, c.id); collectionsUpdated += 1; continue; } const newId = uuidv4(); await tx.collection.create({ data: { id: newId, name: sanitizeText(c.name, 100) || "Collection", userId: req.user!.id }, }); collectionIdMap.set(c.id, newId); collectionsCreated += 1; collectionIdConflicts += 1; } const resolveCollectionId = (collectionId: string | null): string | null => { if (!collectionId) return null; if (collectionId === "trash") return trashCollectionId; return collectionIdMap.get(collectionId) || null; };
-for (let i = 0; i < preparedDrawings.length; i++) { const prepared = preparedDrawings[i]; const processedFiles = processedFilesMap.get(i) ?? {}; const targetCollectionId = resolveCollectionId(prepared.collectionId); const existing = await tx.drawing.findUnique({ where: { id: prepared.id } }); const finalId = finalDrawingIdMap.get(i) ?? prepared.id; if (!existing) { await tx.drawing.create({ data: { id: finalId, name: prepared.name, elements: JSON.stringify(prepared.sanitized.elements), appState: JSON.stringify(prepared.sanitized.appState), files: JSON.stringify(processedFiles), preview: prepared.sanitized.preview ?? null, version: prepared.version ?? 1, userId: req.user!.id, collectionId: targetCollectionId, }, }); drawingsCreated += 1; continue; } if (existing.userId === req.user!.id) { await tx.drawing.update({ where: { id: prepared.id }, data: { name: prepared.name,
-elements: JSON.stringify(prepared.sanitized.elements), appState: JSON.stringify(prepared.sanitized.appState), files: JSON.stringify(processedFiles), preview: prepared.sanitized.preview ?? null, version: prepared.version ?? existing.version, collectionId: targetCollectionId, }, }); drawingsUpdated += 1; continue; } const createId = finalId === prepared.id ? uuidv4() : finalId; if (createId !== finalId) { console.warn(
-              `[import/excalidash] race conflict on drawing ${prepared.id}; ` +
-                `creating under ${createId}; S3 objects keyed under ` +
-                `${prepared.id} are now orphans`,
-); } await tx.drawing.create({ data: { id: createId, name: prepared.name, elements: JSON.stringify(prepared.sanitized.elements), appState: JSON.stringify(prepared.sanitized.appState), files: JSON.stringify(processedFiles), preview: prepared.sanitized.preview ?? null, version: prepared.version ?? 1, userId: req.user!.id, collectionId: targetCollectionId, }, }); drawingsCreated += 1; drawingIdConflicts += 1; } return { collections: { created: collectionsCreated, updated: collectionsUpdated, idConflicts: collectionIdConflicts }, drawings: { created: drawingsCreated, updated: drawingsUpdated, idConflicts: drawingIdConflicts }, }; }); invalidateDrawingsCache(); return res.json({ success: true, message: "Backup imported successfully", ...result }); } finally { await removeFileIfExists(stagedPath); } })); };
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { v4 as uuidv4 } from "uuid";
+import { originalKey, removeStored, resolveStoragePath, storeStream } from "../../assets/assetStorage";
+import { processFilesForS3 } from "../../fileProcessing";
+import {
+  ImportValidationError,
+  RegisterImportExportDeps,
+  getUserTrashCollectionId,
+  resolveSafeUploadedFilePath,
+} from "./shared";
+import {
+  PreparedDrawing,
+  PreparedSnapshot,
+  canonicalMimeType,
+  openArchive,
+  parseManifest,
+  parseScene,
+  remapAssetIds,
+  requireEntry,
+  validateManifestReferences,
+  verifyEntrySha256,
+} from "./excalidashImportSupport";
+
+export const registerExcalidashImportRoutes = (deps: RegisterImportExportDeps) => {
+  const { app, prisma, requireAuth, asyncHandler, upload, uploadDir } = deps;
+
+  app.post("/import/excalidash/verify", requireAuth, upload.single("archive"), asyncHandler(async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    let stagedPath: string | undefined;
+    try {
+      stagedPath = await resolveSafeUploadedFilePath({ filename: req.file.filename }, uploadDir);
+      const archive = await openArchive(stagedPath, deps);
+      const budget = { extractedBytes: 0, maxExtractedBytes: deps.MAX_IMPORT_TOTAL_EXTRACTED_BYTES };
+      const manifest = await parseManifest(archive, budget, deps.MAX_IMPORT_MANIFEST_BYTES);
+      validateManifestReferences(archive, manifest, deps);
+      if (manifest.formatVersion === 2) {
+        for (const blob of manifest.blobs) {
+          await verifyEntrySha256(archive, requireEntry(archive, blob.filePath), blob.sha256, budget);
+        }
+      }
+      return res.json({
+        valid: true,
+        formatVersion: manifest.formatVersion,
+        exportedAt: manifest.exportedAt,
+        excalidashBackendVersion: manifest.excalidashBackendVersion || null,
+        collections: manifest.collections.length,
+        drawings: manifest.drawings.length,
+        documents: manifest.formatVersion === 2 ? manifest.assets.length : 0,
+      });
+    } catch (error) {
+      if (error instanceof ImportValidationError) {
+        return res.status(error.status).json({ error: "Invalid backup", message: error.message });
+      }
+      throw error;
+    } finally {
+      await deps.removeFileIfExists(stagedPath);
+    }
+  }));
+
+  app.post("/import/excalidash", requireAuth, upload.single("archive"), asyncHandler(async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    let stagedPath: string | undefined;
+    const writtenStorageKeys: string[] = [];
+    let committed = false;
+    try {
+      stagedPath = await resolveSafeUploadedFilePath({ filename: req.file.filename }, uploadDir);
+      const archive = await openArchive(stagedPath, deps);
+      const budget = { extractedBytes: 0, maxExtractedBytes: deps.MAX_IMPORT_TOTAL_EXTRACTED_BYTES };
+      const manifest = await parseManifest(archive, budget, deps.MAX_IMPORT_MANIFEST_BYTES);
+      validateManifestReferences(archive, manifest, deps);
+
+      const preparedDrawings: PreparedDrawing[] = [];
+      for (const drawing of manifest.drawings) {
+        const raw = await archive.readBuffer(
+          requireEntry(archive, drawing.filePath),
+          deps.MAX_IMPORT_DRAWING_BYTES,
+          budget,
+        );
+        preparedDrawings.push({
+          id: drawing.id,
+          name: deps.sanitizeText(drawing.name, 255) || "Untitled Drawing",
+          version: drawing.version,
+          collectionId: drawing.collectionId,
+          sanitized: parseScene(raw, drawing, deps.validateImportedDrawing),
+        });
+      }
+
+      const preparedSnapshots: PreparedSnapshot[] = [];
+      if (manifest.formatVersion === 2) {
+        for (const snapshot of manifest.snapshots) {
+          const raw = await archive.readBuffer(
+            requireEntry(archive, snapshot.filePath),
+            deps.MAX_IMPORT_ENTRY_BYTES,
+            budget,
+          );
+          preparedSnapshots.push({
+            ...snapshot,
+            sanitized: parseScene(raw, { name: "Snapshot" }, deps.validateImportedDrawing),
+          });
+        }
+      }
+
+      const finalDrawingIdMap = new Map<string, string>();
+      for (const prepared of preparedDrawings) {
+        const existing = await prisma.drawing.findUnique({
+          where: { id: prepared.id },
+          select: { userId: true },
+        });
+        finalDrawingIdMap.set(prepared.id, existing && existing.userId !== req.user.id ? uuidv4() : prepared.id);
+      }
+
+      const assetIdMap = new Map<string, string>();
+      const blobIdMap = new Map<string, string>();
+      const newBlobRows = new Map<string, any>();
+      const repairedBlobRows = new Map<string, any>();
+      if (manifest.formatVersion === 2) {
+        for (const asset of manifest.assets) assetIdMap.set(asset.id, randomUUID());
+        for (const prepared of preparedDrawings) remapAssetIds(prepared.sanitized.elements, assetIdMap);
+        for (const snapshot of preparedSnapshots) remapAssetIds(snapshot.sanitized.elements, assetIdMap);
+
+        for (const blob of manifest.blobs) {
+          const entry = requireEntry(archive, blob.filePath);
+          const existing = await prisma.storedBlob.findUnique({ where: { sha256: blob.sha256 } });
+          if (existing) {
+            blobIdMap.set(blob.id, existing.id);
+            let fileExists = false;
+            try {
+              fileExists = (await fs.lstat(resolveStoragePath(deps.assetStorageDir, existing.storageKey))).isFile();
+            } catch {}
+            if (fileExists) {
+              await verifyEntrySha256(archive, entry, blob.sha256, budget);
+              continue;
+            }
+            const storageKey = originalKey(existing.id);
+            const stored = await storeStream(
+              deps.assetStorageDir,
+              storageKey,
+              await archive.stream(entry, budget),
+              deps.MAX_IMPORT_ENTRY_BYTES,
+              { compress: blob.contentEncoding === "br" },
+            );
+            writtenStorageKeys.push(stored.storageKey);
+            if (stored.sha256 !== blob.sha256 || stored.sizeBytes !== blob.sizeBytes) {
+              throw new ImportValidationError(`Document sha256 mismatch: ${blob.filePath}`);
+            }
+            repairedBlobRows.set(existing.id, stored);
+            continue;
+          }
+
+          const finalBlobId = randomUUID();
+          const stored = await storeStream(
+            deps.assetStorageDir,
+            originalKey(finalBlobId),
+            await archive.stream(entry, budget),
+            deps.MAX_IMPORT_ENTRY_BYTES,
+            { compress: blob.contentEncoding === "br" },
+          );
+          writtenStorageKeys.push(stored.storageKey);
+          if (stored.sha256 !== blob.sha256 || stored.sizeBytes !== blob.sizeBytes) {
+            throw new ImportValidationError(`Document sha256 mismatch: ${blob.filePath}`);
+          }
+          blobIdMap.set(blob.id, finalBlobId);
+          newBlobRows.set(finalBlobId, stored);
+        }
+      }
+
+      const processedFilesMap = new Map<string, Record<string, any>>();
+      const concurrency = 8;
+      for (let start = 0; start < preparedDrawings.length; start += concurrency) {
+        const batch = preparedDrawings.slice(start, start + concurrency).map(async (prepared) => ({
+          id: prepared.id,
+          files: await processFilesForS3(
+            prepared.sanitized.files || {},
+            req.user!.id,
+            finalDrawingIdMap.get(prepared.id)!,
+            prisma,
+          ),
+        }));
+        for (const result of await Promise.all(batch)) processedFilesMap.set(result.id, result.files);
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        for (const [id, stored] of newBlobRows) {
+          await tx.storedBlob.create({
+            data: {
+              id,
+              sha256: stored.sha256,
+              sizeBytes: stored.sizeBytes,
+              storedBytes: stored.storedBytes,
+              contentEncoding: stored.contentEncoding,
+              storageKey: stored.storageKey,
+              state: "READY",
+            },
+          });
+        }
+        for (const [id, stored] of repairedBlobRows) {
+          await tx.storedBlob.update({
+            where: { id },
+            data: {
+              sizeBytes: stored.sizeBytes,
+              storedBytes: stored.storedBytes,
+              contentEncoding: stored.contentEncoding,
+              storageKey: stored.storageKey,
+              state: "READY",
+              deleteAfter: null,
+            },
+          });
+        }
+
+        const trashCollectionId = getUserTrashCollectionId(req.user!.id);
+        const collectionIdMap = new Map<string, string>();
+        let collectionsCreated = 0;
+        let collectionsUpdated = 0;
+        let collectionIdConflicts = 0;
+        let drawingsCreated = 0;
+        let drawingsUpdated = 0;
+        let drawingIdConflicts = 0;
+        const needsTrash = manifest.collections.some((item) => item.id === "trash") ||
+          preparedDrawings.some((item) => item.collectionId === "trash");
+        if (needsTrash) await deps.ensureTrashCollection(tx, req.user!.id);
+
+        for (const collection of manifest.collections) {
+          if (collection.id === "trash") {
+            collectionIdMap.set("trash", trashCollectionId);
+            continue;
+          }
+          const existing = await tx.collection.findUnique({ where: { id: collection.id } });
+          const name = deps.sanitizeText(collection.name, 100) || "Collection";
+          if (!existing) {
+            await tx.collection.create({ data: { id: collection.id, name, userId: req.user!.id } });
+            collectionIdMap.set(collection.id, collection.id);
+            collectionsCreated += 1;
+          } else if (existing.userId === req.user!.id) {
+            await tx.collection.update({ where: { id: collection.id }, data: { name } });
+            collectionIdMap.set(collection.id, collection.id);
+            collectionsUpdated += 1;
+          } else {
+            const newId = uuidv4();
+            await tx.collection.create({ data: { id: newId, name, userId: req.user!.id } });
+            collectionIdMap.set(collection.id, newId);
+            collectionsCreated += 1;
+            collectionIdConflicts += 1;
+          }
+        }
+        const resolveCollectionId = (id: string | null) => {
+          if (!id) return null;
+          if (id === "trash") return trashCollectionId;
+          return collectionIdMap.get(id) || null;
+        };
+
+        for (const prepared of preparedDrawings) {
+          const existing = await tx.drawing.findUnique({ where: { id: prepared.id } });
+          const finalId = finalDrawingIdMap.get(prepared.id)!;
+          const data = {
+            name: prepared.name,
+            elements: JSON.stringify(prepared.sanitized.elements),
+            appState: JSON.stringify(prepared.sanitized.appState),
+            files: JSON.stringify(processedFilesMap.get(prepared.id) ?? {}),
+            preview: prepared.sanitized.preview ?? null,
+            version: prepared.version ?? 1,
+            collectionId: resolveCollectionId(prepared.collectionId),
+          };
+          if (!existing || existing.userId !== req.user!.id) {
+            await tx.drawing.create({ data: { id: finalId, ...data, userId: req.user!.id } });
+            drawingsCreated += 1;
+            if (existing) drawingIdConflicts += 1;
+          } else {
+            await tx.drawing.update({ where: { id: prepared.id }, data });
+            await tx.drawingAsset.deleteMany({ where: { drawingId: prepared.id } });
+            drawingsUpdated += 1;
+          }
+        }
+
+        if (manifest.formatVersion === 2) {
+          for (const asset of manifest.assets) {
+            await tx.asset.create({
+              data: {
+                id: assetIdMap.get(asset.id)!,
+                ownerUserId: req.user!.id,
+                uploadedByUserId: req.user!.id,
+                blobId: blobIdMap.get(asset.blobId)!,
+                kind: asset.kind,
+                originalName: asset.originalName.slice(0, 255),
+                // MIME controls response headers and is therefore derived from
+                // the validated kind, never trusted from the imported file.
+                mimeType: canonicalMimeType(asset.kind),
+                pageCount: asset.pageCount,
+                status: "READY",
+              },
+            });
+          }
+          for (const link of manifest.drawingAssets) {
+            await tx.drawingAsset.create({
+              data: {
+                drawingId: finalDrawingIdMap.get(link.drawingId)!,
+                assetId: assetIdMap.get(link.assetId)!,
+                state: link.state,
+                expiresAt: link.expiresAt ? new Date(link.expiresAt) : null,
+              },
+            });
+          }
+          for (const snapshot of preparedSnapshots) {
+            const snapshotId = randomUUID();
+            await tx.drawingSnapshot.create({
+              data: {
+                id: snapshotId,
+                drawingId: finalDrawingIdMap.get(snapshot.drawingId)!,
+                version: snapshot.version,
+                elements: JSON.stringify(snapshot.sanitized.elements),
+                appState: JSON.stringify(snapshot.sanitized.appState),
+                files: JSON.stringify(snapshot.sanitized.files || {}),
+                createdAt: snapshot.createdAt ? new Date(snapshot.createdAt) : undefined,
+              },
+            });
+            for (const oldAssetId of snapshot.assetIds) {
+              await tx.drawingSnapshotAsset.create({
+                data: { snapshotId, assetId: assetIdMap.get(oldAssetId)! },
+              });
+            }
+          }
+        }
+        return {
+          collections: { created: collectionsCreated, updated: collectionsUpdated, idConflicts: collectionIdConflicts },
+          drawings: { created: drawingsCreated, updated: drawingsUpdated, idConflicts: drawingIdConflicts },
+          documents: manifest.formatVersion === 2 ? manifest.assets.length : 0,
+        };
+      });
+      committed = true;
+      deps.invalidateDrawingsCache();
+      return res.json({ success: true, message: "Backup imported successfully", ...result });
+    } catch (error) {
+      if (error instanceof ImportValidationError) {
+        return res.status(error.status).json({ error: "Invalid backup", message: error.message });
+      }
+      throw error;
+    } finally {
+      if (!committed) {
+        await Promise.allSettled(writtenStorageKeys.map((key) => removeStored(deps.assetStorageDir, key)));
+      }
+      await deps.removeFileIfExists(stagedPath);
+    }
+  }));
+};

@@ -179,3 +179,48 @@ export const validatePassword = (password: string, policy: PasswordPolicy): stri
   if (policy.requireSymbol && !/[^A-Za-z0-9]/.test(password)) return policy.validationMessage;
   return null;
 };
+
+/**
+ * Build a random password that satisfies the active policy.
+ *
+ * Saves an admin from inventing one when they intend to pass it on by hand.
+ * Every required character class is placed first and the result shuffled, so
+ * the password is valid by construction rather than by retrying until it is.
+ */
+export const generatePassword = (policy: PasswordPolicy): string => {
+  const LOWER = "abcdefghijkmnopqrstuvwxyz";
+  const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const DIGIT = "23456789";
+  const SYMBOL = "!@#$%^&*-_=+";
+
+  const random = (max: number): number => {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % max;
+  };
+  const pick = (set: string): string => set[random(set.length)];
+
+  const required: string[] = [];
+  let alphabet = LOWER + UPPER + DIGIT;
+  if (policy.requireLowercase) required.push(pick(LOWER));
+  if (policy.requireUppercase) required.push(pick(UPPER));
+  if (policy.requireNumber) required.push(pick(DIGIT));
+  if (policy.requireSymbol) {
+    required.push(pick(SYMBOL));
+    alphabet += SYMBOL;
+  }
+
+  const length = Math.min(
+    Math.max(policy.minLength, 16),
+    policy.maxLength || 64,
+  );
+  const chars = [...required];
+  while (chars.length < length) chars.push(pick(alphabet));
+
+  // Fisher-Yates, so the required characters do not sit at the front.
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = random(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+};

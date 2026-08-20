@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { UserCog } from "lucide-react";
 import { PasswordRequirements } from "../../components/PasswordRequirements";
 import type { PasswordPolicy } from "../../utils/passwordPolicy";
+import { generatePassword } from "../../utils/passwordPolicy";
 
 type CreateUserFormProps = {
   email: string;
@@ -53,7 +54,12 @@ export const CreateUserForm: React.FC<CreateUserFormProps> = ({
   onMustResetChange,
   onSendInviteChange,
   onActiveChange,
-}) => (
+}) => {
+  const [revealPassword, setRevealPassword] = useState(false);
+  /** No password field is needed when the user will set their own. */
+  const willInvite = mailEnabled && sendInvite;
+
+  return (
   <div className="mb-6 bg-white dark:bg-neutral-900 border-2 border-black dark:border-neutral-700 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] p-4 sm:p-6">
     <div className="flex items-center gap-3 mb-4">
       <div className="w-12 h-12 bg-indigo-50 dark:bg-neutral-800 rounded-xl flex items-center justify-center border-2 border-indigo-100 dark:border-neutral-700">
@@ -125,21 +131,35 @@ export const CreateUserForm: React.FC<CreateUserFormProps> = ({
             : "This user can sign in with a local password."}
         </p>
       </div>
-      {!oidcOnly && (
+      {!oidcOnly && !willInvite && (
         <div>
           <label className="block text-sm font-bold text-slate-700 dark:text-neutral-300 mb-2">
             Temporary Password
           </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => onPasswordChange(event.target.value)}
-            minLength={passwordPolicy.minLength}
-            maxLength={passwordPolicy.maxLength}
-            pattern={passwordPolicy.patternHtml}
-            required
-            className="w-full px-4 py-3 bg-white dark:bg-neutral-800 border-2 border-slate-200 dark:border-neutral-700 rounded-xl text-slate-900 dark:text-white outline-none"
-          />
+          <div className="flex gap-2">
+            <input
+              type={revealPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              minLength={passwordPolicy.minLength}
+              maxLength={passwordPolicy.maxLength}
+              pattern={passwordPolicy.patternHtml}
+              required
+              className="flex-1 px-4 py-3 bg-white dark:bg-neutral-800 border-2 border-slate-200 dark:border-neutral-700 rounded-xl text-slate-900 dark:text-white outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                onPasswordChange(generatePassword(passwordPolicy));
+                // Generating a password you cannot read is pointless: the
+                // admin has to pass it on.
+                setRevealPassword(true);
+              }}
+              className="px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-slate-700 dark:text-neutral-200 font-bold text-sm whitespace-nowrap"
+            >
+              Generate
+            </button>
+          </div>
           <PasswordRequirements
             password={password}
             policy={passwordPolicy}
@@ -245,3 +265,4 @@ export const CreateUserForm: React.FC<CreateUserFormProps> = ({
     </form>
   </div>
 );
+};

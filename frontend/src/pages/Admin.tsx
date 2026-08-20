@@ -128,9 +128,13 @@ export const Admin: React.FC = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
-    const passwordError = createOidcOnly
-      ? null
-      : validatePassword(createPassword, passwordPolicy);
+    const willInvite = passwordResetEnabled && createSendInvite && !createOidcOnly;
+    // An invited user picks their own password; the server generates a
+    // throwaway so the account still has a valid hash.
+    const passwordError =
+      createOidcOnly || willInvite
+        ? null
+        : validatePassword(createPassword, passwordPolicy);
     if (passwordError) {
       setError(passwordError);
       return;
@@ -140,12 +144,12 @@ export const Admin: React.FC = () => {
         email: createEmail.trim().toLowerCase(),
         name: createName.trim(),
         username: createUsername.trim() ? createUsername.trim() : undefined,
-        password: createOidcOnly ? undefined : createPassword,
+        password: createOidcOnly || willInvite ? undefined : createPassword,
         oidcOnly: createOidcOnly,
         role: createRole,
         mustResetPassword: createOidcOnly ? false : createMustReset,
         isActive: createActive,
-        sendInvite: createOidcOnly ? false : createSendInvite,
+        sendInvite: willInvite,
       };
       const response = await api.api.post<{ user: AdminUser; invited?: boolean }>(
         "/auth/users",

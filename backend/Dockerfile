@@ -36,7 +36,7 @@ FROM node:20-alpine
 # poppler-utils provides pdfinfo, pdftocairo and pdftoppm, which turn an
 # uploaded PDF into page previews. Without them documents upload and then
 # cannot be displayed.
-RUN apk add --no-cache openssl su-exec poppler-utils && \
+RUN apk add --no-cache openssl su-exec poppler-utils ghostscript && \
     addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 

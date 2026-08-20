@@ -8,12 +8,13 @@ import {
   type DrawingPrincipal,
 } from "../authz/sharing";
 import { createSocketAuthenticator } from "./socketAuth";
+import type { CollaborationAccessController } from "./collaborationAccess";
+import { createSocketFollowManager } from "./socketFollow";
 import {
   createRateLimiter,
   parseCursorPayload,
   parseDrawingId,
   parseElementUpdatePayload,
-  parseSceneBounds,
   type PresenceUser,
 } from "./socketProtocol";
 
@@ -50,14 +51,12 @@ export const registerSocketHandlers = ({
   prisma,
   authModeService,
   jwtSecret,
-}: RegisterSocketHandlersDeps) => {
+}: RegisterSocketHandlersDeps): CollaborationAccessController => {
   const principals = new Map<string, DrawingPrincipal>();
   const connectedSockets = new Map<string, Socket>();
   const drawingBySocket = new Map<string, string>();
   const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
-  const followingBySocket = new Map<string, string>();
-  const followersBySocket = new Map<string, Set<string>>();
-  const viewportSequenceBySocket = new Map<string, number>();
+  let followManager: ReturnType<typeof createSocketFollowManager>;
 
   io.use(
     createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }),
@@ -75,59 +74,6 @@ export const registerSocketHandlers = ({
       : null;
   };
 
-  const emitFollowedBy = (targetId: string) => {
-    const drawingId = drawingBySocket.get(targetId);
-    if (!drawingId) return;
-    const followers = Array.from(followersBySocket.get(targetId) || [])
-      .filter((id) => drawingBySocket.get(id) === drawingId)
-      .map(getPresence)
-      .filter((user): user is PresenceUser => Boolean(user))
-      .map((user) => ({ presenceId: user.presenceId, name: user.name }));
-    io.to(targetId).emit("followed-by-update", { drawingId, followers });
-  };
-
-  const clearFollower = (
-    followerId: string,
-    reason: string,
-    notifyFollower: boolean,
-  ) => {
-    const targetId = followingBySocket.get(followerId);
-    if (!targetId) return;
-    followingBySocket.delete(followerId);
-    const followers = followersBySocket.get(targetId);
-    followers?.delete(followerId);
-    if (followers?.size === 0) followersBySocket.delete(targetId);
-    emitFollowedBy(targetId);
-    if (notifyFollower) {
-      const drawingId = drawingBySocket.get(followerId);
-      if (drawingId) {
-        io.to(followerId).emit("follow-status", {
-          drawingId,
-          followingPresenceId: null,
-          reason,
-        });
-      }
-    }
-  };
-
-  const clearFollowEdges = (socketId: string, reason: string) => {
-    clearFollower(socketId, reason, false);
-    const followers = Array.from(followersBySocket.get(socketId) || []);
-    followersBySocket.delete(socketId);
-    for (const followerId of followers) {
-      if (followingBySocket.get(followerId) !== socketId) continue;
-      followingBySocket.delete(followerId);
-      const drawingId = drawingBySocket.get(followerId);
-      if (drawingId) {
-        io.to(followerId).emit("follow-status", {
-          drawingId,
-          followingPresenceId: null,
-          reason,
-        });
-      }
-    }
-  };
-
   const removeFromDrawing = async (
     socket: Socket,
     reason: string,
@@ -135,8 +81,7 @@ export const registerSocketHandlers = ({
   ) => {
     const drawingId = drawingBySocket.get(socket.id);
     if (!drawingId) return;
-    clearFollowEdges(socket.id, reason);
-    viewportSequenceBySocket.delete(socket.id);
+    followManager.clearSocket(socket.id, reason);
     drawingBySocket.delete(socket.id);
     const presences = presencesByDrawing.get(drawingId);
     presences?.delete(socket.id);
@@ -164,6 +109,13 @@ export const registerSocketHandlers = ({
       return null;
     }
     const access = await getAccess(socket.id, drawingId);
+    if (
+      connectedSockets.get(socket.id) !== socket ||
+      drawingBySocket.get(socket.id) !== drawingId ||
+      !socket.rooms.has(roomName(drawingId))
+    ) {
+      return null;
+    }
     if (!canViewDrawing(access)) {
       await removeFromDrawing(socket, "access-revoked");
       socket.emit("error", { message: "You do not have access to this drawing" });
@@ -176,57 +128,86 @@ export const registerSocketHandlers = ({
     return access;
   };
 
+  followManager = createSocketFollowManager({
+    io,
+    connectedSockets,
+    drawingBySocket,
+    getPresence,
+    getAccess,
+    requireAccess: (socket, drawingId) => requireAccess(socket, drawingId),
+    removeFromDrawing: (socket, reason) => removeFromDrawing(socket, reason),
+  });
+
   io.on("connection", (socket) => {
     connectedSockets.set(socket.id, socket);
+    let joinRevision = 0;
+    let joinQueue = Promise.resolve();
     const allowJoin = createRateLimiter(10, 60_000);
     const allowCursor = createRateLimiter(40, 1_000);
     const allowElements = createRateLimiter(120, 1_000);
     const allowActivity = createRateLimiter(20, 10_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
+    followManager.registerHandlers(socket, allowFollow, allowViewport);
 
-    socket.on("join-room", async (data: unknown, ack?: (value: unknown) => void) => {
-      if (!allowJoin() || !data || typeof data !== "object") return;
-      const payload = data as Record<string, unknown>;
-      const drawingId = parseDrawingId(payload.drawingId);
-      if (!drawingId) return;
-      const access = await getAccess(socket.id, drawingId);
-      if (!canViewDrawing(access)) {
-        socket.emit("error", { message: "You do not have access to this drawing" });
-        return;
-      }
-      const previousDrawingId = drawingBySocket.get(socket.id);
-      if (previousDrawingId && previousDrawingId !== drawingId) {
-        await removeFromDrawing(socket, "board-changed");
-      }
-      await socket.join(roomName(drawingId));
-      const clientUser =
-        payload.user && typeof payload.user === "object"
-          ? (payload.user as Record<string, unknown>)
-          : {};
-      const principal = principals.get(socket.id) || null;
-      let name = toPresenceName(clientUser.name);
-      if (principal?.userId && principal.userId !== BOOTSTRAP_USER_ID) {
-        const account = await prisma.user.findUnique({
-          where: { id: principal.userId },
-          select: { name: true },
-        });
-        if (account) name = toPresenceName(account.name);
-      }
-      const presence: PresenceUser = {
-        presenceId: socket.id,
-        accountId: principal?.userId || null,
-        name,
-        initials: toPresenceInitials(name),
-        color: toPresenceColor(clientUser.color),
-        isActive: true,
+    socket.on("join-room", (data: unknown, ack?: (value: unknown) => void) => {
+      const revision = ++joinRevision;
+      const run = async () => {
+        if (!allowJoin() || !data || typeof data !== "object") return;
+        const payload = data as Record<string, unknown>;
+        const drawingId = parseDrawingId(payload.drawingId);
+        if (!drawingId) return;
+        const isCurrentJoin = () =>
+          connectedSockets.get(socket.id) === socket && revision === joinRevision;
+
+        const access = await getAccess(socket.id, drawingId);
+        if (!isCurrentJoin()) return;
+        if (!canViewDrawing(access)) {
+          socket.emit("error", { message: "You do not have access to this drawing" });
+          return;
+        }
+        const previousDrawingId = drawingBySocket.get(socket.id);
+        if (previousDrawingId && previousDrawingId !== drawingId) {
+          await removeFromDrawing(socket, "board-changed");
+          if (!isCurrentJoin()) return;
+        }
+        const clientUser =
+          payload.user && typeof payload.user === "object"
+            ? (payload.user as Record<string, unknown>)
+            : {};
+        const principal = principals.get(socket.id) || null;
+        let name = toPresenceName(clientUser.name);
+        if (principal?.userId && principal.userId !== BOOTSTRAP_USER_ID) {
+          const account = await prisma.user.findUnique({
+            where: { id: principal.userId },
+            select: { name: true },
+          });
+          if (!isCurrentJoin()) return;
+          if (account) name = toPresenceName(account.name);
+        }
+        await socket.join(roomName(drawingId));
+        if (!isCurrentJoin()) {
+          await socket.leave(roomName(drawingId));
+          return;
+        }
+        const presence: PresenceUser = {
+          presenceId: socket.id,
+          accountId: principal?.userId || null,
+          name,
+          initials: toPresenceInitials(name),
+          color: toPresenceColor(clientUser.color),
+          isActive: true,
+        };
+        drawingBySocket.set(socket.id, drawingId);
+        const presences = presencesByDrawing.get(drawingId) || new Map();
+        presences.set(socket.id, presence);
+        presencesByDrawing.set(drawingId, presences);
+        emitPresence(drawingId);
+        ack?.({ presence });
       };
-      drawingBySocket.set(socket.id, drawingId);
-      const presences = presencesByDrawing.get(drawingId) || new Map();
-      presences.set(socket.id, presence);
-      presencesByDrawing.set(drawingId, presences);
-      emitPresence(drawingId);
-      ack?.({ presence });
+      const result = joinQueue.then(run, run);
+      joinQueue = result.then(() => undefined, () => undefined);
+      return result;
     });
 
     socket.on("cursor-move", async (data: unknown) => {
@@ -274,96 +255,6 @@ export const registerSocketHandlers = ({
       }
     });
 
-    socket.on("follow-user", async (data: unknown) => {
-      if (!allowFollow() || !data || typeof data !== "object") return;
-      const payload = data as Record<string, unknown>;
-      const drawingId = parseDrawingId(payload.drawingId);
-      if (!drawingId || !(await requireAccess(socket, drawingId))) return;
-      if (payload.action === "UNFOLLOW") {
-        clearFollower(socket.id, "unfollowed", false);
-        socket.emit("follow-status", { drawingId, followingPresenceId: null });
-        return;
-      }
-      const targetId =
-        typeof payload.targetPresenceId === "string" &&
-        payload.targetPresenceId.length <= 200
-          ? payload.targetPresenceId
-          : null;
-      if (payload.action !== "FOLLOW" || !targetId || targetId === socket.id) {
-        socket.emit("follow-status", {
-          drawingId,
-          followingPresenceId: null,
-          reason: targetId === socket.id ? "self-follow" : "invalid-request",
-        });
-        return;
-      }
-      const targetSocket = connectedSockets.get(targetId);
-      if (
-        !targetSocket ||
-        drawingBySocket.get(targetId) !== drawingId ||
-        !targetSocket.rooms.has(roomName(drawingId))
-      ) {
-        socket.emit("follow-status", {
-          drawingId,
-          followingPresenceId: null,
-          reason: "target-unavailable",
-        });
-        return;
-      }
-      const targetAccess = await getAccess(targetId, drawingId);
-      if (!canViewDrawing(targetAccess)) {
-        await removeFromDrawing(targetSocket, "access-revoked");
-        socket.emit("follow-status", {
-          drawingId,
-          followingPresenceId: null,
-          reason: "target-unavailable",
-        });
-        return;
-      }
-      clearFollower(socket.id, "target-changed", false);
-      followingBySocket.set(socket.id, targetId);
-      const followers = followersBySocket.get(targetId) || new Set<string>();
-      followers.add(socket.id);
-      followersBySocket.set(targetId, followers);
-      emitFollowedBy(targetId);
-      socket.emit("follow-status", { drawingId, followingPresenceId: targetId });
-    });
-
-    socket.on("viewport-bounds", async (data: unknown) => {
-      if (!allowViewport() || !data || typeof data !== "object") return;
-      const payload = data as Record<string, unknown>;
-      const drawingId = parseDrawingId(payload.drawingId);
-      const sceneBounds = parseSceneBounds(payload.sceneBounds);
-      if (!drawingId || !sceneBounds || !(await requireAccess(socket, drawingId))) {
-        return;
-      }
-      const sequence = (viewportSequenceBySocket.get(socket.id) || 0) + 1;
-      viewportSequenceBySocket.set(socket.id, sequence);
-      for (const followerId of Array.from(followersBySocket.get(socket.id) || [])) {
-        const followerSocket = connectedSockets.get(followerId);
-        if (
-          !followerSocket ||
-          followingBySocket.get(followerId) !== socket.id ||
-          drawingBySocket.get(followerId) !== drawingId ||
-          !followerSocket.rooms.has(roomName(drawingId))
-        ) {
-          clearFollower(followerId, "relationship-invalid", false);
-          continue;
-        }
-        const followerAccess = await getAccess(followerId, drawingId);
-        if (!canViewDrawing(followerAccess)) {
-          await removeFromDrawing(followerSocket, "access-revoked");
-          continue;
-        }
-        io.to(followerId).volatile.emit("viewport-bounds", {
-          drawingId,
-          presenceId: socket.id,
-          sceneBounds,
-          sequence,
-        });
-      }
-    });
-
     socket.on("leave-room", async (data: unknown) => {
       if (!allowJoin()) return;
       const drawingId =
@@ -376,9 +267,49 @@ export const registerSocketHandlers = ({
     });
 
     socket.on("disconnect", async () => {
-      await removeFromDrawing(socket, "disconnected", false);
+      joinRevision += 1;
       connectedSockets.delete(socket.id);
+      await removeFromDrawing(socket, "disconnected", false);
       principals.delete(socket.id);
     });
   });
+
+  const recheckSockets = async (
+    matches: (socketId: string, drawingId: string) => boolean,
+  ) => {
+    const candidates = Array.from(connectedSockets.values()).filter((socket) => {
+      const drawingId = drawingBySocket.get(socket.id);
+      return Boolean(drawingId && matches(socket.id, drawingId));
+    });
+    await Promise.all(
+      candidates.map(async (socket) => {
+        const drawingId = drawingBySocket.get(socket.id);
+        if (!drawingId) return;
+        const access = await getAccess(socket.id, drawingId);
+        if (
+          !canViewDrawing(access) &&
+          connectedSockets.get(socket.id) === socket &&
+          drawingBySocket.get(socket.id) === drawingId
+        ) {
+          await removeFromDrawing(socket, "access-revoked");
+          socket.emit("error", {
+            message: "You do not have access to this drawing",
+          });
+        }
+      }),
+    );
+  };
+
+  return {
+    recheckDrawingAccess: (drawingId, affectedUserId) =>
+      recheckSockets(
+        (socketId, activeDrawingId) =>
+          activeDrawingId === drawingId &&
+          (!affectedUserId || principals.get(socketId)?.userId === affectedUserId),
+      ),
+    recheckUserAccess: (affectedUserId) =>
+      recheckSockets(
+        (socketId) => principals.get(socketId)?.userId === affectedUserId,
+      ),
+  };
 };

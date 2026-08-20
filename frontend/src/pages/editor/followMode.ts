@@ -1,5 +1,6 @@
 import {
   getVisibleSceneBounds,
+  sceneCoordsToViewportCoords,
   zoomToFitBounds,
 } from "@excalidraw/excalidraw";
 import type { Socket } from "socket.io-client";
@@ -41,14 +42,93 @@ export const fitFollowedBounds = (
   bounds: FollowSceneBounds,
 ) => {
   const appState = api.getAppState();
+  const fittedAppState = zoomToFitBounds({
+    appState,
+    bounds,
+    fitToViewport: true,
+    viewportZoomFactor: 1,
+  }).appState;
   api.updateScene({
-    appState: zoomToFitBounds({
-      appState,
-      bounds,
-      fitToViewport: true,
-      viewportZoomFactor: 1,
-    }).appState,
+    appState: fittedAppState,
   });
+  const desiredZoom = Math.min(
+    appState.width / (bounds[2] - bounds[0]),
+    appState.height / (bounds[3] - bounds[1]),
+  );
+  return {
+    appState: { ...appState, ...fittedAppState },
+    zoomClamped: desiredZoom < 0.1 || desiredZoom > 30,
+  };
+};
+
+const createViewportIndicator = (container: HTMLDivElement | null) => {
+  if (!container) return null;
+  const frame = document.createElement("div");
+  frame.dataset.followViewport = "frame";
+  Object.assign(frame.style, {
+    position: "absolute",
+    pointerEvents: "none",
+    zIndex: "4",
+    border: "2px solid rgba(79, 70, 229, 0.9)",
+    boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.16)",
+    boxSizing: "border-box",
+    display: "none",
+  });
+  const warning = document.createElement("div");
+  warning.dataset.followViewport = "zoom-warning";
+  warning.textContent = "Target viewport exceeds the supported zoom range";
+  Object.assign(warning.style, {
+    position: "absolute",
+    pointerEvents: "none",
+    zIndex: "5",
+    top: "12px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    padding: "6px 10px",
+    borderRadius: "6px",
+    color: "white",
+    background: "rgba(15, 23, 42, 0.78)",
+    fontSize: "12px",
+    display: "none",
+  });
+  container.append(frame, warning);
+
+  return {
+    show(bounds: FollowSceneBounds, appState: any, zoomClamped: boolean) {
+      const coordinateState = {
+        zoom: appState.zoom,
+        scrollX: appState.scrollX,
+        scrollY: appState.scrollY,
+        offsetLeft: Number.isFinite(appState.offsetLeft) ? appState.offsetLeft : 0,
+        offsetTop: Number.isFinite(appState.offsetTop) ? appState.offsetTop : 0,
+      };
+      const topLeft = sceneCoordsToViewportCoords(
+        { sceneX: bounds[0], sceneY: bounds[1] },
+        coordinateState,
+      );
+      const bottomRight = sceneCoordsToViewportCoords(
+        { sceneX: bounds[2], sceneY: bounds[3] },
+        coordinateState,
+      );
+      const containerRect = container.getBoundingClientRect();
+      Object.assign(frame.style, {
+        display: "block",
+        left: `${topLeft.x - containerRect.left}px`,
+        top: `${topLeft.y - containerRect.top}px`,
+        width: `${bottomRight.x - topLeft.x}px`,
+        height: `${bottomRight.y - topLeft.y}px`,
+      });
+      warning.style.display = zoomClamped ? "block" : "none";
+    },
+    hide() {
+      frame.style.display = "none";
+      warning.style.display = "none";
+    },
+    remove() {
+      frame.remove();
+      warning.remove();
+    },
+  };
 };
 
 export const bindFollowMode = ({
@@ -68,6 +148,11 @@ export const bindFollowMode = ({
   const lastViewportSequence = new Map<string, number>();
   let sendTimer: ReturnType<typeof setTimeout> | null = null;
   let applyingServerStatus = false;
+  let applyingIncomingBounds = false;
+  let lastReceivedBounds: FollowSceneBounds | null = null;
+  let lastReceivedPresenceId: string | null = null;
+  let lastAppliedVisibleBounds: FollowSceneBounds | null = null;
+  const viewportIndicator = createViewportIndicator(container);
 
   const sendBounds = () => {
     sendTimer = null;
@@ -78,15 +163,58 @@ export const bindFollowMode = ({
     });
   };
   const scheduleBounds = () => {
-    if (sendTimer !== null || followers.size === 0) return;
+    if (
+      applyingIncomingBounds ||
+      sendTimer !== null ||
+      followers.size === 0
+    ) {
+      return;
+    }
+    const visibleBounds = parseFollowSceneBounds(
+      getVisibleSceneBounds(api.getAppState()),
+    );
+    if (
+      visibleBounds &&
+      lastAppliedVisibleBounds &&
+      visibleBounds.every(
+        (value, index) =>
+          Math.abs(value - lastAppliedVisibleBounds![index]) < 0.0001,
+      )
+    ) {
+      return;
+    }
+    lastAppliedVisibleBounds = null;
     sendTimer = setTimeout(sendBounds, 50);
+  };
+
+  const applyReceivedBounds = () => {
+    if (!lastReceivedBounds || !lastReceivedPresenceId) return;
+    if (api.getAppState().userToFollow?.socketId !== lastReceivedPresenceId) return;
+    applyingIncomingBounds = true;
+    try {
+      const fitted = fitFollowedBounds(api, lastReceivedBounds);
+      lastAppliedVisibleBounds = parseFollowSceneBounds(
+        getVisibleSceneBounds(fitted.appState),
+      );
+      viewportIndicator?.show(
+        lastReceivedBounds,
+        fitted.appState,
+        fitted.zoomClamped,
+      );
+    } finally {
+      applyingIncomingBounds = false;
+    }
   };
 
   const unsubscribeFollow = api.onUserFollow((payload) => {
     if (applyingServerStatus) return;
+    lastReceivedBounds = null;
+    lastReceivedPresenceId = null;
+    lastAppliedVisibleBounds = null;
+    viewportIndicator?.hide();
     socket.emit("follow-user", {
       drawingId,
-      targetPresenceId: payload.userToFollow.socketId,
+      targetPresenceId: payload.userToFollow?.socketId,
       action: payload.action,
     });
   });
@@ -117,11 +245,31 @@ export const bindFollowMode = ({
   };
 
   const onFollowStatus = (payload: any) => {
-    if (payload?.drawingId !== drawingId || payload.followingPresenceId) return;
-    if (!api.getAppState().userToFollow) return;
+    if (payload?.drawingId !== drawingId) return;
+    const targetPresenceId =
+      typeof payload.followingPresenceId === "string"
+        ? payload.followingPresenceId
+        : null;
+    const appState = api.getAppState();
+    if (appState.userToFollow?.socketId === targetPresenceId) return;
     applyingServerStatus = true;
     try {
-      api.updateScene({ appState: { userToFollow: null } });
+      if (!targetPresenceId) {
+        lastReceivedBounds = null;
+        lastReceivedPresenceId = null;
+        lastAppliedVisibleBounds = null;
+        viewportIndicator?.hide();
+        if (appState.userToFollow) {
+          api.updateScene({ appState: { userToFollow: null } });
+        }
+      } else {
+        const collaborator = appState.collaborators?.get?.(targetPresenceId) || {};
+        api.updateScene({
+          appState: {
+            userToFollow: { ...collaborator, socketId: targetPresenceId },
+          },
+        });
+      }
     } finally {
       applyingServerStatus = false;
     }
@@ -139,7 +287,9 @@ export const bindFollowMode = ({
     if (appState.userToFollow?.socketId !== payload.presenceId) return;
     if (appState.followedBy?.has?.(payload.presenceId)) return;
     lastViewportSequence.set(payload.presenceId, payload.sequence);
-    fitFollowedBounds(api, bounds);
+    lastReceivedBounds = bounds;
+    lastReceivedPresenceId = payload.presenceId;
+    applyReceivedBounds();
   };
 
   socket.on("followed-by-update", onFollowedBy);
@@ -147,11 +297,27 @@ export const bindFollowMode = ({
   socket.on("viewport-bounds", onViewportBounds);
   const resizeObserver =
     container && typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(scheduleBounds)
+      ? new ResizeObserver(() => {
+          if (lastReceivedBounds) applyReceivedBounds();
+          scheduleBounds();
+        })
       : null;
   if (container) resizeObserver?.observe(container);
 
-  return () => {
+  const resetConnectionState = () => {
+    followers.clear();
+    lastViewportSequence.clear();
+    lastReceivedBounds = null;
+    lastReceivedPresenceId = null;
+    lastAppliedVisibleBounds = null;
+    viewportIndicator?.hide();
+    if (sendTimer !== null) clearTimeout(sendTimer);
+    sendTimer = null;
+    onFollowersChange([]);
+    api.updateScene({ appState: { followedBy: new Set() } });
+  };
+
+  const cleanup = () => {
     unsubscribeFollow();
     unsubscribeScroll();
     socket.off("followed-by-update", onFollowedBy);
@@ -159,6 +325,9 @@ export const bindFollowMode = ({
     socket.off("viewport-bounds", onViewportBounds);
     resizeObserver?.disconnect();
     if (sendTimer !== null) clearTimeout(sendTimer);
+    viewportIndicator?.remove();
     onFollowersChange([]);
   };
+  cleanup.resetConnectionState = resetConnectionState;
+  return cleanup;
 };

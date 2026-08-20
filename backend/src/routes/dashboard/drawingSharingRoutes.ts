@@ -15,6 +15,7 @@ export const registerDrawingSharingRoutes = (
     requireAuth,
     asyncHandler,
     invalidateDrawingsCache,
+    collaborationAccess,
     config,
     logAuditEvent,
     resolveDefaultTtlMs,
@@ -199,10 +200,20 @@ export const registerDrawingSharingRoutes = (
         return res.status(404).json({ error: "Drawing not found" });
       }
 
-      await prisma.drawingPermission.deleteMany({
+      const permission = await prisma.drawingPermission.findFirst({
+        where: { id: permId, drawingId: id },
+        select: { granteeUserId: true },
+      });
+      const deleted = await prisma.drawingPermission.deleteMany({
         where: { id: permId, drawingId: id },
       });
       invalidateDrawingsCache();
+      if (deleted.count > 0 && permission) {
+        await collaborationAccess.recheckDrawingAccess(
+          id,
+          permission.granteeUserId,
+        );
+      }
 
       if (config.enableAuditLogging) {
         await logAuditEvent({
@@ -358,10 +369,13 @@ export const registerDrawingSharingRoutes = (
         return res.status(404).json({ error: "Drawing not found" });
       }
 
-      await prisma.drawingLinkShare.updateMany({
+      const revoked = await prisma.drawingLinkShare.updateMany({
         where: { id: shareId, drawingId: id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      if (revoked.count > 0) {
+        await collaborationAccess.recheckDrawingAccess(id);
+      }
 
       if (config.enableAuditLogging) {
         await logAuditEvent({

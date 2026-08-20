@@ -6,6 +6,7 @@ import type { UserIdentity } from "../../utils/identity";
 import { buildRemoteSceneUpdate } from "./shared";
 import { bindFollowMode, type Follower } from "./followMode";
 import { bindCanvasWheelZoom } from "./wheelZoom";
+import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
 
 export interface Peer {
   presenceId: string;
@@ -86,19 +87,6 @@ export const useEditorCollaboration = ({
         (window as any).__EXCALIDASH_SOCKET_STATUS__ = { connected: false };
       });
     }
-    socket.emit("join-room", { drawingId, user: me }, (payload: any) => {
-      const serverUser = payload?.presence;
-      if (!serverUser || typeof serverUser.presenceId !== "string") return;
-      selfPresenceIdRef.current = serverUser.presenceId;
-      const lastUsers = lastPresenceUsersRef.current;
-      if (lastUsers) {
-        setPeers(
-          lastUsers.filter(
-            (user) => user.presenceId !== selfPresenceIdRef.current,
-          ),
-        );
-      }
-    });
     const renderLoop = () => {
       if (cursorBuffer.current.size > 0 && excalidrawAPI.current) {
         const collaborators = new Map<string, any>(
@@ -182,6 +170,43 @@ export const useEditorCollaboration = ({
       api: excalidrawAPI.current,
       container: editorContainerRef.current,
       onFollowersChange: setFollowers,
+    });
+    const resetConnectionState = () => {
+      unbindFollowMode.resetConnectionState();
+      selfPresenceIdRef.current = null;
+      lastPresenceUsersRef.current = null;
+      knownPresenceIdsRef.current.clear();
+      cursorBuffer.current.clear();
+      setPeers([]);
+      setFollowers([]);
+      pendingRemoteElementsRef.current.clear();
+      pendingRemoteFilesRef.current = {};
+      pendingRemoteElementOrderRef.current = null;
+      if (remoteFlushRafIdRef.current !== null) {
+        cancelAnimationFrame(remoteFlushRafIdRef.current);
+      }
+      remoteFlushRafIdRef.current = null;
+      remoteFlushScheduledRef.current = false;
+      if (excalidrawAPI.current) {
+        const { sceneUpdate } = buildRemoteSceneUpdate({ collaborators: new Map() });
+        if (sceneUpdate) excalidrawAPI.current.updateScene(sceneUpdate);
+      }
+    };
+    const unbindSocketRoomLifecycle = bindSocketRoomLifecycle({
+      socket,
+      drawingId,
+      user: me,
+      resetConnectionState,
+      onJoined: (serverUser) => {
+        selfPresenceIdRef.current = serverUser.presenceId;
+        const lastUsers = lastPresenceUsersRef.current;
+        if (lastUsers) {
+          setPeers(lastUsers.filter((user) =>
+            user.presenceId !== selfPresenceIdRef.current));
+        }
+      },
+      getFollowTargetPresenceId: () =>
+        excalidrawAPI.current?.getAppState().userToFollow?.socketId || null,
     });
     const hasNonEmptyArray = (value: unknown): value is any[] =>
       Array.isArray(value) && value.length > 0;
@@ -319,6 +344,7 @@ export const useEditorCollaboration = ({
       socket.off("cursor-move");
       socket.off("element-update");
       socket.off("drawing-server-update");
+      unbindSocketRoomLifecycle();
       unbindFollowMode();
       socket.disconnect();
       if (remoteFlushRafIdRef.current !== null) {
@@ -329,7 +355,7 @@ export const useEditorCollaboration = ({
       pendingRemoteElementsRef.current.clear();
       pendingRemoteFilesRef.current = {};
       pendingRemoteElementOrderRef.current = null;
-      selfPresenceIdRef.current = null;
+      selfPresenceIdRef.current = null; lastPresenceUsersRef.current = null;
       knownPresenceIdsRef.current.clear();
       cancelAnimationFrame(animationFrameId.current);
     };

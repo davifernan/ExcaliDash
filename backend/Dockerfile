@@ -33,7 +33,10 @@ RUN npx tsc
 FROM node:20-alpine
 
 # Install runtime packages and create non-root user
-RUN apk add --no-cache openssl su-exec && \
+# poppler-utils provides pdfinfo, pdftocairo and pdftoppm, which turn an
+# uploaded PDF into page previews. Without them documents upload and then
+# cannot be displayed.
+RUN apk add --no-cache openssl su-exec poppler-utils && \
     addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 

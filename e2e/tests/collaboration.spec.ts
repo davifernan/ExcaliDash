@@ -20,10 +20,20 @@ test.describe("Real-time Collaboration", () => {
   const interactiveCanvas = (page: Page) =>
     page.locator("canvas.excalidraw__canvas.interactive");
 
-  const drawRectangle = async (page: Page, x = 120, y = 120) => {
+  // Two things this has to get right, both learned the hard way.
+  //
+  // A freshly loaded page has no focus on the canvas, so "r" never reaches
+  // Excalidraw and the tool stays on selection — the drag that follows draws a
+  // selection box and nothing is created.
+  //
+  // And the left properties panel appears as soon as a drawing tool is picked,
+  // covering roughly x < 220. Starting the drag under it presses the panel
+  // rather than the canvas, so the default of 120 silently drew nothing.
+  const drawRectangle = async (page: Page, x = 420, y = 120) => {
     const canvas = interactiveCanvas(page);
     const box = await canvas.boundingBox();
     if (!box) throw new Error("Interactive canvas not found");
+    await canvas.click({ position: { x: 700, y: 400 } });
     await page.keyboard.press("r");
     await page.mouse.move(box.x + x, box.y + y);
     await page.mouse.down();
@@ -33,6 +43,21 @@ test.describe("Real-time Collaboration", () => {
 
   const activeElements = (drawing: Awaited<ReturnType<typeof getDrawing>>) =>
     (drawing.elements || []).filter((element) => !element.isDeleted);
+
+  /** What this browser itself has in its scene, not what the server stores. */
+  const sceneElementCount = (page: Page) =>
+    page.evaluate(() => {
+      const api = (window as any).__EXCALIDASH_EXCALIDRAW_API__;
+      if (!api) return -1;
+      return api.getSceneElements().filter((e: any) => !e.isDeleted).length;
+    });
+
+  const sceneElementIds = (page: Page) =>
+    page.evaluate(() => {
+      const api = (window as any).__EXCALIDASH_EXCALIDRAW_API__;
+      if (!api) return [];
+      return api.getSceneElements().filter((e: any) => !e.isDeleted).map((e: any) => e.id);
+    });
 
   test.afterEach(async ({ request }) => {
     for (const id of createdDrawingIds) {
@@ -100,14 +125,34 @@ test.describe("Real-time Collaboration", () => {
         activeElements(await getDrawing(request, drawing.id)).length,
       ).toBe(1);
 
-      // Browser 2 loaded the empty scene before the rectangle existed. It can
-      // delete that rectangle only if the live element-update reached it.
-      await expect.poll(async () => {
-        await interactiveCanvas(page2).click({ position: { x: 400, y: 300 } });
-        await page2.keyboard.press("Control+A");
-        await page2.keyboard.press("Delete");
-        return activeElements(await getDrawing(request, drawing.id)).length;
-      }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(0);
+      // Browser 2 loaded the empty scene before the rectangle existed, so it
+      // can only know about it through the live update. Assert that directly,
+      // in browser 2's own scene.
+      //
+      // Asserting instead that the board ends up empty after browser 2 selects
+      // all and deletes would pass for the wrong reason: if nothing ever
+      // arrived, there is nothing to select, the delete does nothing, and an
+      // empty board is exactly what a broken live update produces.
+      await expect.poll(
+        () => sceneElementCount(page2),
+        { timeout: 15_000, intervals: [250, 500, 1_000] },
+      ).toBe(1);
+
+      // And it is really the same element, not something browser 2 drew.
+      const [remoteId, localId] = await Promise.all([
+        sceneElementIds(page2),
+        sceneElementIds(page1),
+      ]);
+      expect(remoteId).toEqual(localId);
+
+      // Deleting it there must reach browser 1 and the server, which proves
+      // the channel carries changes in both directions.
+      await interactiveCanvas(page2).click({ position: { x: 400, y: 300 } });
+      await page2.keyboard.press("Control+A");
+      await page2.keyboard.press("Delete");
+      await expect.poll(async () =>
+        activeElements(await getDrawing(request, drawing.id)).length,
+      { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(0);
     } finally {
       await context1.close();
       await context2.close();
@@ -123,7 +168,7 @@ test.describe("Real-time Collaboration", () => {
 
     await page.goto(`/editor/${drawing.id}`);
     await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
-    await drawRectangle(page, 150, 150);
+    await drawRectangle(page, 420, 150);
     let persistedElementId = "";
     await expect.poll(async () => {
       const elements = activeElements(await getDrawing(request, drawing.id));

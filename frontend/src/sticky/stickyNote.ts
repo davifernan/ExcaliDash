@@ -130,6 +130,15 @@ export function createStickyNote(
 
   return {
     ...rectangle,
+    // Excalidraw orders the board by a fractional index, and hands this one
+    // "a0" — the lowest there is — because it was indexed inside a one-element
+    // array of its own. The editor repairs that on the way in, so nothing
+    // visibly goes wrong today, but claiming to be the bottom of a board this
+    // element has never been part of is a statement that happens to be
+    // harmless rather than one that is true. Null is what the schema means by
+    // "not placed yet", and it leaves the ordering to the only code that knows
+    // the board.
+    index: null,
     customData: { ...(rectangle.customData ?? {}), [STICKY_KEY]: data },
   };
 }

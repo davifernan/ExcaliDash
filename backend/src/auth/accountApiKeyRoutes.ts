@@ -3,6 +3,8 @@ import { logAuditEvent } from "../utils/audit";
 import { apiKeyCreateSchema } from "./schemas";
 import {
   DEFAULT_API_KEY_SCOPES,
+  DRAWINGS_HISTORY_SCOPE,
+  DRAWINGS_SHARE_SCOPE,
   generateApiKey,
   parseApiKeyScopes,
   serializeApiKeyScopes,
@@ -31,7 +33,13 @@ const serializeApiKeyMetadata = (apiKey: {
 
 const normalizeApiKeyScopes = (scopes: string[] | undefined): string[] | null => {
   if (!scopes) return [...DEFAULT_API_KEY_SCOPES];
-  const allowedScopes = new Set<string>(DEFAULT_API_KEY_SCOPES);
+  // The opt-in scopes are grantable but not granted by default, so an agent
+  // can be given history or sharing access without every key carrying it.
+  const allowedScopes = new Set<string>([
+    ...DEFAULT_API_KEY_SCOPES,
+    DRAWINGS_HISTORY_SCOPE,
+    DRAWINGS_SHARE_SCOPE,
+  ]);
   const normalized = Array.from(new Set(scopes.map((scope) => scope.trim()).filter(Boolean)));
   if (normalized.length === 0 || normalized.some((scope) => !allowedScopes.has(scope))) {
     return null;

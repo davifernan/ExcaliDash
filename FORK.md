@@ -11,6 +11,7 @@ self-hostable combination of all of them.
 | [#249](https://github.com/ZimengXiong/ExcaliDash/pull/249) | Reveal toggle on password fields, live match feedback, opt-in longer sessions |
 | [#250](https://github.com/ZimengXiong/ExcaliDash/pull/250) | The E2E job stops locking itself out with HTTP 429 |
 | not upstream yet | Admin-created accounts can be invited by email instead of handing a password over by chat |
+| not upstream yet | Agents authenticate with an API key: the websocket accepts them too, and an admin tab lists and revokes them |
 
 ## Hosting it
 
@@ -55,6 +56,16 @@ Both default to on and only need setting to switch them off:
 ENABLE_SNAPSHOT_COMPRESSION=true   # store snapshots compressed (~90 % smaller)
 ENABLE_SNAPSHOT_VACUUM=true        # return freed database pages to the filesystem
 ```
+
+### Agents
+
+An agent is an API key belonging to a user, not an account of its own, so anything it
+creates already belongs to that user and nothing has to be shared afterwards. Users create
+keys under **Profile → API keys**; admins see and revoke every key under **Admin → Agents**.
+
+Beyond the default scopes, a key can be granted `drawings:history` and `drawings:share`.
+Both are opt-in: an ordinary key can neither read a drawing's history nor hand it to another
+account.
 
 ### Session length
 

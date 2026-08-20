@@ -130,6 +130,28 @@ export const validateManifestReferences = (
   }
 };
 
+export const assertSceneMemoryBudget = (
+  archive: StreamingZipArchive,
+  manifest: ExcalidashManifest,
+  maxBytes: number,
+): void => {
+  let admittedBytes = 0;
+  for (const drawing of manifest.drawings) {
+    admittedBytes += requireEntry(archive, drawing.filePath).uncompressedSize;
+  }
+  if (manifest.formatVersion === 2) {
+    for (const snapshot of manifest.snapshots) {
+      admittedBytes += requireEntry(archive, snapshot.filePath).uncompressedSize;
+    }
+  }
+  if (admittedBytes > maxBytes) {
+    throw new ImportValidationError(
+      "Drawing and snapshot data exceed the safe in-memory import limit",
+      413,
+    );
+  }
+};
+
 export const parseScene = (
   raw: Buffer,
   meta: { name: string; collectionId?: string | null },

@@ -10,7 +10,9 @@ export type DrawingPrincipal = {
   userId: string;
   /**
    * Only the auth-disabled bootstrap identity may represent an inactive row.
-   * Real JWT/API-key principals must be checked again on every access lookup.
+   * Real JWT/API-key principals must be revalidated on access; the live socket
+   * path may coalesce this one status read for a few hundred milliseconds and
+   * explicitly invalidates it on account changes.
    */
   allowInactive?: boolean;
   apiKey?: {
@@ -121,6 +123,7 @@ export const getDrawingAccess = async (params: {
   principal: DrawingPrincipal | null;
   drawingId: string;
   now?: Date;
+  isUserActive?: (userId: string) => Promise<boolean>;
 }): Promise<DrawingAccess> => {
   const nowMs = (params.now ?? new Date()).getTime();
 
@@ -129,13 +132,19 @@ export const getDrawingAccess = async (params: {
   // User-based access (owner or explicit ACL).
   if (params.principal?.kind === "user") {
     if (!params.principal.allowInactive) {
-      const account = await params.prisma.user.findUnique({
-        where: { id: params.principal.userId },
-        select: { isActive: true },
-      });
+      const accountIsActive = params.isUserActive
+        ? await params.isUserActive(params.principal.userId)
+        : Boolean(
+            (
+              await params.prisma.user.findUnique({
+                where: { id: params.principal.userId },
+                select: { isActive: true },
+              })
+            )?.isActive,
+          );
       // An authenticated inactive account must not retain access through a
       // public-link fallback on an already established connection.
-      if (!account?.isActive) return "none";
+      if (!accountIsActive) return "none";
     }
     const drawing = await params.prisma.drawing.findUnique({
       where: { id: params.drawingId },

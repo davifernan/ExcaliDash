@@ -44,6 +44,7 @@ export const Editor: React.FC = () => {
     appState: any;
     files: any;
   } | null>(null);
+  const isHistoryPreviewing = useRef(false);
   const { isHeaderVisible, setIsHeaderVisible } = useEditorChrome({
     drawingName,
     autoHideEnabled,
@@ -146,7 +147,7 @@ export const Editor: React.FC = () => {
             ? filesInput
             : Object.values(filesInput || {});
           originalAddFiles(normalizedFiles);
-          if (isSyncing.current) return;
+          if (isSyncing.current || isHistoryPreviewing.current) return;
           const nextFiles = api.getFiles?.() || {};
           const didEmit = emitFilesDeltaIfNeeded(nextFiles);
           if (didEmit && id && latestAppStateRef.current && debouncedSaveRef.current) {
@@ -261,6 +262,7 @@ export const Editor: React.FC = () => {
       initialSceneElements: initialSceneElementsRef,
       isBootstrappingScene,
       isSyncing,
+      isHistoryPreviewing,
       isUnmounting,
       lastLocalChangeAt: lastLocalChangeAtRef,
       latestAppState: latestAppStateRef,
@@ -370,6 +372,7 @@ export const Editor: React.FC = () => {
         isHistoryOpen={isHistoryOpen}
         isShareOpen={isShareOpen}
         previewBackupRef={previewBackup}
+        isHistoryPreviewingRef={isHistoryPreviewing}
         onCloseHistory={() => setIsHistoryOpen(false)}
         onCloseShare={() => setIsShareOpen(false)}
       />

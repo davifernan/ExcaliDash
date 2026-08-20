@@ -133,6 +133,7 @@ export type RegisterImportExportDeps = {
   MAX_IMPORT_DRAWING_BYTES: number;
   MAX_IMPORT_ENTRY_BYTES: number;
   MAX_IMPORT_TOTAL_EXTRACTED_BYTES: number;
+  MAX_IMPORT_SCENE_MEMORY_BYTES?: number;
 };
 
 export const normalizeArchivePath = (filePath: string): string =>

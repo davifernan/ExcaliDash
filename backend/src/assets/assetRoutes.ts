@@ -16,6 +16,7 @@ import { canEditDrawing, canViewDrawing, getDrawingAccess } from "../authz/shari
 import { resolveStoragePath } from "./assetStorage";
 import { AssetTooLargeError, QuotaExceededError, createAsset, usedBytesFor } from "./assetService";
 import { PdfRejectedError } from "./pdfRenderer";
+import { QueueAbortedError, QueueCapacityError } from "./pageCache";
 
 const ID = /^[\w-]{1,64}$/;
 
@@ -32,6 +33,7 @@ export type AssetRouteDeps = {
   getPage: (
     asset: any,
     page: number,
+    signal?: AbortSignal,
   ) => Promise<{
     body: Buffer;
     mimeType: string;
@@ -286,7 +288,17 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
       }
 
       try {
-        const rendered = await deps.getPage(found.asset, page);
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        req.once("aborted", abort);
+        res.once("close", abort);
+        let rendered;
+        try {
+          rendered = await deps.getPage(found.asset, page, controller.signal);
+        } finally {
+          req.off("aborted", abort);
+          res.off("close", abort);
+        }
         res.setHeader("Content-Type", rendered.mimeType);
         res.setHeader("Content-Disposition", contentDisposition("inline", `page-${page}`));
         res.setHeader("X-Content-Type-Options", "nosniff");
@@ -298,6 +310,13 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         if (rendered.contentEncoding) res.setHeader("Content-Encoding", rendered.contentEncoding);
         return res.send(rendered.body);
       } catch (err) {
+        if (err instanceof QueueAbortedError) return;
+        if (err instanceof QueueCapacityError) {
+          return res.status(503).json({
+            error: "Renderer busy",
+            message: "Too many document pages are waiting to render. Try again shortly.",
+          });
+        }
         if (err instanceof PdfRejectedError) {
           return res.status(422).json({ error: "Page unavailable", message: err.message });
         }

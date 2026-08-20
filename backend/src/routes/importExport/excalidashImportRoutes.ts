@@ -17,6 +17,7 @@ import {
 import {
   PreparedDrawing,
   PreparedSnapshot,
+  assertSceneMemoryBudget,
   canonicalMimeType,
   openArchive,
   parseManifest,
@@ -96,6 +97,9 @@ export const registerExcalidashImportRoutes = (deps: RegisterImportExportDeps) =
         };
         const manifest = await parseManifest(archive, budget, deps.MAX_IMPORT_MANIFEST_BYTES);
         validateManifestReferences(archive, manifest, deps);
+
+        const sceneMemoryLimit = deps.MAX_IMPORT_SCENE_MEMORY_BYTES ?? 64 * 1024 * 1024;
+        assertSceneMemoryBudget(archive, manifest, sceneMemoryLimit);
 
         const preparedDrawings: PreparedDrawing[] = [];
         for (const drawing of manifest.drawings) {

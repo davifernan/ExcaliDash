@@ -72,6 +72,7 @@ interface ImportConfig {
   maxArchiveBytes: number;
   maxEntryBytes: number;
   maxExtractedBytes: number;
+  maxSceneMemoryBytes: number;
 }
 
 interface MaintenanceConfig {
@@ -99,6 +100,7 @@ interface Config {
   enableRefreshTokenRotation: boolean;
   enableAuditLogging: boolean;
   enableSnapshotCompression: boolean;
+  snapshotMaxCountPerDrawing: number;
   enforceHttpsRedirect: boolean;
   bootstrapSetupCodeTtlMs: number;
   bootstrapSetupCodeMaxAttempts: number;
@@ -129,6 +131,7 @@ export interface AssetConfig {
   cacheBudgetBytes: number;
   minFreeDiskPercent: number;
   renderConcurrency: number;
+  renderQueueLimit: number;
   /**
    * Rebuilding an uploaded PDF re-encodes its images and can make an
    * image-heavy document a fraction of its size. "printer" keeps 300 dpi and
@@ -137,6 +140,8 @@ export interface AssetConfig {
    */
   pdfShrinkLevel: "printer" | "ebook" | "screen" | "off";
   pdfShrinkMinBytes: number;
+  pdfShrinkConcurrency: number;
+  pdfShrinkQueueLimit: number;
 }
 
 export type AuthMode = "local" | "hybrid" | "oidc_enforced";
@@ -422,6 +427,7 @@ export const config: Config = {
   enableRefreshTokenRotation: getOptionalBoolean("ENABLE_REFRESH_TOKEN_ROTATION", true),
   enableAuditLogging: getOptionalBoolean("ENABLE_AUDIT_LOGGING", false),
   enableSnapshotCompression: getOptionalBoolean("ENABLE_SNAPSHOT_COMPRESSION", true),
+  snapshotMaxCountPerDrawing: getRequiredEnvNumber("SNAPSHOT_MAX_COUNT_PER_DRAWING", 100),
   enforceHttpsRedirect: getOptionalBoolean("ENFORCE_HTTPS_REDIRECT", true),
   bootstrapSetupCodeTtlMs: getRequiredEnvNumber("BOOTSTRAP_SETUP_CODE_TTL_MS", 15 * 60 * 1000),
   bootstrapSetupCodeMaxAttempts: getRequiredEnvNumber("BOOTSTRAP_SETUP_CODE_MAX_ATTEMPTS", 10),
@@ -433,6 +439,10 @@ export const config: Config = {
     maxArchiveBytes: getRequiredEnvNumber("IMPORT_MAX_ARCHIVE_MB", 2300) * 1024 * 1024,
     maxEntryBytes: getRequiredEnvNumber("IMPORT_MAX_ENTRY_MB", 128) * 1024 * 1024,
     maxExtractedBytes: getRequiredEnvNumber("IMPORT_MAX_EXTRACTED_MB", 2200) * 1024 * 1024,
+    // Parsed JSON expands beyond its UTF-8 representation. Keep all drawing
+    // and snapshot payloads admitted by the importer well below a small VPS's
+    // Node heap even when the archive/disk allowance is much larger.
+    maxSceneMemoryBytes: getRequiredEnvNumber("IMPORT_MAX_SCENE_MEMORY_MB", 64) * 1024 * 1024,
   },
   maintenance: {
     authCleanupSchedule: getOptionalEnv("AUTH_CLEANUP_SCHEDULE", "0 0 3 * * *"),
@@ -472,6 +482,7 @@ export const config: Config = {
     // One page at a time. Rendering foreign PDFs is the expensive and risky
     // part; doing several at once is how a small machine falls over.
     renderConcurrency: getRequiredEnvNumber("ASSET_RENDER_CONCURRENCY", 1),
+    renderQueueLimit: getRequiredEnvNumber("ASSET_RENDER_QUEUE_LIMIT", 32),
     // Only files where the saving is worth it. Below this a rebuild risks
     // changing a document for a gain nobody would notice.
     pdfShrinkLevel: (["printer", "ebook", "screen", "off"] as const).includes(
@@ -480,6 +491,8 @@ export const config: Config = {
       ? (getOptionalEnv("ASSET_PDF_SHRINK", "printer") as "printer" | "ebook" | "screen" | "off")
       : "printer",
     pdfShrinkMinBytes: getRequiredEnvNumber("ASSET_PDF_SHRINK_MIN_MB", 4) * 1024 * 1024,
+    pdfShrinkConcurrency: getRequiredEnvNumber("ASSET_PDF_SHRINK_CONCURRENCY", 1),
+    pdfShrinkQueueLimit: getRequiredEnvNumber("ASSET_PDF_SHRINK_QUEUE_LIMIT", 2),
   },
 };
 

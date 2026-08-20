@@ -27,6 +27,11 @@ import {
   storeStream,
 } from "./assetStorage";
 import { RENDERER_VERSION, renderPage } from "./pdfRenderer";
+import {
+  BoundedTaskQueue,
+  QueueAbortedError,
+  QueueCapacityError,
+} from "../utils/boundedTaskQueue";
 
 export type CachedPage = {
   body: Buffer;
@@ -40,6 +45,8 @@ export type PageCacheDeps = {
   minFreeDiskPercent: number;
   /** Maximum number of Poppler page-render jobs running in this process. */
   renderConcurrency?: number;
+  /** Maximum number of distinct pages allowed to wait for a renderer. */
+  renderQueueLimit?: number;
   /** Swappable so tests do not need poppler. */
   render?: typeof renderPage;
   now?: () => number;
@@ -76,77 +83,89 @@ export async function freeDiskPercent(path: string): Promise<number | null> {
   }
 }
 
-/** Renders in flight, so concurrent readers of the same page share one. */
-const inFlight = new Map<string, Promise<CachedPage>>();
-
-type RenderJob<T> = {
-  limit: number;
-  work: () => Promise<T>;
-  resolve: (value: T) => void;
-  reject: (reason: unknown) => void;
+type InFlightPage = {
+  promise: Promise<CachedPage>;
+  controller: AbortController;
+  waiters: number;
 };
 
-/**
- * One process-wide queue protects the VPS even when requests target different
- * assets and pages. Each job contains a complete renderPage call, so its SVG
- * process and possible PNG fallback occupy one slot together.
- */
-class GlobalRenderQueue {
-  private active = 0;
-  private readonly waiting: Array<RenderJob<unknown>> = [];
-
-  run<T>(limit: number, work: () => Promise<T>): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      this.waiting.push({ limit, work, resolve, reject } as RenderJob<unknown>);
-      this.drain();
-    });
-  }
-
-  private drain(): void {
-    const next = this.waiting[0];
-    if (!next || this.active >= next.limit) return;
-
-    this.waiting.shift();
-    this.active += 1;
-    void next
-      .work()
-      .then(next.resolve, next.reject)
-      .finally(() => {
-        this.active -= 1;
-        this.drain();
-      });
-    this.drain();
-  }
-}
-
-const globalRenderQueue = new GlobalRenderQueue();
+/** Renders in flight, so concurrent readers of the same page share one. */
+const inFlight = new Map<string, InFlightPage>();
+const globalRenderQueue = new BoundedTaskQueue();
 
 const renderConcurrency = (configured?: number): number => {
   const value = configured ?? Number(process.env.ASSET_RENDER_CONCURRENCY ?? "1");
   return Number.isInteger(value) && value > 0 ? value : 1;
 };
 
+const renderQueueLimit = (configured?: number): number => {
+  const value = configured ?? Number(process.env.ASSET_RENDER_QUEUE_LIMIT ?? "32");
+  return Number.isInteger(value) && value > 0 ? value : 32;
+};
+
+export { QueueAbortedError, QueueCapacityError };
+
 export async function getPage(
   deps: PageCacheDeps,
   asset: { id: string; blob: { storageKey: string } },
   page: number,
+  signal?: AbortSignal,
 ): Promise<CachedPage> {
   const cached = await readCached(deps.storageDir, asset.id, page);
   if (cached) return cached;
 
   const key = `${asset.id}:${page}:${RENDERER_VERSION}`;
-  const existing = inFlight.get(key);
-  if (existing) return existing;
-
-  const work = produce(deps, asset, page).finally(() => inFlight.delete(key));
-  inFlight.set(key, work);
-  return work;
+  let entry = inFlight.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    entry = { controller, waiters: 0, promise: Promise.resolve(null as never) };
+    entry.promise = produce(deps, asset, page, controller.signal).finally(() =>
+      inFlight.delete(key),
+    );
+    // All callers may disconnect before the shared render promise settles.
+    // Keep a sink attached so cancellation cannot become an unhandled process
+    // rejection after the per-request promises have already been rejected.
+    void entry.promise.catch(() => undefined);
+    inFlight.set(key, entry);
+  }
+  return waitForPage(entry, signal);
 }
+
+const waitForPage = (entry: InFlightPage, signal?: AbortSignal): Promise<CachedPage> => {
+  entry.waiters += 1;
+  return new Promise<CachedPage>((resolve, reject) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return false;
+      settled = true;
+      entry.waiters -= 1;
+      if (entry.waiters === 0 && signal?.aborted) entry.controller.abort();
+      signal?.removeEventListener("abort", abort);
+      return true;
+    };
+    const abort = () => {
+      if (!finish()) return;
+      if (entry.waiters === 0) entry.controller.abort();
+      reject(new QueueAbortedError());
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) return abort();
+    entry.promise.then(
+      (value) => {
+        if (finish()) resolve(value);
+      },
+      (error) => {
+        if (finish()) reject(error);
+      },
+    );
+  });
+};
 
 async function produce(
   deps: PageCacheDeps,
   asset: { id: string; blob: { storageKey: string } },
   page: number,
+  signal: AbortSignal,
 ): Promise<CachedPage> {
   const free = await freeDiskPercent(deps.storageDir);
   if (free !== null && free < deps.minFreeDiskPercent) {
@@ -160,8 +179,13 @@ async function produce(
 
   const render = deps.render ?? renderPage;
   const source = resolveStoragePath(deps.storageDir, asset.blob.storageKey);
-  const rendered = await globalRenderQueue.run(renderConcurrency(deps.renderConcurrency), () =>
-    render(source, page),
+  const rendered = await globalRenderQueue.run(
+    {
+      concurrency: renderConcurrency(deps.renderConcurrency),
+      maxWaiting: renderQueueLimit(deps.renderQueueLimit),
+      signal,
+    },
+    () => render(source, page),
   );
 
   const compress = shouldCompress(rendered.mimeType);

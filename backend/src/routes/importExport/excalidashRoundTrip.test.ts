@@ -37,6 +37,8 @@ describe("ExcaliDash backup round trip", () => {
       updatedAt: now,
     };
     const imported: Array<Record<string, unknown>> = [];
+    const drawingFindManyArgs: any[] = [];
+    let drawingFindUniqueCalls = 0;
     const tx = {
       collection: {
         findUnique: async () => null,
@@ -65,8 +67,14 @@ describe("ExcaliDash backup round trip", () => {
     };
     const prisma = {
       drawing: {
-        findMany: async () => [exportedDrawing],
-        findUnique: async () => null,
+        findMany: async (args: any) => {
+          drawingFindManyArgs.push(args);
+          return [exportedDrawing];
+        },
+        findUnique: async () => {
+          drawingFindUniqueCalls += 1;
+          return exportedDrawing;
+        },
       },
       collection: {
         findMany: async () => [],
@@ -148,6 +156,11 @@ describe("ExcaliDash backup round trip", () => {
     await exportEnded;
     const archive = Buffer.concat(chunks);
     expect(archive.length).toBeGreaterThan(0);
+    expect(drawingFindManyArgs[0].select).not.toHaveProperty("elements");
+    expect(drawingFindManyArgs[0].select).not.toHaveProperty("files");
+    // One bounded preflight read and one lazy archive-stream read. The full
+    // scene is never part of the all-drawings metadata query.
+    expect(drawingFindUniqueCalls).toBeGreaterThanOrEqual(2);
 
     const stagedFilename = "a".repeat(32);
     await fs.promises.writeFile(path.join(uploadDir, stagedFilename), archive);

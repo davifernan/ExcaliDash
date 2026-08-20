@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 import { pageCacheKey, resolveStoragePath, storeStream } from "./assetStorage";
 import { RENDERER_VERSION } from "./pdfRenderer";
-import { DiskFullError, evictToBudget, getPage, listCached } from "./pageCache";
+import {
+  DiskFullError,
+  QueueAbortedError,
+  QueueCapacityError,
+  evictToBudget,
+  getPage,
+  listCached,
+} from "./pageCache";
 import { Readable } from "node:stream";
 
 let storageDir: string;
@@ -118,6 +125,58 @@ describe("rendering a page once", () => {
 
     expect(slowRender).toHaveBeenCalledTimes(8);
     expect(maximum).toBe(2);
+  });
+
+  it("rejects distinct pages beyond the bounded render wait queue", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slowRender = vi.fn(async (_path: string, page: number) => {
+      if (page === 1) await gate;
+      return { body: Buffer.from(`png-${page}`), mimeType: "image/png" as const };
+    });
+    const options = deps({ render: slowRender, renderConcurrency: 1, renderQueueLimit: 1 });
+    const page = (number: number) =>
+      getPage(options, { id: `queued-${number}`, blob: { storageKey: `originals/${number}` } }, number);
+
+    const first = page(1);
+    const second = page(2);
+    await expect(page(3)).rejects.toBeInstanceOf(QueueCapacityError);
+    release();
+    await Promise.all([first, second]);
+    expect(slowRender).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a disconnected request from the render wait queue", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const render = vi.fn(async (_path: string, page: number) => {
+      if (page === 10) await gate;
+      return { body: Buffer.from(`png-${page}`), mimeType: "image/png" as const };
+    });
+    const options = deps({ render, renderConcurrency: 1, renderQueueLimit: 1 });
+    const first = getPage(
+      options,
+      { id: "abort-active", blob: { storageKey: "originals/active" } },
+      10,
+    );
+    const controller = new AbortController();
+    const waiting = getPage(
+      options,
+      { id: "abort-waiting", blob: { storageKey: "originals/waiting" } },
+      11,
+      controller.signal,
+    );
+    controller.abort();
+
+    await expect(waiting).rejects.toBeInstanceOf(QueueAbortedError);
+    const replacement = getPage(
+      options,
+      { id: "abort-replacement", blob: { storageKey: "originals/replacement" } },
+      12,
+    );
+    release();
+    await Promise.all([first, replacement]);
+    expect(render).not.toHaveBeenCalledWith(expect.anything(), 11);
   });
 });
 

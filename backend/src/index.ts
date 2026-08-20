@@ -529,6 +529,7 @@ registerDashboardRoutes(app, {
   ensureTrashCollection,
   invalidateDrawingsCache,
   collaborationAccess,
+  io,
   buildDrawingsCacheKey,
   getCachedDrawingsBody,
   cacheDrawingsResponse,
@@ -562,6 +563,8 @@ registerAssetRoutes({
         storageDir: config.assets.storageDir,
         cacheBudgetBytes: config.assets.cacheBudgetBytes,
         minFreeDiskPercent: config.assets.minFreeDiskPercent,
+        renderConcurrency: config.assets.renderConcurrency,
+        renderQueueLimit: config.assets.renderQueueLimit,
       },
       asset,
       page,
@@ -578,6 +581,8 @@ registerAssetRoutes({
       {
         level: config.assets.pdfShrinkLevel,
         minBytes: config.assets.pdfShrinkMinBytes,
+        concurrency: config.assets.pdfShrinkConcurrency,
+        maxWaiting: config.assets.pdfShrinkQueueLimit,
       },
     );
     return { finalBytes: result.finalBytes, note: describeShrink(result) };
@@ -608,6 +613,7 @@ registerImportExportRoutes({
   MAX_IMPORT_MANIFEST_BYTES,
   MAX_IMPORT_DRAWING_BYTES,
   MAX_IMPORT_TOTAL_EXTRACTED_BYTES: config.imports.maxExtractedBytes,
+  MAX_IMPORT_SCENE_MEMORY_BYTES: config.imports.maxSceneMemoryBytes,
 });
 app.use(errorHandler);
 export { app, httpServer };

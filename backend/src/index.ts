@@ -564,7 +564,7 @@ registerAssetRoutes({
   storageDir: config.assets.storageDir,
   maxUploadBytes: config.assets.maxUploadBytes,
   maxPerUserBytes: config.assets.maxPerUserBytes,
-  getPage: (asset, page) =>
+  getPage: (asset, page, signal) =>
     getAssetPage(
       {
         storageDir: config.assets.storageDir,
@@ -575,6 +575,7 @@ registerAssetRoutes({
       },
       asset,
       page,
+      signal,
     ),
   describeUpload: async (asset) => {
     const info = await inspectPdf(
@@ -582,17 +583,14 @@ registerAssetRoutes({
     );
     return { pageCount: info.pageCount };
   },
-  optimizeUpload: async (asset) => {
-    const result = await shrinkPdf(
-      resolveStoragePath(config.assets.storageDir, asset.blob.storageKey),
-      {
-        level: config.assets.pdfShrinkLevel,
-        minBytes: config.assets.pdfShrinkMinBytes,
-        concurrency: config.assets.pdfShrinkConcurrency,
-        maxWaiting: config.assets.pdfShrinkQueueLimit,
-      },
-    );
-    return { finalBytes: result.finalBytes, note: describeShrink(result) };
+  optimizeUpload: async (stored) => {
+    const result = await shrinkPdf(stored.path, {
+      level: config.assets.pdfShrinkLevel,
+      minBytes: config.assets.pdfShrinkMinBytes,
+      concurrency: config.assets.pdfShrinkConcurrency,
+      maxWaiting: config.assets.pdfShrinkQueueLimit,
+    });
+    return { note: describeShrink(result) };
   },
 });
 registerImportExportRoutes({

@@ -181,7 +181,7 @@ async function produce(
       maxWaiting: renderQueueLimit(deps.renderQueueLimit),
       signal,
     },
-    () => render(source, page),
+    () => render(source, page, undefined, signal),
   );
 
   const compress = shouldCompress(rendered.mimeType);

@@ -21,4 +21,30 @@ describe("ActiveAccountCache", () => {
     await expect(cache.get("user-1")).resolves.toBe(false);
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it("bounds identities even when none have expired", async () => {
+    const load = vi.fn(async () => true);
+    const cache = new ActiveAccountCache(load, 250, () => 0, 2);
+
+    await cache.get("user-1");
+    await cache.get("user-2");
+    await cache.get("user-3");
+    await cache.get("user-1");
+
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
+  it("removes expired identities from other users under churn", async () => {
+    let now = 0;
+    const load = vi.fn(async () => true);
+    const cache = new ActiveAccountCache(load, 250, () => now, 2);
+
+    await cache.get("user-1");
+    await cache.get("user-2");
+    now = 251;
+    await cache.get("user-3");
+    await cache.get("user-2");
+
+    expect(load).toHaveBeenCalledTimes(4);
+  });
 });

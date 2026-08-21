@@ -9,9 +9,13 @@
  *
  * Documents therefore go to disk, and only an id for them goes into the board.
  */
-import { createBrotliCompress, constants as zlibConstants } from "node:zlib";
+import {
+  createBrotliCompress,
+  createBrotliDecompress,
+  constants as zlibConstants,
+} from "node:zlib";
 import { createHash } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -189,6 +193,34 @@ export async function storedSize(root: string, storageKey: string): Promise<numb
   } catch {
     return null;
   }
+}
+
+/**
+ * Re-read bytes after an in-place preparation step and derive all metadata
+ * that identifies the blob. The hash is over the bytes a client receives,
+ * matching `storeStream` even when storage compression is in use.
+ */
+export async function inspectStoredFile(root: string, stored: StoredFile): Promise<StoredFile> {
+  const path = resolveStoragePath(root, stored.storageKey);
+  const diskBytes = await stat(path);
+  if (!diskBytes.isFile()) throw new Error(`Stored asset is not a file: ${stored.storageKey}`);
+
+  const hash = createHash("sha256");
+  let sizeBytes = 0;
+  const source = createReadStream(path);
+  const contents = stored.contentEncoding === "br" ? source.pipe(createBrotliDecompress()) : source;
+  for await (const chunk of contents) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    sizeBytes += bytes.length;
+    hash.update(bytes);
+  }
+
+  return {
+    ...stored,
+    sizeBytes,
+    storedBytes: diskBytes.size,
+    sha256: hash.digest("hex"),
+  };
 }
 
 /** Remove a stored file. Missing counts as success — the goal is that it is gone. */

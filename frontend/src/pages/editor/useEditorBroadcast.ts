@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
-import { getFilesDelta } from "./shared";
+import { getFilesDelta, getPersistedAppState } from "./shared";
 
 const ELEMENT_ORDER_BYTE_LIMIT = 8 * 1024 * 1024;
 const ELEMENT_UPDATE_ACK_TIMEOUT_MS = 3_000;
@@ -57,6 +57,9 @@ export const useEditorBroadcast = ({
   recordElementVersion,
   setHasSceneChangesSinceLoad,
 }: UseEditorBroadcastParams) => {
+  // The settings this session has written to the board. Null means it has
+  // written none yet, so the first change of any kind saves them once.
+  const savedSettingsRef = useRef<string | null>(null);
   const timeoutRef = useRef<number | null>(null);
   const lastRunAtRef = useRef(0);
   const trailingArgsRef = useRef<[readonly any[], Record<string, any> | undefined] | null>(null);
@@ -79,6 +82,19 @@ export const useEditorBroadcast = ({
       if (Object.keys(nextFiles || {}).length > 0) {
         latestFilesRef.current = nextFiles;
       }
+      // A board also remembers settings — its background, its grid, whether it
+      // snaps. Those live in appState, not in any element, so a change to one
+      // of them produces no element, file or ordering difference. Until the
+      // ordering signature was initialised on load, the first change of a
+      // session always looked like an ordering change and carried the settings
+      // to the server by accident. With that fixed, turning snapping off
+      // stopped being saved at all and came back on the next reload.
+      // Compared against what was last written, not against the previous call:
+      // the first call of a session can be the change itself, and a baseline
+      // taken there would already hold the new value.
+      const settings = JSON.stringify(getPersistedAppState(latestAppStateRef.current));
+      const settingsChanged = settings !== savedSettingsRef.current;
+
       if (changes.length > 0 || shouldSyncFiles || shouldSyncOrder) {
         setHasSceneChangesSinceLoad();
         lastLocalChangeAtRef.current = new Date().getTime();
@@ -125,8 +141,12 @@ export const useEditorBroadcast = ({
         } else {
           socket.emit("element-update", payload, acknowledge);
         }
+      }
+
+      if (changes.length > 0 || shouldSyncFiles || shouldSyncOrder || settingsChanged) {
         const appState = latestAppStateRef.current;
         if (appState) {
+          savedSettingsRef.current = settings;
           debouncedSave(drawingId, normalizedElements, appState, nextFiles);
           debouncedSavePreview(drawingId);
         }

@@ -1,6 +1,6 @@
 import React from "react";
 import { Excalidraw, Footer, MainMenu } from "@excalidraw/excalidraw";
-import { ArrowLeft, Download, History } from "lucide-react";
+import { ArrowLeft, Download, History, LocateFixed, Share2 } from "lucide-react";
 import { Toaster } from "sonner";
 import { LanguageSelector } from "../../components/LanguageSelector";
 import { UIOptions } from "./shared";
@@ -16,6 +16,7 @@ import type { WorkshopTimerController } from "./workshopTimer";
 import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
 import { InviteHereOverlay, type InviteHereUiState } from "./InviteHereOverlay";
 import { CursorChatComposer } from "./CursorChatComposer";
+import { MobileTimerCorner } from "./MobileTimerCorner";
 
 type EditorViewProps = {
   id?: string;
@@ -157,11 +158,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
             renderTopRightUI={(isMobile) => (
               <EditorTopRight
                 isMobile={isMobile}
-                canEdit={canEdit}
                 followerNotice={describeFollowers(followers)}
                 showInvite={canEdit && peers.length > 0}
                 inviteHere={inviteHere}
-                timer={workshopTimer}
                 showShare={accessLevel === "owner" && !!id}
                 onShareOpen={onShareOpen}
               />
@@ -200,6 +199,21 @@ export const EditorView: React.FC<EditorViewProps> = ({
                   Version history
                 </MainMenu.Item>
               ) : null}
+              {/*
+                Also in the menu, because the island stands down on the mobile
+                layout: Excalidraw's tool row fills the width there and an island
+                beside it pushes tools off the screen.
+              */}
+              {accessLevel === "owner" && id ? (
+                <MainMenu.Item onSelect={onShareOpen} icon={<Share2 size={16} />}>
+                  Share
+                </MainMenu.Item>
+              ) : null}
+              {canEdit && peers.length > 0 ? (
+                <MainMenu.Item onSelect={inviteHere.invite} icon={<LocateFixed size={16} />}>
+                  Invite everyone here
+                </MainMenu.Item>
+              ) : null}
               <MainMenu.DefaultItems.ClearCanvas />
               <MainMenu.DefaultItems.ChangeCanvasBackground />
               <MainMenu.DefaultItems.Help />
@@ -209,6 +223,18 @@ export const EditorView: React.FC<EditorViewProps> = ({
               </MainMenu.ItemCustom>
             </MainMenu>
           </Excalidraw>
+          {/*
+            On the mobile layout Excalidraw renders no Footer at all, so the
+            timer would simply not exist there -- and the top row is far too
+            narrow to take it: putting it in the island pushed four tools off
+            the screen. It gets its own corner instead, above Excalidraw's own
+            bottom bar.
+          */}
+          {mobile ? (
+            <MobileTimerCorner container={excalidrawRoot}>
+              <WorkshopTimerWidget timer={workshopTimer} canEdit={canEdit} />
+            </MobileTimerCorner>
+          ) : null}
           <EditorTopLeft
             container={excalidrawRoot}
             zenMode={zenMode}

@@ -26,17 +26,13 @@
  */
 import React from "react";
 import { LocateFixed, Share2 } from "lucide-react";
-import type { WorkshopTimerController } from "./workshopTimer";
-import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
 import type { InviteHereUiState } from "./InviteHereOverlay";
 
 type EditorTopRightProps = {
   isMobile: boolean;
-  canEdit: boolean;
   followerNotice: string | null;
   showInvite: boolean;
   inviteHere: InviteHereUiState;
-  timer: WorkshopTimerController;
   showShare: boolean;
   onShareOpen: () => void;
 };
@@ -68,23 +64,19 @@ const iconButton: React.CSSProperties = {
 
 export const EditorTopRight: React.FC<EditorTopRightProps> = ({
   isMobile,
-  canEdit,
   followerNotice,
   showInvite,
   inviteHere,
-  timer,
   showShare,
   onShareOpen,
 }) => {
+  // Excalidraw's mobile tool row already fills the width -- an island beside it
+  // pushes tools off the screen. Sharing and inviting move into the main menu
+  // there, which is the one place that exists at every size.
+  if (isMobile) return null;
+
   return (
     <div style={island} data-testid="editor-top-right">
-      {/*
-        On the mobile layout Excalidraw does not render the Footer at all, so
-        the timer would simply not exist. It comes along here instead -- which
-        is also the only place sharing and inviting can live on a phone, since
-        the left island stands down there to keep off the tool row.
-      */}
-      {isMobile ? <WorkshopTimerWidget timer={timer} canEdit={canEdit} /> : null}
       {followerNotice ? (
         <span
           style={{

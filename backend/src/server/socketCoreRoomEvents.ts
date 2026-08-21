@@ -16,6 +16,9 @@ type CoreRoomEventDeps = {
   emitPresence: (drawingId: string) => void;
   /** Shared, keyed budget for activity pings; see registerAuthorizedRoomEvent. */
   allowActivity: () => boolean;
+  /** Budgets shared across this person's connections; see socketRoomEvent. */
+  allowCursorMove: () => boolean;
+  allowElementUpdate: () => boolean;
 };
 
 type ActivityPayload = RoomEventPayload & { isActive: boolean };
@@ -38,6 +41,8 @@ export const registerCoreRoomEvents = ({
   setActive,
   emitPresence,
   allowActivity,
+  allowCursorMove,
+  allowElementUpdate,
 }: CoreRoomEventDeps): void => {
   registerAuthorizedRoomEvent({
     socket,
@@ -46,6 +51,7 @@ export const registerCoreRoomEvents = ({
     windowMs: 1_000,
     parse: parseCursorPayload,
     requireAccess,
+    allow: allowCursorMove,
     handle: (payload) => {
       const self = getPresence(socket.id);
       if (!self) return;
@@ -67,6 +73,7 @@ export const registerCoreRoomEvents = ({
     windowMs: 1_000,
     parse: parseElementUpdatePayload,
     requireAccess,
+    allow: allowElementUpdate,
     requireEdit: true,
     handle: (payload) => {
       socket.to(roomName(payload.drawingId)).emit("element-update", {

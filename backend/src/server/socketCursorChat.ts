@@ -45,9 +45,12 @@ const roomName = (drawingId: string) => `drawing_${drawingId}`;
 export const registerCursorChatRoomEvent = ({
   socket,
   requireAccess,
+  allow,
 }: {
   socket: Socket;
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
+  /** Budget shared across this person's connections; see socketRoomEvent. */
+  allow?: () => boolean;
 }): void => {
   registerAuthorizedRoomEvent({
     socket,
@@ -56,6 +59,7 @@ export const registerCursorChatRoomEvent = ({
     windowMs: 1_000,
     parse: parseCursorChatPayload,
     requireAccess,
+    allow,
     handle: (payload) => {
       // Volatile: a bubble that arrives late is a bubble nobody wants.
       socket.volatile.to(roomName(payload.drawingId)).emit(CURSOR_CHAT_EVENT, {

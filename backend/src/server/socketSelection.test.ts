@@ -146,4 +146,31 @@ describe("selection room event", () => {
       SELECTION_LIMITS.eventsPerSecond,
     );
   });
+
+  it("does not hand out a second budget for a second connection", async () => {
+    // A tab is free. If the budget lives on the connection, so is the budget,
+    // and every limit on this socket is decoration. The shared allowance is
+    // four times the per-connection one, so several tabs stay comfortable while
+    // fifty of them buy nothing.
+    const { io } = setup();
+    const shared = SELECTION_LIMITS.eventsPerSecond * 4;
+    const sockets = [];
+    for (let index = 0; index < 5; index += 1) {
+      const socket = await io.connect(`tab-${index}`);
+      await join(socket);
+      sockets.push(socket);
+    }
+    io.emissions.length = 0;
+
+    for (let round = 0; round <= SELECTION_LIMITS.eventsPerSecond; round += 1) {
+      for (const socket of sockets) {
+        await socket.trigger("selection-update", validPayload([`element-${round}`]));
+      }
+    }
+
+    const relayed = io.emissions.filter((item) => item.event === "selection-update");
+    // Five tabs, each within its own allowance, still share one budget.
+    expect(relayed).toHaveLength(shared);
+    expect(relayed.length).toBeLessThan(sockets.length * SELECTION_LIMITS.eventsPerSecond);
+  });
 });

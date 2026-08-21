@@ -1,6 +1,7 @@
 import express from "express";
 import { Prisma } from "../../generated/client";
 import { normalizeDrawingPermission } from "../../authz/sharing";
+import { getDrawingMemberProjections } from "../../authz/drawingMembers";
 import { getUserTrashCollectionId, toPublicTrashCollectionId } from "./trash";
 import { SortDirection, SortField } from "./types";
 import type { DrawingRouteContext } from "./drawingRouteContext";
@@ -11,6 +12,7 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
     requireAuth,
     asyncHandler,
     parseJsonField,
+    subjectKeySecret,
     buildDrawingsCacheKey,
     getCachedDrawingsBody,
     cacheDrawingsResponse,
@@ -183,6 +185,16 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
         }));
       }
 
+      const members = await getDrawingMemberProjections({
+        prisma,
+        drawingIds: responsePayload.map((d) => d.id),
+        viewerId: req.user.id,
+        secret: subjectKeySecret,
+      });
+      for (const drawing of responsePayload) {
+        drawing.members = members.get(drawing.id) ?? { totalCount: 0, items: [] };
+      }
+
       const finalResponse = {
         drawings: responsePayload,
         totalCount,
@@ -329,6 +341,16 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
         });
       } else {
         responsePayload = (drawings as any[]).map((d: any) => normalize(d));
+      }
+
+      const sharedMembers = await getDrawingMemberProjections({
+        prisma,
+        drawingIds: responsePayload.map((d) => d.id),
+        viewerId: req.user.id,
+        secret: subjectKeySecret,
+      });
+      for (const drawing of responsePayload) {
+        drawing.members = sharedMembers.get(drawing.id) ?? { totalCount: 0, items: [] };
       }
 
       return res.json({

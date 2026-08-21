@@ -8,6 +8,7 @@ import { useUpload } from "../context/UploadContext";
 import { DragOverlayPortal } from "./dashboard/shared";
 import { DashboardToolbar } from "./dashboard/DashboardToolbar";
 import { CollectionTeamBar } from "./dashboard/CollectionTeamBar";
+import { useDashboardPresence } from "./dashboard/useDashboardPresence";
 import {
   DragPreview,
   DrawingsGrid,
@@ -154,6 +155,7 @@ export const Dashboard: React.FC = () => {
     const collection = collections.find((c) => c.id === selectedCollectionId);
     return collection ? collection.name : "Collection";
   }, [selectedCollectionId, collections]);
+  const presence = useDashboardPresence(React.useMemo(() => sortedDrawings.map((d) => d.id), [sortedDrawings]));
   const visibleCollections = React.useMemo(
     () => collections.filter((c) => c.id !== "trash"),
     [collections],
@@ -266,6 +268,7 @@ export const Dashboard: React.FC = () => {
           onMouseDown={actions.handleCardMouseDown}
           onDragStart={actions.handleCardDragStart}
           onPreviewGenerated={actions.handlePreviewGenerated}
+          presence={presence}
         />{" "}
         <div ref={loaderRef} className="py-8 flex justify-center items-center h-20">
           {" "}

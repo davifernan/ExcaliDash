@@ -1,3 +1,12 @@
+export interface DrawingMember {
+  subjectKey: string;
+  name: string;
+  initials: string;
+  color: string;
+  kind: "owner" | "member";
+  isSelf: boolean;
+}
+
 export interface DrawingSummary {
   id: string;
   name: string;
@@ -8,6 +17,8 @@ export interface DrawingSummary {
   preview?: string | null;
   accessLevel?: "none" | "view" | "edit" | "owner";
   creatorName?: string | null;
+  /** Who has a standing claim on this board. Capped; totalCount may be larger. */
+  members?: { totalCount: number; items: DrawingMember[] };
 }
 export interface Drawing extends DrawingSummary {
   elements: any[];

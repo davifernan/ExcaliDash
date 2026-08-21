@@ -1,6 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import type { PrismaClient } from "../generated/client";
-import { BOOTSTRAP_USER_ID, type AuthModeService } from "../auth/authMode";
+import type { AuthModeService } from "../auth/authMode";
 import {
   canEditDrawing,
   canViewDrawing,
@@ -240,13 +240,20 @@ export const registerSocketHandlers = ({
             ? (payload.user as Record<string, unknown>)
             : {};
         const principal = principals.get(socket.id) || null;
-        // An account has a name the server can check. A share-link visitor does
-        // not, so the server names them rather than repeat what they claim.
-        const isAccount = Boolean(principal?.userId) && principal?.userId !== BOOTSTRAP_USER_ID;
+        // Auth switched off gives every visitor the same standing identity,
+        // which is another way of saying nobody has one. That is the only case
+        // where the browser's own name and colour are all anyone has -- and it
+        // is told apart by allowInactive, which the authenticator sets for
+        // exactly that principal. The bootstrap *id* is no signal: once auth is
+        // on, it belongs to a real administrator with a real name.
+        const isSharedBootstrapIdentity = principal?.allowInactive === true;
+        const isAccount = Boolean(principal?.userId) && !isSharedBootstrapIdentity;
         let name = toPresenceName(clientUser.name);
         let color = derivePresenceColor(socket.id);
         let kind: PresenceKind = "guest";
         if (isAccount && principal) {
+          // An account has a name the server can check. A share-link visitor
+          // does not, so the server names them rather than repeat their claim.
           const account = await prisma.user.findUnique({
             where: { id: principal.userId },
             select: { name: true },
@@ -255,10 +262,7 @@ export const registerSocketHandlers = ({
           if (account) name = toPresenceName(account.name);
           color = derivePresenceColor(principal.userId);
           kind = access === "owner" ? "owner" : "member";
-        } else if (principal?.userId === BOOTSTRAP_USER_ID) {
-          // Auth is switched off entirely: everyone shares one identity, which
-          // is another way of saying nobody has one. Their browser's choice of
-          // name and colour is all anyone has, and they stay a guest.
+        } else if (isSharedBootstrapIdentity) {
           color = toPresenceColor(clientUser.color);
         } else {
           name = deriveGuestName(socket.id);

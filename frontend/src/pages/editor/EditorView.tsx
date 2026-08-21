@@ -18,6 +18,8 @@ import { PdfWidget } from "./PdfWidget";
 import { getPdfWidgetAssetId, validateEmbeddableLink } from "./pdfWidgetElements";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
+import { EditorTopRight } from "./EditorTopRight";
+import type { WorkshopTimerController } from "./workshopTimer";
 
 type EditorViewProps = {
   id?: string;
@@ -38,6 +40,7 @@ type EditorViewProps = {
   newName: string;
   peers: Peer[];
   theme: string;
+  workshopTimer: WorkshopTimerController;
   onBackClick: () => void;
   onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
   stickyOverlay?: React.ReactNode;
@@ -101,6 +104,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   newName,
   peers,
   theme,
+  workshopTimer,
   onBackClick,
   onCanvasChange,
   onCanvasDropCapture,
@@ -266,6 +270,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
             UIOptions={UIOptions}
             viewModeEnabled={!canEdit}
             validateEmbeddable={validateEmbeddableLink}
+            renderTopRightUI={(isMobile) => (
+              <EditorTopRight canEdit={canEdit} isMobile={isMobile} timer={workshopTimer} />
+            )}
             renderEmbeddable={(element, appState) => {
               const assetId = getPdfWidgetAssetId(element);
               return assetId && id ? (

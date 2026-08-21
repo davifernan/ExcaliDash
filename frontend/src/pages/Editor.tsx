@@ -103,6 +103,7 @@ export const Editor: React.FC = () => {
     peers,
     selfIdentity,
     followers,
+    workshopTimer,
     socketRef,
     isSyncing,
     onPointerUpdate,
@@ -362,6 +363,7 @@ export const Editor: React.FC = () => {
         newName={newName}
         peers={peers}
         theme={theme}
+        workshopTimer={workshopTimer}
         onBackClick={handleBackClick}
         onCanvasChange={handleChangeWithSelection}
         stickyOverlay={stickyOverlay}

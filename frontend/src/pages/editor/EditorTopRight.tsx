@@ -25,12 +25,15 @@
  * gesture is in progress, and we are told when the layout is mobile.
  */
 import React from "react";
-import { Share2 } from "lucide-react";
+import { LocateFixed, Share2 } from "lucide-react";
+import type { InviteHereUiState } from "./InviteHereOverlay";
 
 type EditorTopRightProps = {
   isMobile: boolean;
   canEdit: boolean;
   followerNotice: string | null;
+  showInvite: boolean;
+  inviteHere: InviteHereUiState;
   showShare: boolean;
   onShareOpen: () => void;
 };
@@ -63,6 +66,8 @@ const iconButton: React.CSSProperties = {
 export const EditorTopRight: React.FC<EditorTopRightProps> = ({
   isMobile,
   followerNotice,
+  showInvite,
+  inviteHere,
   showShare,
   onShareOpen,
 }) => {
@@ -88,6 +93,26 @@ export const EditorTopRight: React.FC<EditorTopRightProps> = ({
         >
           {followerNotice}
         </span>
+      ) : null}
+      {showInvite ? (
+        <button
+          onClick={inviteHere.invite}
+          style={iconButton}
+          title="Invite everyone here"
+          aria-label={
+            inviteHere.status
+              ? `Invite everyone here; ${inviteHere.status.arrivedCount} arrived`
+              : "Invite everyone here"
+          }
+          data-testid="editor-invite"
+        >
+          <LocateFixed size={16} />
+          {inviteHere.status ? (
+            <span style={{ fontSize: "0.625rem", fontWeight: 700, marginInlineStart: "0.15rem" }}>
+              {inviteHere.status.arrivedCount}
+            </span>
+          ) : null}
+        </button>
       ) : null}
       {showShare ? (
         <button

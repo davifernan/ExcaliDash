@@ -14,6 +14,7 @@ import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
 import type { WorkshopTimerController } from "./workshopTimer";
 import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
+import { InviteHereOverlay, type InviteHereUiState } from "./InviteHereOverlay";
 
 type EditorViewProps = {
   id?: string;
@@ -32,6 +33,7 @@ type EditorViewProps = {
   peers: Peer[];
   theme: string;
   workshopTimer: WorkshopTimerController;
+  inviteHere: InviteHereUiState;
   onBackClick: () => void;
   onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
   stickyOverlay?: React.ReactNode;
@@ -73,6 +75,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   peers,
   theme,
   workshopTimer,
+  inviteHere,
   onBackClick,
   onCanvasChange,
   onCanvasDropCapture,
@@ -149,6 +152,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 isMobile={isMobile}
                 canEdit={canEdit}
                 followerNotice={describeFollowers(followers)}
+                showInvite={canEdit && peers.length > 0}
+                inviteHere={inviteHere}
                 showShare={accessLevel === "owner" && !!id}
                 onShareOpen={onShareOpen}
               />
@@ -209,6 +214,15 @@ export const EditorView: React.FC<EditorViewProps> = ({
             onRenameStart={onRenameStart}
             onRenameSubmit={onRenameSubmit}
           />
+          {inviteHere.invitation ? (
+            <InviteHereOverlay
+              key={inviteHere.invitation.invitationId}
+              container={excalidrawRoot}
+              invitation={inviteHere.invitation}
+              onAccept={inviteHere.accept}
+              onDecline={inviteHere.decline}
+            />
+          ) : null}
           {stickyOverlay}
         </>
       ) : (

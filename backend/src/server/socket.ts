@@ -35,6 +35,7 @@ import { ActiveAccountCache } from "./activeAccountCache";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent } from "./socketSelection";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
+import { createSocketInviteHereManager } from "./socketInviteHere";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -63,6 +64,7 @@ export const registerSocketHandlers = ({
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
   let followManager: ReturnType<typeof createSocketFollowManager>;
+  let inviteHereManager: ReturnType<typeof createSocketInviteHereManager>;
   const activeAccounts = new ActiveAccountCache(async (userId) => {
     const account = await prisma.user.findUnique({
       where: { id: userId },
@@ -87,6 +89,7 @@ export const registerSocketHandlers = ({
     shareTokenBySocket.delete(socket.id);
     if (!drawingId) return;
     followManager.clearSocket(socket.id, reason);
+    inviteHereManager.clearSocket(socket.id, drawingId);
     drawingBySocket.delete(socket.id);
     presences.leave(drawingId, socket.id);
     if (presences.list(drawingId).length === 0) workshopTimers.clear(drawingId);
@@ -148,6 +151,11 @@ export const registerSocketHandlers = ({
     requireAccess: (socket, drawingId) => requireAccess(socket, drawingId),
     removeFromDrawing: (socket, reason) => removeFromDrawing(socket, reason),
   });
+  inviteHereManager = createSocketInviteHereManager({
+    connectedSockets,
+    getPresence,
+    requireAccess,
+  });
 
   const disconnectApiKey = createApiKeySocketRevoker({
     connectedSockets,
@@ -186,6 +194,7 @@ export const registerSocketHandlers = ({
     });
     registerSelectionRoomEvent({ socket, presences, requireAccess });
     registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
+    inviteHereManager.registerHandlers(socket);
 
     socket.on("join-room", (data: unknown, ack?: (value: unknown) => void) => {
       const rejectJoin = (code: string, message: string) => {

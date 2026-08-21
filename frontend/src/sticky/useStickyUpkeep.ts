@@ -24,6 +24,17 @@ export function useStickyUpkeep({ excalidrawAPI, canEdit }: Options) {
   const wasResizing = useRef<string | null>(null);
   const queued = useRef(false);
   const alive = useRef(true);
+  /**
+   * What the most recent change said, for the pass that is already queued.
+   *
+   * Changes used to be dropped while a pass was pending, which quietly lost the
+   * one that mattered most: leaving the label editor is the first change where
+   * `editingTextElement` is empty, and only then does the pass put the note back
+   * to its own size. Anything arriving in the same tick took that change with
+   * it, and the note kept whatever height Excalidraw had grown it to. Coalescing
+   * instead of dropping keeps the newest answer and loses nothing.
+   */
+  const pending = useRef<{ resized: Set<string>; editingId: string | null } | null>(null);
 
   // Set on the way in as well as cleared on the way out. React mounts an effect
   // twice in development, and a flag only ever cleared would stay cleared after
@@ -52,6 +63,11 @@ export function useStickyUpkeep({ excalidrawAPI, canEdit }: Options) {
 
       const editingId = appState?.editingTextElement?.id ?? null;
 
+      const carried = pending.current ?? { resized: new Set<string>(), editingId: null };
+      if (justResized) carried.resized.add(justResized);
+      carried.editingId = editingId;
+      pending.current = carried;
+
       if (queued.current) return;
       queued.current = true;
 
@@ -62,9 +78,13 @@ export function useStickyUpkeep({ excalidrawAPI, canEdit }: Options) {
         const api = excalidrawAPI.current;
         if (!api) return;
 
+        const context = pending.current;
+        pending.current = null;
+        if (!context) return;
+
         const next = normaliseStickyNotes(api.getSceneElementsIncludingDeleted(), {
-          resized: justResized ? new Set([justResized]) : null,
-          editing: editingId ? new Set([editingId]) : null,
+          resized: context.resized.size ? context.resized : null,
+          editing: context.editingId ? new Set([context.editingId]) : null,
         });
         if (!next) return;
 

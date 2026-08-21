@@ -216,8 +216,10 @@ test.describe("Drawing Version History", () => {
       timeout: 15000,
     });
 
-    // Nothing to coax out of hiding any more: the editor chrome stays put.
-    const historyButton = page.getByTestId("editor-history");
-    await expect(historyButton).toBeVisible();
+    // Version history moved into the main menu once the timer and the invite
+    // button wanted room in the top-right island: that column is narrow and the
+    // collaborator avatars are what lose when it is crowded.
+    await page.getByTestId("main-menu-trigger").click();
+    await expect(page.getByText("Version history")).toBeVisible();
   });
 });

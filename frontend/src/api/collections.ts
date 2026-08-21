@@ -1,5 +1,6 @@
 import type {
   Collection,
+  CollectionMember,
   CollectionShareRole,
   CollectionShareRow,
   CollectionShareUser,
@@ -62,12 +63,12 @@ export const resolveCollectionShareUsers = async (
 
 export const addCollectionShare = async (
   collectionId: string,
-  identifier: string,
+  grantee: { id: string; email?: string },
   role: CollectionShareRole,
 ): Promise<{ share: CollectionShareRow }> => {
   const response = await api.post<{ share: CollectionShareRow }>(
     `/collections/${collectionId}/shares`,
-    { identifier, role },
+    { granteeUserId: grantee.id, role },
   );
   return response.data;
 };
@@ -90,6 +91,15 @@ export const removeCollectionShare = async (
 ): Promise<{ success: true }> => {
   const response = await api.delete<{ success: true }>(
     `/collections/${collectionId}/shares/${userId}`,
+  );
+  return response.data;
+};
+
+export const getCollectionMembers = async (
+  collectionId: string,
+): Promise<{ members: CollectionMember[]; totalCount: number }> => {
+  const response = await api.get<{ members: CollectionMember[]; totalCount: number }>(
+    `/collections/${collectionId}/members`,
   );
   return response.data;
 };

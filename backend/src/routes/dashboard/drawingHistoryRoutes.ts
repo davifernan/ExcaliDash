@@ -1,5 +1,5 @@
 import express from "express";
-import { canEditDrawing, canViewDrawing, getDrawingAccess } from "../../authz/sharing";
+import { canEditDrawing, getDrawingAccess } from "../../authz/sharing";
 import { decodeSnapshotField, encodeSnapshotField } from "../../snapshots/snapshotCodec";
 import {
   captureSnapshotAssets,
@@ -42,7 +42,7 @@ export const registerDrawingHistoryRoutes = (
         drawingId: id,
         shareToken: getShareToken(req),
       });
-      if (!canViewDrawing(access)) {
+      if (!canEditDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;
         return res.status(404).json({ error: "Drawing not found" });
       }
@@ -78,7 +78,7 @@ export const registerDrawingHistoryRoutes = (
         drawingId: id,
         shareToken: getShareToken(req),
       });
-      if (!canViewDrawing(access)) {
+      if (!canEditDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;
         return res.status(404).json({ error: "Drawing not found" });
       }

@@ -6,7 +6,6 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { getFilesDelta } from "./editor/shared";
 import { useEditorChrome } from "./editor/useEditorChrome";
-import { useEditorAutoHide } from "./editor/useEditorAutoHide";
 import { useEditorIdentity } from "./editor/useEditorIdentity";
 import { EditorDialogs } from "./editor/EditorDialogs";
 import { EditorView } from "./editor/EditorView";
@@ -35,7 +34,6 @@ export const Editor: React.FC = () => {
   const [isSceneLoading, setIsSceneLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSavingOnLeave, setIsSavingOnLeave] = useState(false);
-  const { autoHideEnabled, setAutoHideEnabled } = useEditorAutoHide(id);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [langCode, setLangCode] = useState(getInitialLangCode);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -45,11 +43,7 @@ export const Editor: React.FC = () => {
     files: any;
   } | null>(null);
   const isHistoryPreviewing = useRef(false);
-  const { isHeaderVisible, setIsHeaderVisible } = useEditorChrome({
-    drawingName,
-    autoHideEnabled,
-    isRenaming,
-  });
+  useEditorChrome({ drawingName });
   const me: UserIdentity = useEditorIdentity(user);
   const [isReady, setIsReady] = useState(false);
   const { computeElementOrderSig, elementVersionMap, hasElementChanged, recordElementVersion } =
@@ -99,7 +93,16 @@ export const Editor: React.FC = () => {
       replace: true,
     });
   }, [id, location.hash, location.pathname, location.search, navigate]);
-  const { peers, followers, socketRef, isSyncing, onPointerUpdate } = useEditorCollaboration({
+  const {
+    peers,
+    followers,
+    workshopTimer,
+    socketRef,
+    isSyncing,
+    onPointerUpdate,
+    onSelectionChange,
+    inviteHere,
+  } = useEditorCollaboration({
     drawingId: id,
     me,
     isReady,
@@ -288,6 +291,13 @@ export const Editor: React.FC = () => {
     canEdit,
     onCanvasChange: handleCanvasChange,
   });
+  const handleChangeWithSelection = useCallback(
+    (elements: readonly any[], appState: any, files?: Record<string, any>) => {
+      onSelectionChange(appState);
+      handleChangeWithNotes(elements, appState, files);
+    },
+    [handleChangeWithNotes, onSelectionChange],
+  );
   const commandRefs = React.useMemo(
     () => ({
       excalidrawAPI,
@@ -305,9 +315,7 @@ export const Editor: React.FC = () => {
     handleLibraryChange,
     handleRenameStart,
     handleRenameSubmit,
-    handleToggleAutoHide,
   } = useEditorCommands({
-    autoHideEnabled,
     canEdit,
     debouncedSaveLibrary,
     drawingId: id,
@@ -317,9 +325,7 @@ export const Editor: React.FC = () => {
     newName,
     refs: commandRefs,
     resolveSafeSnapshot,
-    setAutoHideEnabled,
     setDrawingName,
-    setIsHeaderVisible,
     setIsRenaming,
     setIsSavingOnLeave,
     setNewName,
@@ -331,24 +337,23 @@ export const Editor: React.FC = () => {
       <EditorView
         id={id}
         accessLevel={accessLevel}
-        autoHideEnabled={autoHideEnabled}
         canEdit={canEdit}
         drawingName={drawingName}
         editorContainerRef={editorContainerRef}
         followers={followers}
         initialData={initialData}
-        isHeaderVisible={isHeaderVisible}
+        inviteHere={inviteHere}
         isRenaming={isRenaming}
         isSavingOnLeave={isSavingOnLeave}
         isSceneLoading={isSceneLoading}
         langCode={langCode}
         loadError={loadError}
-        me={me}
         newName={newName}
         peers={peers}
         theme={theme}
+        workshopTimer={workshopTimer}
         onBackClick={handleBackClick}
-        onCanvasChange={handleChangeWithNotes}
+        onCanvasChange={handleChangeWithSelection}
         stickyOverlay={stickyOverlay}
         onCanvasDropCapture={handleCanvasDropCapture}
         onExportClick={handleExportClick}
@@ -363,7 +368,6 @@ export const Editor: React.FC = () => {
         onSetLangCode={setLangCode}
         onShareOpen={() => setIsShareOpen(true)}
         onHistoryOpen={() => setIsHistoryOpen(true)}
-        onToggleAutoHide={handleToggleAutoHide}
       />
       <EditorDialogs
         drawingId={id}

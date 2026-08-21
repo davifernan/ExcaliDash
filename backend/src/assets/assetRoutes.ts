@@ -18,6 +18,7 @@ import {
   shareLinkTokenFromRequest,
 } from "../authz/sharing";
 import { resolveStoragePath } from "./assetStorage";
+import type { StoredFile } from "./assetStorage";
 import { AssetTooLargeError, QuotaExceededError, createAsset, usedBytesFor } from "./assetService";
 import { PdfRejectedError } from "./pdfRenderer";
 import { QueueAbortedError, QueueCapacityError } from "./pageCache";
@@ -70,7 +71,9 @@ export type AssetRouteDeps = {
    * Rebuilds the stored file smaller where that helps, and reports what
    * changed so the stored size stays honest.
    */
-  optimizeUpload?: (asset: any) => Promise<{ finalBytes: number; note: string | null }>;
+  optimizeUpload?: (
+    stored: Readonly<StoredFile & { path: string }>,
+  ) => Promise<{ note: string | null }>;
 };
 
 const principalOf = (req: Request) =>
@@ -96,11 +99,13 @@ async function authorizedAsset(deps: AssetRouteDeps, req: Request) {
   });
   if (!canViewDrawing(access)) return null;
 
-  // Belonging to the board is what makes this document reachable — either
-  // because it is on the board now, or because a kept version still needs it.
+  // ACTIVE is the persisted invariant that the live board references this
+  // document. Viewers may only follow that live reference; editors can also
+  // reach pending uploads and documents retained solely for version history.
   const link = await deps.prisma.drawingAsset.findUnique({
     where: { drawingId_assetId: { drawingId, assetId } },
   });
+  if (link?.state !== "ACTIVE" && !canEditDrawing(access)) return null;
   if (!link) {
     const viaSnapshot = await deps.prisma.drawingSnapshotAsset.findFirst({
       where: { assetId, snapshot: { drawingId } },
@@ -201,11 +206,13 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
                   ? "text/plain; charset=utf-8"
                   : "application/pdf",
             source,
+            // Only a PDF has anything to shrink; running the optimiser over
+            // UTF-8 text would rewrite bytes the user uploaded verbatim.
+            prepareStored: uploadPresentation.kind === "PDF" ? deps.optimizeUpload : undefined,
           },
         );
 
         let pageCount: number | null = null;
-        let note: string | null = null;
         try {
           if (uploadPresentation.kind !== "PDF") {
             return res.status(201).json({
@@ -217,19 +224,6 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
               note: null,
             });
           }
-          if (deps.optimizeUpload) {
-            const optimized = await deps.optimizeUpload({ ...created.asset, blob: created.blob });
-            note = optimized.note;
-            if (optimized.finalBytes !== created.blob.storedBytes) {
-              // The bytes on disk changed, so what the quota counts has to
-              // change with them.
-              await deps.prisma.storedBlob.update({
-                where: { id: created.blob.id },
-                data: { sizeBytes: optimized.finalBytes, storedBytes: optimized.finalBytes },
-              });
-            }
-          }
-
           // The created row does not carry its blob, and describeUpload needs
           // to find the bytes on disk.
           ({ pageCount } = await deps.describeUpload({ ...created.asset, blob: created.blob }));
@@ -259,7 +253,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
           name: created.asset.originalName,
           sizeBytes: created.sizeBytes,
           pageCount,
-          note,
+          note: created.note,
         });
       } catch (err) {
         if (err instanceof InvalidTextDocumentError) {

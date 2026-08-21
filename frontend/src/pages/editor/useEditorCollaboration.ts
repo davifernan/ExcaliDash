@@ -8,15 +8,17 @@ import { bindFollowMode, getFollowInterruptionMessage, type Follower } from "./f
 import { bindCanvasWheelZoom } from "./wheelZoom";
 import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
 import { getShareLinkToken } from "../../api";
-
-export interface Peer {
-  presenceId: string;
-  accountId: string | null;
-  name: string;
-  initials: string;
-  color: string;
-  isActive: boolean;
-}
+import { bindSocketCollaborators } from "./socketCollaborators";
+import type { Peer } from "./socketCollaborators";
+import { bindRemoteSelection } from "./remoteSelection";
+import {
+  bindSocketWorkshopTimer,
+  createIdleWorkshopTimerSnapshot,
+  WORKSHOP_TIMER_COMMAND_EVENT,
+  type WorkshopTimerAction,
+} from "./workshopTimer";
+import { bindInviteHere, type InviteHereStatus, type ViewportInvitation } from "./inviteHere";
+export type { Peer } from "./socketCollaborators";
 
 type UseEditorCollaborationInput = {
   drawingId?: string;
@@ -55,14 +57,20 @@ export const useEditorCollaboration = ({
   onAccessDenied,
 }: UseEditorCollaborationInput) => {
   const [peers, setPeers] = useState<Peer[]>([]);
+  // What the server decided this connection is called. For an account it agrees
+  // with the local identity; for a share-link visitor the server picks the name,
+  // and showing them a different one than everyone else sees is a small lie.
+  const [selfIdentity, setSelfIdentity] = useState<UserIdentity | null>(null);
   const [followers, setFollowers] = useState<Follower[]>([]);
+  const [workshopTimerSnapshot, setWorkshopTimerSnapshot] = useState(() =>
+    createIdleWorkshopTimerSnapshot(drawingId || ""),
+  );
+  const [viewportInvitation, setViewportInvitation] = useState<ViewportInvitation | null>(null);
+  const [inviteHereStatus, setInviteHereStatus] = useState<InviteHereStatus | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const lastPresenceUsersRef = useRef<Peer[] | null>(null);
-  const selfPresenceIdRef = useRef<string | null>(null);
-  const knownPresenceIdsRef = useRef<Set<string>>(new Set());
+  const inviteHereRef = useRef<ReturnType<typeof bindInviteHere> | null>(null);
   const lastCursorEmit = useRef<number>(0);
-  const cursorBuffer = useRef<Map<string, any>>(new Map());
-  const animationFrameId = useRef<number>(0);
+  const selectionPublisherRef = useRef<((appState: any) => void) | null>(null);
   const isSyncing = useRef(false);
   const pendingRemoteElementsRef = useRef<Map<string, any>>(new Map());
   const pendingRemoteFilesRef = useRef<Record<string, any>>({});
@@ -72,6 +80,7 @@ export const useEditorCollaboration = ({
   const shareToken = getShareLinkToken();
   useEffect(() => {
     if (!drawingId || !isReady) return;
+    setSelfIdentity(null);
     const socket = io(getSocketUrl(), {
       path: "/socket.io",
       transports: ["websocket", "polling"],
@@ -89,61 +98,26 @@ export const useEditorCollaboration = ({
         (window as any).__EXCALIDASH_SOCKET_STATUS__ = { connected: false };
       });
     }
-    const renderLoop = () => {
-      if (cursorBuffer.current.size > 0 && excalidrawAPI.current) {
-        const collaborators = new Map<string, any>(
-          excalidrawAPI.current.getAppState().collaborators || [],
-        );
-        cursorBuffer.current.forEach((data, presenceId) => {
-          collaborators.set(presenceId, data);
-        });
-        cursorBuffer.current.clear();
-        const { sceneUpdate } = buildRemoteSceneUpdate({ collaborators });
-        if (sceneUpdate) {
-          excalidrawAPI.current.updateScene(sceneUpdate);
-        }
-      }
-      animationFrameId.current = requestAnimationFrame(renderLoop);
-    };
-    renderLoop();
-    socket.on("presence-update", (users: Peer[]) => {
-      lastPresenceUsersRef.current = users;
-      const selfId = selfPresenceIdRef.current || socket.id;
-      setPeers(users.filter((user) => user.presenceId !== selfId));
-      if (excalidrawAPI.current) {
-        const collaborators = new Map<string, any>(
-          excalidrawAPI.current.getAppState().collaborators || [],
-        );
-        const nextPresenceIds = new Set(
-          users.filter((user) => user.presenceId !== selfId).map((user) => user.presenceId),
-        );
-        knownPresenceIdsRef.current.forEach((presenceId) => {
-          if (!nextPresenceIds.has(presenceId)) {
-            collaborators.delete(presenceId);
-          }
-        });
-        users.forEach((user) => {
-          if (user.presenceId === selfId) return;
-          if (!user.isActive) {
-            collaborators.delete(user.presenceId);
-            return;
-          }
-          const existing = collaborators.get(user.presenceId) || {};
-          collaborators.set(user.presenceId, {
-            ...existing,
-            id: user.presenceId,
-            username: user.name,
-            color: { background: user.color, stroke: user.color },
-            isCurrentUser: false,
-          });
-        });
-        knownPresenceIdsRef.current = nextPresenceIds;
-        const { sceneUpdate } = buildRemoteSceneUpdate({ collaborators });
-        if (sceneUpdate) {
-          excalidrawAPI.current.updateScene(sceneUpdate);
-        }
-      }
+    const collaborators = bindSocketCollaborators({
+      socket,
+      api: excalidrawAPI.current,
+      onPeersChange: setPeers,
     });
+    const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
+    const workshopTimer = bindSocketWorkshopTimer({
+      socket,
+      drawingId,
+      onChange: setWorkshopTimerSnapshot,
+    });
+    const inviteHereController = bindInviteHere({
+      socket,
+      drawingId,
+      api: excalidrawAPI.current,
+      onInvitationChange: setViewportInvitation,
+      onStatusChange: setInviteHereStatus,
+    });
+    inviteHereRef.current = inviteHereController;
+    selectionPublisherRef.current = remoteSelection.publish;
     socket.on("error", (payload: any) => {
       const message = typeof payload?.message === "string" ? payload.message : null;
       console.warn("[Editor] Socket error:", payload);
@@ -152,16 +126,6 @@ export const useEditorCollaboration = ({
         return;
       }
       if (message) toast.error(message);
-    });
-    socket.on("cursor-move", (data: any) => {
-      if (typeof data?.presenceId !== "string") return;
-      cursorBuffer.current.set(data.presenceId, {
-        pointer: data.pointer,
-        button: data.button || "up",
-        username: data.username,
-        color: { background: data.color, stroke: data.color },
-        id: data.presenceId,
-      });
     });
     const unbindFollowMode = bindFollowMode({
       socket,
@@ -173,11 +137,10 @@ export const useEditorCollaboration = ({
     });
     const resetConnectionState = () => {
       unbindFollowMode.resetConnectionState();
-      selfPresenceIdRef.current = null;
-      lastPresenceUsersRef.current = null;
-      knownPresenceIdsRef.current.clear();
-      cursorBuffer.current.clear();
-      setPeers([]);
+      collaborators.reset();
+      remoteSelection.reset();
+      workshopTimer.reset();
+      inviteHereController.reset();
       setFollowers([]);
       pendingRemoteElementsRef.current.clear();
       pendingRemoteFilesRef.current = {};
@@ -187,10 +150,6 @@ export const useEditorCollaboration = ({
       }
       remoteFlushRafIdRef.current = null;
       remoteFlushScheduledRef.current = false;
-      if (excalidrawAPI.current) {
-        const { sceneUpdate } = buildRemoteSceneUpdate({ collaborators: new Map() });
-        if (sceneUpdate) excalidrawAPI.current.updateScene(sceneUpdate);
-      }
     };
     const unbindSocketRoomLifecycle = bindSocketRoomLifecycle({
       socket,
@@ -199,10 +158,15 @@ export const useEditorCollaboration = ({
       user: me,
       resetConnectionState,
       onJoined: (serverUser) => {
-        selfPresenceIdRef.current = serverUser.presenceId;
-        const lastUsers = lastPresenceUsersRef.current;
-        if (lastUsers) {
-          setPeers(lastUsers.filter((user) => user.presenceId !== selfPresenceIdRef.current));
+        collaborators.setSelfPresenceId(serverUser.presenceId);
+        remoteSelection.publish(excalidrawAPI.current.getAppState());
+        if (serverUser.name && serverUser.color) {
+          setSelfIdentity({
+            id: me.id,
+            name: serverUser.name,
+            initials: serverUser.initials || me.initials,
+            color: serverUser.color,
+          });
         }
       },
       getFollowTargetPresenceId: () =>
@@ -328,13 +292,19 @@ export const useEditorCollaboration = ({
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("mouseenter", onMouseEnter);
       document.removeEventListener("mouseleave", onMouseLeave);
-      socket.off("presence-update");
       socket.off("error");
-      socket.off("cursor-move");
       socket.off("element-update");
       socket.off("drawing-server-update");
       unbindSocketRoomLifecycle();
       unbindFollowMode();
+      collaborators.dispose();
+      remoteSelection.dispose();
+      workshopTimer.dispose();
+      inviteHereController.dispose();
+      if (inviteHereRef.current === inviteHereController) inviteHereRef.current = null;
+      if (selectionPublisherRef.current === remoteSelection.publish) {
+        selectionPublisherRef.current = null;
+      }
       socket.disconnect();
       if (remoteFlushRafIdRef.current !== null) {
         cancelAnimationFrame(remoteFlushRafIdRef.current);
@@ -344,10 +314,6 @@ export const useEditorCollaboration = ({
       pendingRemoteElementsRef.current.clear();
       pendingRemoteFilesRef.current = {};
       pendingRemoteElementOrderRef.current = null;
-      selfPresenceIdRef.current = null;
-      lastPresenceUsersRef.current = null;
-      knownPresenceIdsRef.current.clear();
-      cancelAnimationFrame(animationFrameId.current);
     };
   }, [
     drawingId,
@@ -378,12 +344,33 @@ export const useEditorCollaboration = ({
     },
     [drawingId],
   );
+  const onSelectionChange = useCallback((appState: any) => {
+    selectionPublisherRef.current?.(appState);
+  }, []);
+  const sendWorkshopTimerCommand = useCallback(
+    (action: WorkshopTimerAction, durationMs?: number) => {
+      if (!drawingId || !socketRef.current) return;
+      socketRef.current.emit(WORKSHOP_TIMER_COMMAND_EVENT, { drawingId, action, durationMs });
+    },
+    [drawingId],
+  );
+  const inviteHere = {
+    invitation: viewportInvitation,
+    status: inviteHereStatus,
+    invite: () => inviteHereRef.current?.invite(),
+    accept: () => inviteHereRef.current?.accept(),
+    decline: () => inviteHereRef.current?.decline(),
+  };
 
   return {
     peers,
+    selfIdentity,
     followers,
+    workshopTimer: { snapshot: workshopTimerSnapshot, sendCommand: sendWorkshopTimerCommand },
     socketRef,
     isSyncing,
     onPointerUpdate,
+    onSelectionChange,
+    inviteHere,
   };
 };

@@ -40,6 +40,7 @@ import { prisma, configureSqlite, reclaimSqliteFreeSpace } from "./db/prisma";
 import { createDrawingsCacheStore } from "./server/drawingsCache";
 import { registerCsrfProtection } from "./server/csrf";
 import { registerSocketHandlers } from "./server/socket";
+import { PresenceRegistry } from "./server/presenceRegistry";
 import { createHttpsRedirectPolicy, getHttpsRedirectUrl } from "./server/httpsRedirectPolicy";
 import { issueBootstrapSetupCodeIfRequired } from "./auth/bootstrapSetupCode";
 import { processFilesForS3 as processFilesForS3WithPrisma } from "./fileProcessing";
@@ -454,11 +455,15 @@ const removeFileIfExists = async (filePath?: string) => {
     console.error("Failed to remove file", { filePath, error });
   }
 };
+// One store, written by the socket server and read by the dashboard routes, so
+// neither side has to import the other.
+const presences = new PresenceRegistry();
 const collaborationAccess = registerSocketHandlers({
   io,
   prisma,
   authModeService,
   jwtSecret: config.jwtSecret,
+  presences,
 });
 app.get("/health", async (_req, res) => {
   try {
@@ -543,6 +548,8 @@ registerDashboardRoutes(app, {
   MAX_PAGE_SIZE,
   config,
   logAuditEvent,
+  subjectKeySecret: config.jwtSecret,
+  presences,
   processFilesForS3: (files, userId, drawingId) =>
     processFilesForS3WithPrisma(files, userId, drawingId, prisma),
 });
@@ -564,7 +571,7 @@ registerAssetRoutes({
   storageDir: config.assets.storageDir,
   maxUploadBytes: config.assets.maxUploadBytes,
   maxPerUserBytes: config.assets.maxPerUserBytes,
-  getPage: (asset, page) =>
+  getPage: (asset, page, signal) =>
     getAssetPage(
       {
         storageDir: config.assets.storageDir,
@@ -575,6 +582,7 @@ registerAssetRoutes({
       },
       asset,
       page,
+      signal,
     ),
   describeUpload: async (asset) => {
     const info = await inspectPdf(
@@ -582,17 +590,20 @@ registerAssetRoutes({
     );
     return { pageCount: info.pageCount };
   },
-  optimizeUpload: async (asset) => {
-    const result = await shrinkPdf(
-      resolveStoragePath(config.assets.storageDir, asset.blob.storageKey),
-      {
-        level: config.assets.pdfShrinkLevel,
-        minBytes: config.assets.pdfShrinkMinBytes,
-        concurrency: config.assets.pdfShrinkConcurrency,
-        maxWaiting: config.assets.pdfShrinkQueueLimit,
+  optimizeUpload: async (stored) => {
+    const result = await shrinkPdf(stored.path, {
+      level: config.assets.pdfShrinkLevel,
+      minBytes: config.assets.pdfShrinkMinBytes,
+      concurrency: config.assets.pdfShrinkConcurrency,
+      maxWaiting: config.assets.pdfShrinkQueueLimit,
+      onFailure: (error) => {
+        console.warn(
+          "[assets] PDF rebuild skipped:",
+          error instanceof Error ? error.message : error,
+        );
       },
-    );
-    return { finalBytes: result.finalBytes, note: describeShrink(result) };
+    });
+    return { note: describeShrink(result) };
   },
 });
 registerImportExportRoutes({

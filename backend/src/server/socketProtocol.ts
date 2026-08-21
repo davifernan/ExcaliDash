@@ -11,14 +11,7 @@ export const SOCKET_QUEUE_LIMITS = { joins: 8 } as const;
 
 export type SceneBounds = [number, number, number, number];
 
-export type PresenceUser = {
-  presenceId: string;
-  accountId: string | null;
-  name: string;
-  initials: string;
-  color: string;
-  isActive: boolean;
-};
+export type { PresenceEntry as PresenceUser } from "./presenceRegistry";
 
 export type CursorPayload = {
   drawingId: string;

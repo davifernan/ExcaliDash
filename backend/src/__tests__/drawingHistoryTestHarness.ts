@@ -30,7 +30,8 @@ export const mockSnapshot = {
   createdAt: new Date("2026-04-15T10:00:00Z"),
 };
 
-export function buildApp() {
+export function buildApp(options: { userId?: string } = {}) {
+  const userId = options.userId ?? MOCK_USER_ID;
   const prisma: any = {
     drawing: {
       findUnique: vi.fn(),
@@ -57,9 +58,13 @@ export function buildApp() {
       delete: vi.fn(),
     },
     user: { findUnique: vi.fn().mockResolvedValue({ isActive: true }) },
-    drawingPermission: { findMany: vi.fn().mockResolvedValue([]) },
+    drawingPermission: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     drawingLinkShare: { findMany: vi.fn().mockResolvedValue([]) },
     collection: { findFirst: vi.fn() },
+    collectionShare: { findFirst: vi.fn() },
   };
   prisma.$transaction = vi.fn(async (callback: (tx: any) => unknown) => callback(prisma));
   const emit = vi.fn();
@@ -67,15 +72,16 @@ export function buildApp() {
 
   const app = express();
   app.use(express.json());
-  app.use((req: any, _res: any, next: any) => {
-    req.user = { id: MOCK_USER_ID, role: "USER" };
+  const attachUser = (req: any, _res: any, next: any) => {
+    req.user = { id: userId, role: "USER" };
     next();
-  });
+  };
+  app.use(attachUser);
 
   registerDrawingRoutes(app, {
     prisma,
-    requireAuth: (_req: any, _res: any, next: any) => next(),
-    optionalAuth: (_req: any, _res: any, next: any) => next(),
+    requireAuth: attachUser,
+    optionalAuth: attachUser,
     asyncHandler: (fn: any) => (req: any, res: any, next: any) =>
       Promise.resolve(fn(req, res, next)).catch(next),
     parseJsonField: (val: string, fallback: any) => {

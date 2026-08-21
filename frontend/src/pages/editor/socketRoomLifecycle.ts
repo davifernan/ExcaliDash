@@ -1,7 +1,12 @@
 import type { Socket } from "socket.io-client";
 import type { UserIdentity } from "../../utils/identity";
 
-type JoinedPresence = { presenceId: string };
+type JoinedPresence = {
+  presenceId: string;
+  name?: string;
+  initials?: string;
+  color?: string;
+};
 
 const JOIN_ACK_TIMEOUT_MS = 2_000;
 const JOIN_RETRY_DELAY_MS = 250;

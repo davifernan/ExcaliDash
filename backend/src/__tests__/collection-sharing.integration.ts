@@ -211,7 +211,42 @@ describe("Collection Sharing - Backend Integration", () => {
 
     expect(createDrawingResponse.status).toBe(200);
     expect(createDrawingResponse.body?.collectionId).toBe(collection.id);
-    expect(createDrawingResponse.body?.userId).toBe(editor.id);
+    // The board belongs to the collection it was drawn in, so the collection's
+    // owner can share, move and clean it up. Who drew it is recorded separately.
+    expect(createDrawingResponse.body?.userId).toBe(owner.id);
+    expect(createDrawingResponse.body?.createdByUserId).toBe(editor.id);
+  });
+
+  it("lets the collection owner share a board someone else drew in it", async () => {
+    const collection = await createCollection();
+    await ownerAgent
+      .post(`/collections/${collection.id}/shares`)
+      .set("User-Agent", userAgent)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .set(ownerCsrfHeaderName, ownerCsrfToken)
+      .send({ granteeUserId: editor.id, role: "edit" });
+
+    const created = await editorAgent
+      .post("/drawings")
+      .set("User-Agent", userAgent)
+      .set("Authorization", `Bearer ${editorToken}`)
+      .set(editorCsrfHeaderName, editorCsrfToken)
+      .send({
+        name: "Drawn by the editor",
+        elements: [],
+        appState: {},
+        files: {},
+        collectionId: collection.id,
+      });
+    expect(created.status).toBe(200);
+
+    const sharing = await ownerAgent
+      .get(`/drawings/${created.body.id}/sharing`)
+      .set("User-Agent", userAgent)
+      .set("Authorization", `Bearer ${ownerToken}`);
+
+    expect(sharing.status).toBe(200);
+    expect(sharing.body).toHaveProperty("permissions");
   });
 
   it("revokes access after removing collection share", async () => {

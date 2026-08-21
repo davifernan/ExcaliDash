@@ -122,7 +122,8 @@ describe("socket API key authorization", () => {
     );
     expect(joinAck).toMatchObject({
       ok: true,
-      presence: { presenceId: "mcp-socket", accountId: "key-owner", name: "MCP" },
+      // The account behind the key is not on the wire; see socket.test.ts.
+      presence: { presenceId: "mcp-socket", name: "MCP" },
     });
 
     io.emissions.length = 0;

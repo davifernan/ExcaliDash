@@ -93,6 +93,41 @@ test.describe("sticky notes", () => {
     expect(placed[0].height).toBe(200);
   });
 
+  test("says nothing while doing it", async ({ page }) => {
+    // A note used to announce itself with "press Enter to type in it" — advice
+    // that arrived while the cursor was already blinking in the note, because
+    // the check behind it read the editor state a frame too early. Placing a
+    // note is not an event worth interrupting anyone for.
+    await openEditor(page, drawingId);
+    await placeNote(page, { x: 400, y: 300 });
+    await page.keyboard.type("Quiet");
+    await page.keyboard.press("Escape");
+    await settle(page);
+
+    // Nothing of ours pops up...
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+    // ...and Excalidraw's own "Press Enter to add text" stays out of the way
+    // too, which on a note is advice for something that already happened.
+    await expect(page.getByText(/press Enter/i)).toBeHidden();
+  });
+
+  test("leaves the editor's hint alone for everything else", async ({ page }) => {
+    await openEditor(page, drawingId);
+    const canvas = page.locator("canvas.excalidraw__canvas.interactive");
+    const box = (await canvas.boundingBox())!;
+    await canvas.click({ position: { x: 950, y: 520 } });
+    await page.keyboard.press("r");
+    await page.mouse.move(box.x + 420, box.y + 140);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+    await page.mouse.move(box.x + 620, box.y + 300, { steps: 10 });
+    await page.mouse.up();
+    await settle(page);
+
+    // A plain rectangle still gets told what Enter does.
+    await expect(page.getByText(/press Enter/i)).toBeVisible();
+  });
+
   test("opens the label editor by itself, so typing starts straight away", async ({ page }) => {
     // The step with no public API. If Excalidraw ever stops starting its editor
     // from a synthetic Enter, this is what says so.

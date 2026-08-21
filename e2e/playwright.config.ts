@@ -96,6 +96,13 @@ export default defineConfig({
       timeout: 120000,
       stdout: "pipe",
       stderr: "pipe",
+      env: {
+        // The dev server proxies /api and /socket.io to this target. Without it,
+        // moving the backend off its default port left the frontend talking to
+        // whatever happened to be on 8000 -- either nothing, or worse, somebody
+        // else's instance.
+        VITE_DEV_BACKEND_URL: BACKEND_URL,
+      },
     },
   ],
 });

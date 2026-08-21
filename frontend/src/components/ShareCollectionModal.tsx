@@ -81,7 +81,7 @@ export const ShareCollectionModal: React.FC<Props> = ({
     setIsLoading(true);
     setError(null);
     try {
-      await api.addCollectionShare(collectionId, u.email, addRole);
+      await api.addCollectionShare(collectionId, { id: u.id, email: u.email }, addRole);
       await refresh();
       setQuery("");
       setResults([]);

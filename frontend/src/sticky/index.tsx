@@ -5,12 +5,12 @@
  * node to render inside the canvas container and one change handler, and needs
  * to know nothing else about how a note is put together.
  */
-import React, { useCallback, useState } from "react";
-import { toast } from "sonner";
+import React, { useCallback, useRef, useState } from "react";
 import { StickyHandles } from "./StickyHandles";
 import { StickyPalette } from "./StickyPalette";
 import { StickyPreview } from "./StickyPreview";
 import { StickyToolbarButton } from "./StickyToolbarButton";
+import { useStickyHint } from "./useStickyHint";
 import { useStickyKeys } from "./useStickyKeys";
 import { useStickyNotes } from "./useStickyNotes";
 import { useStickyUpkeep } from "./useStickyUpkeep";
@@ -30,29 +30,29 @@ export function useStickyNotesFeature({
   canEdit,
   onCanvasChange,
 }: Options) {
-  const [hintShown, setHintShown] = useState(false);
-
-  // Only worth saying once. Somebody on a device where the keyboard will not
-  // rise by itself does not need telling on every note.
-  const onTypingUnavailable = useCallback(() => {
-    if (hintShown) return;
-    setHintShown(true);
-    toast("Note added — press Enter or double-click to type in it");
-  }, [hintShown]);
+  // The editor hands its API over after the first render, so anything that
+  // needs to subscribe has to wait for a sign of life. The first change event
+  // is that sign.
+  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
 
   const { armed, color, arm, setColor } = useStickyNotes({
     excalidrawAPI,
     containerRef,
     canEdit,
-    onTypingUnavailable,
   });
 
   useStickyKeys({ excalidrawAPI, containerRef, canEdit });
+  useStickyHint({ excalidrawAPI, containerRef, canEdit, ready });
   const { onSceneChange } = useStickyUpkeep({ excalidrawAPI, canEdit });
   const toolbar = useToolbarElement(containerRef);
 
   const handleCanvasChange = useCallback(
     (elements: readonly any[], appState: any, files?: Record<string, any>) => {
+      if (!readyRef.current) {
+        readyRef.current = true;
+        setReady(true);
+      }
       onSceneChange(elements, appState);
       onCanvasChange(elements, appState, files);
     },

@@ -31,7 +31,7 @@ export const RENDERER_VERSION = "poppler-1";
 export type PdfInfo = {
   pageCount: number;
   encrypted: boolean;
-  /** Largest page in points, used to refuse documents that would rasterise huge. */
+  /** First page in points; every requested page is checked again before rendering. */
   maxPageWidth: number;
   maxPageHeight: number;
 };
@@ -89,9 +89,9 @@ export function parsePdfInfo(stdout: string): PdfInfo {
     throw new PdfRejectedError("This file does not look like a readable PDF.");
   }
 
-  // "Page size: 595.276 x 841.89 pts (A4)" — and pages may differ, in which
-  // case pdfinfo reports the first one; the per-page guard below catches the
-  // rest at render time.
+  // "Page size: 595.276 x 841.89 pts (A4)". Without a page range pdfinfo
+  // reports only the first page; renderPage separately inspects the requested
+  // page's MediaBox before starting either renderer.
   const size = field("Page size");
   const match = size?.match(/([\d.]+)\s*x\s*([\d.]+)/);
   const width = match ? Number(match[1]) : 0;
@@ -103,6 +103,51 @@ export function parsePdfInfo(stdout: string): PdfInfo {
     maxPageWidth: Number.isFinite(width) ? width : 0,
     maxPageHeight: Number.isFinite(height) ? height : 0,
   };
+}
+
+/** Parse the requested page's MediaBox from `pdfinfo -box` output. */
+export function parsePdfPageBox(stdout: string, page: number): { width: number; height: number } {
+  const line = stdout
+    .split("\n")
+    .find((candidate) => new RegExp(`^Page\\s+${page}\\s+MediaBox:`).test(candidate));
+  const coordinates = line
+    ?.slice(line.indexOf(":") + 1)
+    .trim()
+    .split(/\s+/)
+    .map(Number);
+  if (
+    !coordinates ||
+    coordinates.length !== 4 ||
+    coordinates.some((coordinate) => !Number.isFinite(coordinate))
+  ) {
+    throw new PdfRejectedError(`The dimensions of page ${page} could not be determined safely.`);
+  }
+  return {
+    width: Math.abs(coordinates[2] - coordinates[0]),
+    height: Math.abs(coordinates[3] - coordinates[1]),
+  };
+}
+
+async function assertPageSize(
+  path: string,
+  page: number,
+  limits: RenderLimits,
+  signal?: AbortSignal,
+): Promise<void> {
+  let stdout: string;
+  try {
+    ({ stdout } = await run("pdfinfo", ["-box", "-f", String(page), "-l", String(page), path], {
+      timeout: limits.timeoutMs,
+      maxBuffer: 1024 * 1024,
+      signal,
+    }));
+  } catch {
+    throw new PdfRejectedError(`Page ${page} of this PDF could not be inspected.`);
+  }
+  const size = parsePdfPageBox(stdout, page);
+  if (size.width > limits.maxPagePoints || size.height > limits.maxPagePoints) {
+    throw new PdfRejectedError(`Page ${page} is far larger than any printable size.`);
+  }
 }
 
 /** Read a document's shape, refusing anything we will not be able to serve. */
@@ -148,10 +193,13 @@ export async function renderPage(
   path: string,
   page: number,
   limits: RenderLimits = DEFAULT_LIMITS,
+  signal?: AbortSignal,
 ): Promise<RenderedPage> {
   if (!Number.isInteger(page) || page < 1) {
     throw new PdfRejectedError(`Page must be a positive whole number, got ${page}.`);
   }
+
+  await assertPageSize(path, page, limits, signal);
 
   const dir = await mkdtemp(join(tmpdir(), "pdfpage-"));
   try {
@@ -160,6 +208,7 @@ export async function renderPage(
       await run("pdftocairo", ["-svg", "-f", String(page), "-l", String(page), path, svgPath], {
         timeout: limits.timeoutMs,
         maxBuffer: 1024 * 64,
+        signal,
       });
       const svg = await readFile(svgPath);
       if (svg.length > limits.maxOutputBytes) {
@@ -179,7 +228,7 @@ export async function renderPage(
     await run(
       "pdftoppm",
       ["-png", "-r", "110", "-f", String(page), "-l", String(page), "-singlefile", path, pngPrefix],
-      { timeout: limits.timeoutMs, maxBuffer: 1024 * 64 },
+      { timeout: limits.timeoutMs, maxBuffer: 1024 * 64, signal },
     );
     const png = await readFile(`${pngPrefix}.png`);
     if (png.length > limits.maxOutputBytes) {

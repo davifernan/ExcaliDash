@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { resolveStoragePath } from "../assets/assetStorage";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { collectExpiredLinkPreviews, evictLinkPreviewCache, PREVIEW_BLOB_GRACE_MS } from "./cache";
+import {
+  collectExpiredLinkPreviews,
+  evictLinkPreviewCache,
+  previewDiskBytes,
+  PREVIEW_BLOB_GRACE_MS,
+} from "./cache";
 import { createLinkPreviewService } from "./service";
 import { fakePreviewPrisma, previewTestConfig as config } from "./testSupport";
 
@@ -243,5 +249,156 @@ describe("bounded link preview cache", () => {
     expect(result.title).toBe("Text survives");
     expect(result.imageBlobId).toBeNull();
     expect(prisma.blobs.size).toBe(0);
+  });
+});
+
+describe("eviction and what is actually on disk", () => {
+  const withStorage = async () => {
+    const dir = await mkdtemp(join(tmpdir(), "linkcache-"));
+    tempDirs.push(dir);
+    return dir;
+  };
+
+  /** A preview blob with a real file behind it, old enough to be past the grace window. */
+  const seedOldBlob = async (
+    prisma: ReturnType<typeof fakePreviewPrisma>,
+    storageDir: string,
+    id: string,
+    bytes: number,
+  ) => {
+    const storageKey = `originals/${id}`;
+    const path = resolveStoragePath(storageDir, storageKey);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, Buffer.alloc(bytes));
+    const old = new Date(Date.now() - PREVIEW_BLOB_GRACE_MS - 60_000);
+    prisma.blobs.set(id, {
+      id,
+      storageKey,
+      storedBytes: bytes,
+      state: "READY",
+      purpose: "LINK_PREVIEW",
+      createdAt: old,
+      deleteAfter: null,
+    });
+    prisma.rows.set(`key-${id}`, {
+      id: `row-${id}`,
+      cacheKey: `key-${id}`,
+      ownerUserId: "user-1",
+      imageBlobId: id,
+      faviconBlobId: null,
+      lastAccessedAt: old,
+      expiresAt: new Date(Date.now() + 120_000),
+    });
+    return path;
+  };
+
+  it("frees the bytes it evicts instead of only dropping the rows", async () => {
+    const storageDir = await withStorage();
+    const prisma = fakePreviewPrisma();
+    const perBlob = Math.ceil(config.cacheBudgetBytes / 2);
+    const first = await seedOldBlob(prisma, storageDir, "old-1", perBlob);
+    const second = await seedOldBlob(prisma, storageDir, "old-2", perBlob);
+
+    await evictLinkPreviewCache({ prisma, storageDir, config }, undefined, true);
+
+    // Dropping the rows is not the point. What decides whether the next preview
+    // may be stored is what is on disk, so the files have to be gone as well.
+    await expect(stat(first)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(second)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await previewDiskBytes(prisma)).toBe(0);
+  });
+
+  it("leaves a blob that is too young to be safely deleted", async () => {
+    const storageDir = await withStorage();
+    const prisma = fakePreviewPrisma();
+    const path = await seedOldBlob(prisma, storageDir, "young-1", 100);
+    // Just stored: another instance could be about to link it.
+    prisma.blobs.get("young-1")!.createdAt = new Date();
+
+    await evictLinkPreviewCache({ prisma, storageDir, config }, undefined, true);
+
+    await expect(stat(path)).resolves.toBeTruthy();
+    expect(prisma.blobs.get("young-1")!.deleteAfter).toBeInstanceOf(Date);
+  });
+});
+
+describe("what the sweep and the per-user limits actually cover", () => {
+  it("removes the file behind an abandoned blob, not only its row", async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), "link-preview-sweep-"));
+    tempDirs.push(storageDir);
+    const prisma = fakePreviewPrisma();
+    const now = Date.now();
+    const storageKey = "originals/abandoned";
+    const path = resolveStoragePath(storageDir, storageKey);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, Buffer.alloc(64));
+    prisma.blobs.set("abandoned", {
+      id: "abandoned",
+      storageKey,
+      storedBytes: 64,
+      state: "READY",
+      purpose: "LINK_PREVIEW",
+      createdAt: new Date(now - PREVIEW_BLOB_GRACE_MS - 1),
+      deleteAfter: null,
+    });
+
+    await collectExpiredLinkPreviews({ prisma, storageDir, config, now: () => now });
+
+    // The sweep's own test seeds rows without files, and removing a file that
+    // was never there looks exactly like removing one that was.
+    await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not let one person's previews evict another's", async () => {
+    const prisma = fakePreviewPrisma();
+    const now = Date.now();
+    const seed = (owner: string, index: number) => {
+      prisma.rows.set(`${owner}-key-${index}`, {
+        id: `${owner}-row-${index}`,
+        cacheKey: `${owner}-key-${index}`,
+        ownerUserId: owner,
+        imageBlobId: null,
+        faviconBlobId: null,
+        lastAccessedAt: new Date(now - 1000 + index),
+        expiresAt: new Date(now + 120_000),
+      });
+    };
+    // One person well past the entry limit, another comfortably inside it.
+    for (let i = 0; i < config.maxEntriesPerUser + 3; i += 1) seed("noisy", i);
+    for (let i = 0; i < 2; i += 1) seed("quiet", i);
+
+    await evictLinkPreviewCache({ prisma, storageDir: "/unused", config }, "noisy");
+
+    const owners = [...prisma.rows.values()].map((row: any) => row.ownerUserId);
+    expect(owners.filter((owner) => owner === "quiet")).toHaveLength(2);
+    expect(owners.filter((owner) => owner === "noisy")).toHaveLength(config.maxEntriesPerUser);
+  });
+});
+
+describe("deleting a blob somebody else is adopting", () => {
+  it("leaves a blob another instance has already claimed", async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), "link-preview-claim-"));
+    tempDirs.push(storageDir);
+    const prisma = fakePreviewPrisma();
+    const now = Date.now();
+    const storageKey = "originals/claimed";
+    const path = resolveStoragePath(storageDir, storageKey);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, Buffer.alloc(32));
+    prisma.blobs.set("claimed", {
+      id: "claimed",
+      storageKey,
+      storedBytes: 32,
+      // Another instance is already deleting this one.
+      state: "DELETING",
+      purpose: "LINK_PREVIEW",
+      createdAt: new Date(now - PREVIEW_BLOB_GRACE_MS - 1),
+      deleteAfter: null,
+    });
+
+    const result = await collectExpiredLinkPreviews({ prisma, storageDir, config, now: () => now });
+
+    expect(result.blobs).toBe(0);
+    expect(prisma.blobs.get("claimed")).toBeTruthy();
   });
 });

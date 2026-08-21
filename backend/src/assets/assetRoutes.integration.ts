@@ -237,6 +237,34 @@ describe("document routes", () => {
       await request(app).get(url("/original")).expect(200);
     });
 
+    it("does not reuse bytes that are being deleted", async () => {
+      // Matching content normally reuses the row. A row claimed for deletion is
+      // about to lose its file, so adopting it would hand the uploader a
+      // document whose bytes vanish moments later.
+      const asset = await prisma.asset.findUnique({
+        where: { id: assetId },
+        include: { blob: true },
+      });
+      const bytes = await readFile(resolveStoragePath(storageDir, asset!.blob.storageKey));
+      await prisma.storedBlob.update({
+        where: { id: asset!.blob.id },
+        data: { state: "DELETING" },
+      });
+
+      const again = await request(app)
+        .post(`/drawings/${drawingId}/assets?name=umkaempft.pdf`)
+        .set("Content-Type", "application/pdf")
+        .send(bytes)
+        .expect(201);
+
+      const stored = await prisma.asset.findUnique({
+        where: { id: again.body.id },
+        include: { blob: true },
+      });
+      expect(stored!.blob.state).toBe("READY");
+      await request(app).get(`/drawings/${drawingId}/assets/${again.body.id}/original`).expect(200);
+    });
+
     it("answers rather than dying when the stored file is gone", async () => {
       // A blob row whose file is missing — a partial restore, a file removed by
       // hand — used to reach an unhandled stream error, and an unhandled stream

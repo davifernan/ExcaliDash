@@ -11,19 +11,69 @@ export type LinkPreviewCacheDeps = {
 /** Avoid deleting a blob while another instance is between storing and linking it. */
 export const PREVIEW_BLOB_GRACE_MS = 60 * 60 * 1000;
 
-async function releaseUnusedBlob(deps: LinkPreviewCacheDeps, blobId: string) {
+/**
+ * Take a blob out of circulation before deleting it.
+ *
+ * Reference counting on its own is check-then-act: another request can adopt
+ * the same bytes by hash in the gap, and then lose the file underneath itself.
+ * Moving the row to DELETING first is a claim — a reuse that sees a blob in
+ * that state stores its own copy instead.
+ */
+async function claimForDeletion(deps: LinkPreviewCacheDeps, blobId: string): Promise<boolean> {
+  const claimed = await deps.prisma.storedBlob.updateMany({
+    where: { id: blobId, state: "READY" },
+    data: { state: "DELETING" },
+  });
+  if (claimed.count === 0) return false;
   const [assets, previews] = await Promise.all([
     deps.prisma.asset.count({ where: { blobId } }),
     deps.prisma.linkPreview.count({
       where: { OR: [{ imageBlobId: blobId }, { faviconBlobId: blobId }] },
     }),
   ]);
-  if (assets + previews > 0) return false;
+  if (assets + previews > 0) {
+    // Somebody referenced it after all. Put it back rather than deleting it.
+    await deps.prisma.storedBlob.updateMany({
+      where: { id: blobId, state: "DELETING" },
+      data: { state: "READY" },
+    });
+    return false;
+  }
+  return true;
+}
+
+async function releaseUnusedBlob(deps: LinkPreviewCacheDeps, blobId: string) {
+  const [blob, assets, previews] = await Promise.all([
+    deps.prisma.storedBlob.findUnique({
+      where: { id: blobId },
+      select: { id: true, storageKey: true, createdAt: true },
+    }),
+    deps.prisma.asset.count({ where: { blobId } }),
+    deps.prisma.linkPreview.count({
+      where: { OR: [{ imageBlobId: blobId }, { faviconBlobId: blobId }] },
+    }),
+  ]);
+  if (!blob || assets + previews > 0) return false;
+
+  const now = deps.now?.() ?? Date.now();
+  // The grace period exists for one case: another instance has stored a blob
+  // and has not linked it yet. A blob older than that window cannot be in it,
+  // so its bytes go now rather than in an hour. Leaving them would make
+  // eviction useless — what decides whether a preview may be stored is what is
+  // on disk, so dropping the row while keeping the file frees nothing and the
+  // cache can end up empty and still refusing to take anything.
+  if (now - new Date(blob.createdAt).getTime() >= PREVIEW_BLOB_GRACE_MS) {
+    if (!(await claimForDeletion(deps, blobId))) return true;
+    await removeStored(deps.storageDir, blob.storageKey);
+    await deps.prisma.storedBlob.deleteMany({ where: { id: blobId } });
+    return true;
+  }
+
   await deps.prisma.storedBlob.updateMany({
     where: { id: blobId },
     data: {
       state: "READY",
-      deleteAfter: new Date((deps.now?.() ?? Date.now()) + PREVIEW_BLOB_GRACE_MS),
+      deleteAfter: new Date(now + PREVIEW_BLOB_GRACE_MS),
     },
   });
   return true;
@@ -146,7 +196,10 @@ export async function evictLinkPreviewCache(
     }
   }
 
-  let used = await previewCacheBytes(deps.prisma);
+  // Measured the same way admission measures it. Counting only referenced rows
+  // here while admission counts every preview byte on disk is how eviction
+  // could report success and still leave no room.
+  let used = await previewDiskBytes(deps.prisma);
   if (!force && used <= deps.config.cacheBudgetBytes) return removed;
   const target = force ? 0 : deps.config.cacheBudgetBytes * 0.9;
   while (used > target) {
@@ -157,7 +210,7 @@ export async function evictLinkPreviewCache(
     if (rows.length === 0) break;
     for (const row of rows) await discardRow(deps, row);
     removed += rows.length;
-    const next = await previewCacheBytes(deps.prisma);
+    const next = await previewDiskBytes(deps.prisma);
     if (next >= used) break;
     used = next;
   }
@@ -165,13 +218,7 @@ export async function evictLinkPreviewCache(
 }
 
 async function deleteOrphanBlob(deps: LinkPreviewCacheDeps, blob: any): Promise<boolean> {
-  const [assets, previews] = await Promise.all([
-    deps.prisma.asset.count({ where: { blobId: blob.id } }),
-    deps.prisma.linkPreview.count({
-      where: { OR: [{ imageBlobId: blob.id }, { faviconBlobId: blob.id }] },
-    }),
-  ]);
-  if (assets + previews > 0) return false;
+  if (!(await claimForDeletion(deps, blob.id))) return false;
   await removeStored(deps.storageDir, blob.storageKey);
   const result = await deps.prisma.storedBlob.deleteMany({ where: { id: blob.id } });
   return result.count > 0;

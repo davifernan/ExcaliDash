@@ -152,7 +152,12 @@ export function fakePreviewPrisma() {
       },
       updateMany: vi.fn(async ({ where, data }: any) => {
         const blob = blobs.get(where.id);
-        if (!blob) return { count: 0 };
+        // Honour the rest of the filter too. Ignoring it would make a
+        // conditional update look unconditional, and a conditional update is
+        // exactly how a blob is claimed before deletion.
+        if (!blob || (where.state !== undefined && blob.state !== where.state)) {
+          return { count: 0 };
+        }
         blobs.set(where.id, { ...blob, ...data });
         return { count: 1 };
       }),

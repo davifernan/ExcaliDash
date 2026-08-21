@@ -42,18 +42,18 @@ describe("preview image admission", () => {
   });
 
   it("places dimension, frame and thread limits in the decoder policy", () => {
-    expect(imageMagickResourceArgs(limits)).toEqual(
-      expect.arrayContaining([
-        "width",
-        "2048",
-        "height",
-        "2048",
-        "list-length",
-        "1",
-        "thread",
-        "1",
-      ]),
-    );
+    // Read as pairs. `arrayContaining` only asks whether each string appears
+    // somewhere, so it cannot tell "list-length 1" from "list-length 2" — the
+    // "1" belonging to the thread limit satisfies it either way, and this test
+    // stayed green while the value it names was changed.
+    const args = imageMagickResourceArgs(limits);
+    const valueOf = (name: string) => args[args.indexOf(name) + 1];
+    expect(valueOf("width")).toBe("2048");
+    expect(valueOf("height")).toBe("2048");
+    expect(valueOf("thread")).toBe("1");
+    // 2 admits exactly one image. 1 admits none: ImageMagick refuses at the
+    // limit, not above it, so every preview failed to re-encode.
+    expect(valueOf("list-length")).toBe("2");
   });
 });
 

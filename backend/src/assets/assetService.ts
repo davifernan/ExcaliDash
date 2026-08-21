@@ -102,7 +102,12 @@ export async function storeBlob(
   // otherwise swallow every later upload of the same content: each one appears
   // to succeed and none of them can ever be read. The upload just made is a
   // perfectly good replacement, so adopt it instead of throwing it away.
-  if (blob && !(await storedFileExists(deps.storageDir, blob.storageKey))) {
+  // Not READY means somebody has claimed it for deletion and its file is about
+  // to go, so it is no more reusable than one that has already gone.
+  if (
+    blob &&
+    (blob.state !== "READY" || !(await storedFileExists(deps.storageDir, blob.storageKey)))
+  ) {
     blob = await deps.prisma.storedBlob.update({
       where: { id: blob.id },
       data: {

@@ -14,11 +14,16 @@ const entry = (overrides: Partial<PresenceEntry>): PresenceEntry => ({
   ...overrides,
 });
 
-const invoke = async (app: express.Express, query: Record<string, string>, user: any) => {
+const invoke = async (
+  app: express.Express,
+  query: Record<string, string>,
+  user: any,
+  ip = "127.0.0.1",
+) => {
   const layer = (app as any).router.stack.find(
     (candidate: any) => candidate.route?.path === "/dashboard/presence",
   );
-  const req: any = { params: {}, body: {}, query, headers: {}, connection: {}, ip: "127.0.0.1" };
+  const req: any = { params: {}, body: {}, query, headers: {}, connection: {}, ip };
   const res: any = {
     statusCode: 200,
     headers: {} as Record<string, string>,
@@ -38,6 +43,10 @@ const invoke = async (app: express.Express, query: Record<string, string>, user:
       return this;
     },
     json(payload: unknown) {
+      this.payload = payload;
+      return this;
+    },
+    send(payload: unknown) {
       this.payload = payload;
       return this;
     },
@@ -178,5 +187,21 @@ describe("dashboard presence", () => {
     );
 
     expect(res.statusCode).toBe(403);
+  });
+
+  it("gives different auth-disabled clients independent rate-limit budgets", async () => {
+    const { app } = buildApp(new PresenceRegistry());
+    const bootstrap = { id: "bootstrap-admin", authCredentialType: "bootstrap" };
+
+    for (let request = 0; request < 60; request += 1) {
+      expect((await invoke(app, { ids: "drawing-1" }, bootstrap, "192.0.2.10")).statusCode).toBe(
+        200,
+      );
+    }
+    expect((await invoke(app, { ids: "drawing-1" }, bootstrap, "192.0.2.10")).statusCode).toBe(429);
+
+    expect((await invoke(app, { ids: "drawing-1" }, bootstrap, "198.51.100.20")).statusCode).toBe(
+      200,
+    );
   });
 });

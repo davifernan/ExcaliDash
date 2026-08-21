@@ -46,11 +46,15 @@ export const registerPresenceRoutes = (app: express.Express, deps: DashboardRout
     max: 60,
     standardHeaders: true,
     legacyHeaders: false,
-    // An account is the thing to limit; the address is only the fallback for
-    // the moment before one is known. It goes through the library's helper
-    // because a raw IPv6 address is one host out of a block the same person can
-    // pick another from at will.
-    keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip || "") || "anonymous",
+    // Auth-disabled browsers all act through one bootstrap account, so that
+    // identity cannot distinguish callers. Keep real accounts on one budget
+    // and use the normalized client network for bootstrap/anonymous callers.
+    keyGenerator: (req) => {
+      if (req.user?.id && req.user.authCredentialType !== "bootstrap") {
+        return `account:${req.user.id}`;
+      }
+      return `address:${ipKeyGenerator(req.ip || "") || "anonymous"}`;
+    },
   });
 
   app.get(

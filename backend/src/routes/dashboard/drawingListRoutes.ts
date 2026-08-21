@@ -115,6 +115,9 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
           : undefined;
       const parsedOffset =
         rawOffset !== undefined && Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : undefined;
+      // API keys are automation credentials. They can list drawings, but do
+      // not need the human roster attached to each card.
+      const includeMembers = req.user.authCredentialType !== "apiKey";
 
       const cacheKey =
         buildDrawingsCacheKey({
@@ -124,7 +127,8 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
           includeData: shouldIncludeData,
           sortField: parsedSortField,
           sortDirection: parsedSortDirection,
-        }) + `:${parsedLimit}:${parsedOffset}:preview=${shouldIncludePreview ? "1" : "0"}`;
+        }) +
+        `:${parsedLimit}:${parsedOffset}:preview=${shouldIncludePreview ? "1" : "0"}:members=${includeMembers ? "1" : "0"}`;
 
       const cachedBody = getCachedDrawingsBody(cacheKey);
       if (cachedBody) {
@@ -185,14 +189,16 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
         }));
       }
 
-      const members = await getDrawingMemberProjections({
-        prisma,
-        drawingIds: responsePayload.map((d) => d.id),
-        viewerId: req.user.id,
-        secret: subjectKeySecret,
-      });
-      for (const drawing of responsePayload) {
-        drawing.members = members.get(drawing.id) ?? { totalCount: 0, items: [] };
+      if (includeMembers) {
+        const members = await getDrawingMemberProjections({
+          prisma,
+          drawingIds: responsePayload.map((d) => d.id),
+          viewerId: req.user.id,
+          secret: subjectKeySecret,
+        });
+        for (const drawing of responsePayload) {
+          drawing.members = members.get(drawing.id) ?? { totalCount: 0, items: [] };
+        }
       }
 
       const finalResponse = {

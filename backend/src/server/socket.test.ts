@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import jwt from "jsonwebtoken";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
@@ -426,6 +426,42 @@ describe("socket share-link secrets", () => {
     expect(ownerAck.presence).not.toHaveProperty("accountId");
   });
 
+  it("presents a signed-in account with link-only access as a guest", async () => {
+    const io = new FakeIo();
+    const token = buildShareLinkToken();
+    const prisma = {
+      drawing: {
+        findUnique: async () => ({ userId: "owner-account-id", collectionId: null }),
+        findMany: async () => [{ id: "drawing-1", userId: "owner-account-id", collectionId: null }],
+      },
+      drawingLinkShare: {
+        findFirst: async () => ({ permission: "view", tokenHash: hashShareLinkToken(token) }),
+      },
+      user: {
+        findUnique: async () => ({ id: "link-account-id", isActive: true, name: "Account Name" }),
+      },
+      collection: { findFirst: async () => null, findMany: async () => [] },
+      collectionShare: { findFirst: async () => null, findMany: async () => [] },
+      drawingPermission: { findUnique: async () => null, findMany: async () => [] },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+    const accountToken = jwt.sign(
+      { userId: "link-account-id", email: "link@example.test", type: "access" },
+      "test-secret",
+    );
+    const socket = await io.connect("socket-link-account", { token: accountToken });
+
+    const ack = await join(socket, token);
+
+    expect(ack).toMatchObject({ ok: true, presence: { kind: "guest" } });
+    expect(ack.presence.name).not.toBe("Account Name");
+  });
+
   it("rejects missing, wrong, and rotated tokens while accepting only the current token", async () => {
     const io = new FakeIo();
     const firstToken = buildShareLinkToken();
@@ -454,5 +490,47 @@ describe("socket share-link secrets", () => {
       "access-denied",
     );
     expect((await join(await io.connect("current"), secondToken))?.ok).toBe(true);
+  });
+});
+
+describe("socket activity rate limiting", () => {
+  it("shares one activity budget across one account's simultaneous sockets", async () => {
+    const io = new FakeIo();
+    const prisma = {
+      drawing: {
+        findUnique: vi.fn().mockResolvedValue({ userId: "account-1", collectionId: null }),
+      },
+      drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "account-1",
+          isActive: true,
+          name: "Account One",
+        }),
+      },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+    const token = jwt.sign(
+      { userId: "account-1", email: "one@example.test", type: "access" },
+      "test-secret",
+    );
+    const first = await io.connect("socket-first", { token });
+    const second = await io.connect("socket-second", { token });
+    for (const socket of [first, second]) {
+      await socket.trigger("join-room", { drawingId: "drawing-1", user: {} });
+    }
+    io.emissions.length = 0;
+
+    for (let index = 0; index < 11; index += 1) {
+      await first.trigger("user-activity", { drawingId: "drawing-1", isActive: true });
+      await second.trigger("user-activity", { drawingId: "drawing-1", isActive: true });
+    }
+
+    expect(io.emissions.filter((item) => item.event === "presence-update")).toHaveLength(20);
   });
 });

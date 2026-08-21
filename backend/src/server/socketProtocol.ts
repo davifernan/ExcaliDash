@@ -122,3 +122,24 @@ export const createRateLimiter = (limit: number, windowMs: number) => {
     return count <= limit;
   };
 };
+
+export const createKeyedRateLimiter = (limit: number, windowMs: number, maxKeys = 10_000) => {
+  const buckets = new Map<string, { windowStartedAt: number; count: number }>();
+  return (key: string, now = Date.now()): boolean => {
+    let bucket = buckets.get(key);
+    if (!bucket || now - bucket.windowStartedAt >= windowMs) {
+      if (!bucket && buckets.size >= maxKeys) {
+        for (const [candidateKey, candidate] of buckets) {
+          if (now - candidate.windowStartedAt >= windowMs) buckets.delete(candidateKey);
+        }
+        // Refusing a new bucket is safer than evicting a live one and letting
+        // an attacker reset limits by cycling through disposable addresses.
+        if (buckets.size >= maxKeys) return false;
+      }
+      bucket = { windowStartedAt: now, count: 0 };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    return bucket.count <= limit;
+  };
+};

@@ -51,8 +51,12 @@
      screen entirely in a short window -- measured at 420px, where Start sat at
      455. There is always room above, because that is where the canvas is. */
   bottom: calc(100% + 8px);
-  right: 0;
-  width: 270px;
+  /* Aligned to the widget's leading edge rather than its trailing one. Right
+     alignment works while the widget sits in the middle of the footer; in the
+     mobile corner it sits at x=16, so the panel grew leftwards and the minutes
+     field ended up at x=-83 -- off the screen, on a clipped root. */
+  inset-inline-start: 0;
+  width: min(270px, calc(100vw - 2rem));
   padding: 10px;
 }
 

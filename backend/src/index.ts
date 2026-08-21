@@ -151,7 +151,10 @@ const io = new Server(httpServer, {
     origin: (origin, cb) => cb(null, isAllowedOrigin(origin ?? undefined)),
     credentials: true,
   },
-  maxHttpBufferSize: 50 * 1024 * 1024,
+  // Measured: a full 10k-element update is 4.70 MB and the existing maximum
+  // embedded-image event is 10.49 MB. 16 MiB admits both together plus margin,
+  // while rejecting the former unauthenticated 50 MiB packet before decoding.
+  maxHttpBufferSize: config.socketMaxHttpBufferBytes,
 });
 const parseJsonField = <T>(rawValue: string | null | undefined, fallback: T): T => {
   if (!rawValue) return fallback;

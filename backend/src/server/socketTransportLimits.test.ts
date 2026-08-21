@@ -1,0 +1,195 @@
+import jwt from "jsonwebtoken";
+import { describe, expect, it, vi } from "vitest";
+import { BOOTSTRAP_USER_ID } from "../auth/authMode";
+import { FakeIo, type FakeSocket } from "../__tests__/socketTestDoubles";
+import { registerSocketHandlers } from "./socket";
+import { parseElementUpdatePayload, SOCKET_LIMITS } from "./socketProtocol";
+
+const fullRectangle = (index: number) => ({
+  id: `element-${index.toString(36).padStart(8, "0")}`,
+  type: "rectangle",
+  x: index * 10,
+  y: index * 4,
+  width: 160,
+  height: 80,
+  angle: 0,
+  strokeColor: "#1e1e1e",
+  backgroundColor: "transparent",
+  fillStyle: "solid",
+  strokeWidth: 2,
+  strokeStyle: "solid",
+  roundness: { type: 3 },
+  roughness: 1,
+  opacity: 100,
+  groupIds: [],
+  frameId: null,
+  index: `a${index.toString(36)}`,
+  seed: 123_456_789 + index,
+  version: 1,
+  versionNonce: 987_654_321 - index,
+  isDeleted: false,
+  boundElements: null,
+  updated: 1_720_000_000_000,
+  link: null,
+  locked: false,
+});
+
+const drawingId = "00000000-0000-0000-0000-000000000000";
+
+describe("element-update transport limits", () => {
+  it("rejects an oversized serialized payload", () => {
+    expect(
+      parseElementUpdatePayload({
+        drawingId,
+        elements: [fullRectangle(0)],
+        ignored: "x".repeat(SOCKET_LIMITS.elementUpdateBytes),
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects an oversized individual element", () => {
+    expect(
+      parseElementUpdatePayload({
+        drawingId,
+        elements: [
+          {
+            ...fullRectangle(0),
+            customData: { padding: "x".repeat(SOCKET_LIMITS.elementBytes) },
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects implausible element and file field types", () => {
+    expect(
+      parseElementUpdatePayload({
+        drawingId,
+        elements: [{ ...fullRectangle(0), x: "not-a-coordinate" }],
+      }),
+    ).toBeNull();
+    expect(
+      parseElementUpdatePayload({
+        drawingId,
+        elements: [],
+        files: { image: { id: "image", mimeType: "image/png", dataURL: 123 } },
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects updates above the element-count ceiling", () => {
+    const elements = Array.from({ length: SOCKET_LIMITS.elementsPerUpdate + 1 }, (_, index) => ({
+      id: `element-${index}`,
+      type: "rectangle",
+    }));
+
+    expect(parseElementUpdatePayload({ drawingId, elements })).toBeNull();
+  });
+
+  it("accepts a measured large 5,000-element scene with its full order", () => {
+    const elements = Array.from({ length: 5_000 }, (_, index) => fullRectangle(index));
+    const elementOrder = elements.map((element) => element.id);
+
+    const parsed = parseElementUpdatePayload({ drawingId, elements, elementOrder });
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.elements).toHaveLength(5_000);
+    expect(parsed?.serializedBytes).toBe(2_349_861);
+    expect(parsed!.serializedBytes).toBeLessThan(SOCKET_LIMITS.elementUpdateBytes);
+  });
+
+  it("shares byte budgets by address for guests and by account for signed-in users", async () => {
+    const payload = { drawingId: "drawing-1", elements: [fullRectangle(0)] };
+    const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+    const trafficLimits = {
+      accountBytesPerWindow: payloadBytes,
+      anonymousBytesPerWindow: payloadBytes,
+      windowMs: 1_000,
+    };
+    const join = (socket: FakeSocket) =>
+      socket.trigger("join-room", { drawingId: "drawing-1", user: {} });
+
+    const guestIo = new FakeIo();
+    registerSocketHandlers({
+      io: guestIo as any,
+      prisma: {
+        drawing: { findUnique: vi.fn().mockResolvedValue({ userId: BOOTSTRAP_USER_ID }) },
+        drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      } as any,
+      authModeService: { getAuthEnabled: async () => false } as any,
+      jwtSecret: "test-secret",
+      elementUpdateTrafficLimits: trafficLimits,
+    });
+    const firstGuest = await guestIo.connect("guest-one");
+    const sameAddressGuest = await guestIo.connect("guest-two");
+    const otherAddressGuest = await guestIo.connect("guest-three");
+    otherAddressGuest.handshake.address = "203.0.113.10";
+    await Promise.all([join(firstGuest), join(sameAddressGuest), join(otherAddressGuest)]);
+    guestIo.emissions.length = 0;
+
+    await firstGuest.trigger("element-update", payload);
+    await sameAddressGuest.trigger("element-update", payload);
+    await otherAddressGuest.trigger("element-update", payload);
+    expect(guestIo.emissions.filter((item) => item.event === "element-update")).toHaveLength(2);
+
+    const strictGuestIo = new FakeIo();
+    registerSocketHandlers({
+      io: strictGuestIo as any,
+      prisma: {
+        drawing: { findUnique: vi.fn().mockResolvedValue({ userId: BOOTSTRAP_USER_ID }) },
+        drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      } as any,
+      authModeService: { getAuthEnabled: async () => false } as any,
+      jwtSecret: "test-secret",
+      elementUpdateTrafficLimits: {
+        ...trafficLimits,
+        anonymousBytesPerWindow: SOCKET_LIMITS.elementUpdateBytes,
+      },
+    });
+    const strictGuest = await strictGuestIo.connect("strict-guest");
+    await join(strictGuest);
+    strictGuestIo.emissions.length = 0;
+    await strictGuest.trigger("element-update", {
+      ...payload,
+      ignored: "x".repeat(SOCKET_LIMITS.anonymousElementUpdateBytes),
+    });
+    expect(strictGuestIo.emissions.filter((item) => item.event === "element-update")).toHaveLength(
+      0,
+    );
+
+    const accountIo = new FakeIo();
+    const accountPrisma = {
+      drawing: {
+        findUnique: vi.fn().mockResolvedValue({ userId: "account-1", collectionId: null }),
+      },
+      drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "account-1",
+          isActive: true,
+          name: "Account One",
+        }),
+      },
+    };
+    registerSocketHandlers({
+      io: accountIo as any,
+      prisma: accountPrisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+      elementUpdateTrafficLimits: trafficLimits,
+    });
+    const token = jwt.sign(
+      { userId: "account-1", email: "one@example.test", type: "access" },
+      "test-secret",
+    );
+    const firstAccount = await accountIo.connect("account-one", { token });
+    const secondAccount = await accountIo.connect("account-two", { token });
+    secondAccount.handshake.address = "203.0.113.20";
+    await Promise.all([join(firstAccount), join(secondAccount)]);
+    accountIo.emissions.length = 0;
+
+    await firstAccount.trigger("element-update", payload);
+    await secondAccount.trigger("element-update", payload);
+    expect(accountIo.emissions.filter((item) => item.event === "element-update")).toHaveLength(1);
+  });
+});

@@ -20,6 +20,8 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
    * address, so dropping and redialling buys nothing.
    */
   allow?: () => boolean;
+  /** Payload-aware budget, evaluated after validation but before access I/O. */
+  allowPayload?: (payload: Payload) => boolean;
   handle: (payload: Payload) => void | Promise<void>;
 };
 
@@ -46,6 +48,7 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   requireAccess,
   requireEdit = false,
   allow: sharedAllow,
+  allowPayload,
   handle,
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
   const allow = sharedAllow ?? createRateLimiter(limit, windowMs);
@@ -56,7 +59,13 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
     if (!allow()) return;
     tail = tail.then(async () => {
       const payload = parse(value);
-      if (!payload || !(await requireAccess(socket, payload.drawingId, requireEdit))) return;
+      if (
+        !payload ||
+        (allowPayload && !allowPayload(payload)) ||
+        !(await requireAccess(socket, payload.drawingId, requireEdit))
+      ) {
+        return;
+      }
       await handle(payload);
     });
     // A thrown handler must not poison the tail for everything after it.

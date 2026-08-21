@@ -36,10 +36,14 @@ import {
   type PresenceKind,
 } from "./presenceRegistry";
 import {
+  createKeyedByteLimiter,
   createKeyedRateLimiter,
   createRateLimiter,
+  ELEMENT_UPDATE_TRAFFIC_LIMITS,
   parseDrawingId,
   SOCKET_QUEUE_LIMITS,
+  SOCKET_LIMITS,
+  type ElementUpdateTrafficLimits,
 } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
@@ -58,6 +62,7 @@ type RegisterSocketHandlersDeps = {
   accessRecheckIntervalMs?: number;
   /** Shared with the HTTP side so the dashboard can read presence too. */
   presences?: PresenceRegistry;
+  elementUpdateTrafficLimits?: ElementUpdateTrafficLimits;
 };
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
@@ -69,6 +74,7 @@ export const registerSocketHandlers = ({
   jwtSecret,
   accessRecheckIntervalMs = 5_000,
   presences = new PresenceRegistry(),
+  elementUpdateTrafficLimits = ELEMENT_UPDATE_TRAFFIC_LIMITS,
 }: RegisterSocketHandlersDeps): CollaborationAccessController => {
   const principals = new Map<string, DrawingPrincipal>();
   const connectedSockets = new Map<string, Socket>();
@@ -77,6 +83,14 @@ export const registerSocketHandlers = ({
   // Keyed by who, not by which connection: a per-socket budget for activity
   // pings resets on reconnect, and reconnecting is free.
   const allowActivity = createKeyedRateLimiter(20, 10_000);
+  const allowAccountElementBytes = createKeyedByteLimiter(
+    elementUpdateTrafficLimits.accountBytesPerWindow,
+    elementUpdateTrafficLimits.windowMs,
+  );
+  const allowAnonymousElementBytes = createKeyedByteLimiter(
+    elementUpdateTrafficLimits.anonymousBytesPerWindow,
+    elementUpdateTrafficLimits.windowMs,
+  );
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
   let followManager: ReturnType<typeof createSocketFollowManager>;
@@ -212,6 +226,15 @@ export const registerSocketHandlers = ({
     const allowJoin = createRateLimiter(10, 60_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
+    const actor = () => {
+      const principal = principals.get(socket.id);
+      return principal && !principal.allowInactive
+        ? { key: `account:${principal.userId}`, isAccount: true }
+        : {
+            key: `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`,
+            isAccount: false,
+          };
+    };
     followManager.registerHandlers(socket, allowFollow, allowViewport);
     registerCoreRoomEvents({
       socket,
@@ -221,14 +244,17 @@ export const registerSocketHandlers = ({
         presences.setActive(drawingId, presenceId, active),
       emitPresence,
       allowActivity: () => {
-        const principal = principals.get(socket.id);
-        const actor =
-          principal && !principal.allowInactive
-            ? `account:${principal.userId}`
-            : // Normalised the same way the HTTP limiter does it. A raw address
-              // hands anyone with an IPv6 range a fresh budget per connection.
-              `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`;
-        return allowActivity(actor);
+        return allowActivity(actor().key);
+      },
+      allowElementUpdate: (serializedBytes) => {
+        const currentActor = actor();
+        if (currentActor.isAccount) {
+          return allowAccountElementBytes(currentActor.key, serializedBytes);
+        }
+        // Link guests and auth-disabled visitors are address-keyed and capped
+        // below signed-in accounts. IPv6 is normalised by ipKeyGenerator.
+        if (serializedBytes > SOCKET_LIMITS.anonymousElementUpdateBytes) return false;
+        return allowAnonymousElementBytes(currentActor.key, serializedBytes);
       },
     });
     registerSelectionRoomEvent({ socket, presences, requireAccess });

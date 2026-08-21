@@ -59,6 +59,8 @@ export type DashboardRouteDeps = {
     snapshotMaxCountPerDrawing: number;
   };
   logAuditEvent: LogAuditEvent;
+  /** Used to derive opaque per-scope identifiers; never sent to a client. */
+  subjectKeySecret: string;
   processFilesForS3: (
     files: Record<string, any>,
     userId: string,

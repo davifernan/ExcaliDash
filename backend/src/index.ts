@@ -536,6 +536,7 @@ registerDashboardRoutes(app, {
   MAX_PAGE_SIZE,
   config,
   logAuditEvent,
+  subjectKeySecret: config.jwtSecret,
   processFilesForS3: (files, userId, drawingId) =>
     processFilesForS3WithPrisma(files, userId, drawingId, prisma),
 });

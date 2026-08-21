@@ -1,5 +1,6 @@
 import type {
   Collection,
+  CollectionMember,
   CollectionShareRole,
   CollectionShareRow,
   CollectionShareUser,
@@ -90,6 +91,15 @@ export const removeCollectionShare = async (
 ): Promise<{ success: true }> => {
   const response = await api.delete<{ success: true }>(
     `/collections/${collectionId}/shares/${userId}`,
+  );
+  return response.data;
+};
+
+export const getCollectionMembers = async (
+  collectionId: string,
+): Promise<{ members: CollectionMember[]; totalCount: number }> => {
+  const response = await api.get<{ members: CollectionMember[]; totalCount: number }>(
+    `/collections/${collectionId}/members`,
   );
   return response.data;
 };

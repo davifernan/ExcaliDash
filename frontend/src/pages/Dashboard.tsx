@@ -7,6 +7,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { useUpload } from "../context/UploadContext";
 import { DragOverlayPortal } from "./dashboard/shared";
 import { DashboardToolbar } from "./dashboard/DashboardToolbar";
+import { CollectionTeamBar } from "./dashboard/CollectionTeamBar";
 import {
   DragPreview,
   DrawingsGrid,
@@ -190,6 +191,7 @@ export const Dashboard: React.FC = () => {
         {" "}
         {viewTitle}{" "}
       </h1>{" "}
+      <CollectionTeamBar collection={actions.currentCollection} />{" "}
       <ViewerActionToast message={actions.viewerActionError} />{" "}
       <DashboardToolbar
         search={search}

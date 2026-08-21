@@ -26,6 +26,15 @@ describe("telling somebody their change was not shared", () => {
     expect(notify.mock.calls[0][0]).toMatch(/still saved/i);
   });
 
+  it("rolls the refused update back even while the warning is quiet", () => {
+    const { socket, handlers } = makeSocket();
+    const onRefused = vi.fn();
+    bindElementUpdateRefusals({ socket, notify: vi.fn(), onRefused, now: () => 1_000 });
+    handlers.get(ELEMENT_UPDATE_REFUSED_EVENT)!();
+    handlers.get(ELEMENT_UPDATE_REFUSED_EVENT)!();
+    expect(onRefused).toHaveBeenCalledTimes(2);
+  });
+
   it("does not repeat itself through a burst", () => {
     // A board over the limit is over it for every change that follows. One
     // message per change would be its own kind of broken.

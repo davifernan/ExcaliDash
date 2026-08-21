@@ -1,6 +1,4 @@
 import { useCallback, useRef, type MutableRefObject } from "react";
-import type { Socket } from "socket.io-client";
-import { getFilesDelta } from "./shared";
 
 type UseEditorAddFilesBridgeInput = {
   drawingId?: string;
@@ -17,12 +15,11 @@ type UseEditorAddFilesBridgeInput = {
   hasSceneChangesSinceLoadRef: MutableRefObject<boolean>;
   isHistoryPreviewingRef: MutableRefObject<boolean>;
   isSyncingRef: MutableRefObject<boolean>;
-  lastSyncedFilesRef: MutableRefObject<Record<string, any>>;
   latestAppStateRef: MutableRefObject<any>;
   latestElementsRef: MutableRefObject<readonly any[]>;
   latestFilesRef: MutableRefObject<any>;
   setIsReady: (ready: boolean) => void;
-  socketRef: MutableRefObject<Socket | null>;
+  broadcastFiles: (files: Record<string, any>) => boolean;
 };
 
 /**
@@ -38,29 +35,19 @@ export const useEditorAddFilesBridge = ({
   hasSceneChangesSinceLoadRef,
   isHistoryPreviewingRef,
   isSyncingRef,
-  lastSyncedFilesRef,
   latestAppStateRef,
   latestElementsRef,
   latestFilesRef,
   setIsReady,
-  socketRef,
+  broadcastFiles,
 }: UseEditorAddFilesBridgeInput) => {
   const patchedApisRef = useRef<WeakSet<object>>(new WeakSet());
   const emitFilesDeltaIfNeeded = useCallback(
     (nextFiles: Record<string, any>) => {
-      if (!socketRef.current || !drawingId) return false;
-      const filesDelta = getFilesDelta(lastSyncedFilesRef.current, nextFiles || {});
-      if (Object.keys(filesDelta).length === 0) return false;
       latestFilesRef.current = nextFiles;
-      lastSyncedFilesRef.current = nextFiles;
-      socketRef.current.emit("element-update", {
-        drawingId,
-        elements: [],
-        files: filesDelta,
-      });
-      return true;
+      return broadcastFiles(nextFiles);
     },
-    [drawingId, lastSyncedFilesRef, latestFilesRef, socketRef],
+    [broadcastFiles, latestFilesRef],
   );
   const setExcalidrawAPI = useCallback(
     (api: any) => {

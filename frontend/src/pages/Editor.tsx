@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from "react";
+import { useCursorChatKey } from "./editor/useCursorChatKey";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getInitialLangCode } from "../components/LanguageSelector";
 import type { UserIdentity } from "../utils/identity";
@@ -95,6 +96,8 @@ export const Editor: React.FC = () => {
   }, [id, location.hash, location.pathname, location.search, navigate]);
   const {
     peers,
+    cursorChatRef,
+    cursorChatDraft,
     followers,
     workshopTimer,
     socketRef,
@@ -291,6 +294,14 @@ export const Editor: React.FC = () => {
     canEdit,
     onCanvasChange: handleCanvasChange,
   });
+  const handleCursorChatOpen = useCallback(() => cursorChatRef.current?.open(), [cursorChatRef]);
+
+  useCursorChatKey({
+    containerRef: editorContainerRef,
+    enabled: canEdit,
+    onOpen: handleCursorChatOpen,
+  });
+
   const handleChangeWithSelection = useCallback(
     (elements: readonly any[], appState: any, files?: Record<string, any>) => {
       onSelectionChange(appState);
@@ -343,6 +354,9 @@ export const Editor: React.FC = () => {
         followers={followers}
         initialData={initialData}
         inviteHere={inviteHere}
+        cursorChatDraft={cursorChatDraft}
+        onCursorChatType={(text: string) => cursorChatRef.current?.type(text)}
+        onCursorChatClose={() => cursorChatRef.current?.close()}
         isRenaming={isRenaming}
         isSavingOnLeave={isSavingOnLeave}
         isSceneLoading={isSceneLoading}

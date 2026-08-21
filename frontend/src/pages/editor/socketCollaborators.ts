@@ -22,10 +22,19 @@ export const bindSocketCollaborators = ({
   socket,
   api,
   onPeersChange,
+  decorateName = (name) => name,
 }: {
   socket: Socket;
   api: ExcalidrawApi;
   onPeersChange: (peers: Peer[]) => void;
+  /**
+   * A last say over the name Excalidraw paints beside each cursor.
+   *
+   * Cursor chat rides on this: Excalidraw already draws a name there and moves
+   * it with the pointer, so a message appended to the name follows the cursor
+   * exactly, with no renderer of ours to keep in step.
+   */
+  decorateName?: (name: string, presenceId: string) => string;
 }) => {
   let selfPresenceId: string | null = null;
   let lastPresenceUsers: Peer[] | null = null;
@@ -45,6 +54,7 @@ export const bindSocketCollaborators = ({
         collaborators.set(presenceId, {
           ...(collaborators.get(presenceId) || {}),
           ...data,
+          username: decorateName(data.username, presenceId),
         });
       });
       cursorBuffer.clear();
@@ -76,7 +86,7 @@ export const bindSocketCollaborators = ({
       collaborators.set(user.presenceId, {
         ...existing,
         id: user.presenceId,
-        username: user.name,
+        username: decorateName(user.name, user.presenceId),
         color: { background: user.color, stroke: user.color },
         isCurrentUser: false,
         selectedElementIds: selectedElementIds || existing.selectedElementIds || {},
@@ -110,7 +120,19 @@ export const bindSocketCollaborators = ({
     updateCollaborators(new Map());
   };
 
+  /**
+   * Re-apply the last presence list.
+   *
+   * Names are only rebuilt when presence or a cursor arrives. Cursor chat can
+   * change what a name should say while its owner sits perfectly still, and
+   * without this their message would wait for their next twitch.
+   */
+  const refresh = () => {
+    if (lastPresenceUsers) onPresence(lastPresenceUsers);
+  };
+
   return {
+    refresh,
     setSelfPresenceId(presenceId: string) {
       selfPresenceId = presenceId;
       if (lastPresenceUsers) onPresence(lastPresenceUsers);

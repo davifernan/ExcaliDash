@@ -39,6 +39,7 @@ import { createRateLimiter, parseDrawingId, SOCKET_QUEUE_LIMITS } from "./socket
 import { ActiveAccountCache } from "./activeAccountCache";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent } from "./socketSelection";
+import { registerCursorChatRoomEvent } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import { createSocketInviteHereManager } from "./socketInviteHere";
 
@@ -198,6 +199,7 @@ export const registerSocketHandlers = ({
       emitPresence,
     });
     registerSelectionRoomEvent({ socket, presences, requireAccess });
+    registerCursorChatRoomEvent({ socket, requireAccess });
     registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
     inviteHereManager.registerHandlers(socket);
 

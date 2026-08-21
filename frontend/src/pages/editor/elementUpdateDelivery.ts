@@ -1,6 +1,18 @@
 import type { MutableRefObject } from "react";
 import type { ElementVersionInfo } from "./shared";
 
+/**
+ * How large a live packet may be before the client splits it.
+ *
+ * Deliberately below the strictest ceiling the server enforces -- the one that
+ * applies to anonymous senders -- rather than equal to it. Splitting at exactly
+ * the limit means the first packet that is one byte over is refused, retried,
+ * refused again, and finally abandoned; splitting below it means the client
+ * never proposes something it already knows will be turned down.
+ *
+ * A contract test keeps this under the server's figure, because a number kept
+ * in two places moves in one of them.
+ */
 export const LIVE_UPDATE_MAX_BYTES = 11 * 1024 * 1024;
 export const LIVE_UPDATE_MAX_FILES = 1_000;
 export const LIVE_UPDATE_MAX_ATTEMPTS = 3;

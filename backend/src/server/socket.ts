@@ -21,14 +21,20 @@ import {
 import { DRAWINGS_READ_SCOPE, DRAWINGS_WRITE_SCOPE } from "../auth/apiKeys";
 import { startNonOverlappingSocketAccessSweep } from "./socketAccessSweep";
 import { createSocketCredentialGuard } from "./socketCredentials";
-import { toPresenceColor, toPresenceInitials, toPresenceName } from "./socketPresence";
+import {
+  derivePresenceColor,
+  deriveGuestName,
+  toPresenceColor,
+  toPresenceInitials,
+  toPresenceName,
+} from "./socketPresence";
+import { PresenceRegistry, type PresenceEntry, type PresenceKind } from "./presenceRegistry";
 import {
   createRateLimiter,
   parseCursorPayload,
   parseDrawingId,
   parseElementUpdatePayload,
   SOCKET_QUEUE_LIMITS,
-  type PresenceUser,
 } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
 
@@ -38,6 +44,8 @@ type RegisterSocketHandlersDeps = {
   authModeService: AuthModeService;
   jwtSecret: string;
   accessRecheckIntervalMs?: number;
+  /** Shared with the HTTP side so the dashboard can read presence too. */
+  presences?: PresenceRegistry;
 };
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
@@ -48,12 +56,12 @@ export const registerSocketHandlers = ({
   authModeService,
   jwtSecret,
   accessRecheckIntervalMs = 5_000,
+  presences = new PresenceRegistry(),
 }: RegisterSocketHandlersDeps): CollaborationAccessController => {
   const principals = new Map<string, DrawingPrincipal>();
   const connectedSockets = new Map<string, Socket>();
   const credentialChecks = new Map<string, Promise<boolean>>();
   const drawingBySocket = new Map<string, string>();
-  const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
   let followManager: ReturnType<typeof createSocketFollowManager>;
   const activeAccounts = new ActiveAccountCache(async (userId) => {
     const account = await prisma.user.findUnique({
@@ -66,13 +74,12 @@ export const registerSocketHandlers = ({
   io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
   const emitPresence = (drawingId: string) => {
-    const users = Array.from(presencesByDrawing.get(drawingId)?.values() || []);
-    io.to(roomName(drawingId)).emit("presence-update", users);
+    io.to(roomName(drawingId)).emit("presence-update", presences.list(drawingId));
   };
 
-  const getPresence = (socketId: string): PresenceUser | null => {
+  const getPresence = (socketId: string): PresenceEntry | null => {
     const drawingId = drawingBySocket.get(socketId);
-    return drawingId ? presencesByDrawing.get(drawingId)?.get(socketId) || null : null;
+    return drawingId ? presences.get(drawingId, socketId) : null;
   };
 
   const removeFromDrawing = async (socket: Socket, reason: string, leaveSocketRoom = true) => {
@@ -80,9 +87,7 @@ export const registerSocketHandlers = ({
     if (!drawingId) return;
     followManager.clearSocket(socket.id, reason);
     drawingBySocket.delete(socket.id);
-    const presences = presencesByDrawing.get(drawingId);
-    presences?.delete(socket.id);
-    if (presences?.size === 0) presencesByDrawing.delete(drawingId);
+    presences.leave(drawingId, socket.id);
     if (leaveSocketRoom) await socket.leave(roomName(drawingId));
     emitPresence(drawingId);
   };
@@ -235,32 +240,45 @@ export const registerSocketHandlers = ({
             ? (payload.user as Record<string, unknown>)
             : {};
         const principal = principals.get(socket.id) || null;
+        // An account has a name the server can check. A share-link visitor does
+        // not, so the server names them rather than repeat what they claim.
+        const isAccount = Boolean(principal?.userId) && principal?.userId !== BOOTSTRAP_USER_ID;
         let name = toPresenceName(clientUser.name);
-        if (principal?.userId && principal.userId !== BOOTSTRAP_USER_ID) {
+        let color = derivePresenceColor(socket.id);
+        let kind: PresenceKind = "guest";
+        if (isAccount && principal) {
           const account = await prisma.user.findUnique({
             where: { id: principal.userId },
             select: { name: true },
           });
           if (!isCurrentJoin()) return;
           if (account) name = toPresenceName(account.name);
+          color = derivePresenceColor(principal.userId);
+          kind = access === "owner" ? "owner" : "member";
+        } else if (principal?.userId === BOOTSTRAP_USER_ID) {
+          // Auth is switched off entirely: everyone shares one identity, which
+          // is another way of saying nobody has one. Their browser's choice of
+          // name and colour is all anyone has, and they stay a guest.
+          color = toPresenceColor(clientUser.color);
+        } else {
+          name = deriveGuestName(socket.id);
         }
         await socket.join(roomName(drawingId));
         if (!isCurrentJoin()) {
           await socket.leave(roomName(drawingId));
           return;
         }
-        const presence: PresenceUser = {
+        const presence: PresenceEntry = {
           presenceId: socket.id,
           accountId: principal?.userId || null,
           name,
           initials: toPresenceInitials(name),
-          color: toPresenceColor(clientUser.color),
+          color,
+          kind,
           isActive: true,
         };
         drawingBySocket.set(socket.id, drawingId);
-        const presences = presencesByDrawing.get(drawingId) || new Map();
-        presences.set(socket.id, presence);
-        presencesByDrawing.set(drawingId, presences);
+        presences.join(drawingId, presence);
         emitPresence(drawingId);
         followManager.invalidateAccess(socket.id);
         ack?.({ ok: true, presence });
@@ -315,9 +333,7 @@ export const registerSocketHandlers = ({
       ) {
         return;
       }
-      const user = presencesByDrawing.get(drawingId)?.get(socket.id);
-      if (user) {
-        user.isActive = payload.isActive;
+      if (presences.setActive(drawingId, socket.id, payload.isActive)) {
         emitPresence(drawingId);
       }
     });

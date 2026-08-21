@@ -349,15 +349,12 @@ export const registerSocketHandlers = ({
       ) {
         return;
       }
-      presences.setActive(drawingId, socket.id, payload.isActive);
-      // Emitted on every ping, including the ones that change nothing.
-      // Suppressing the redundant ones looks free and is not: each presence
-      // update is a scene update on the receiving side, and the sticky note
-      // upkeep rides on those change events to settle its font size. Without
-      // them a note that outgrew its paper stays outgrown for a second or two
-      // instead of a frame. That dependency deserves fixing in the note code
-      // rather than working around here -- until it is, the noise stays.
-      emitPresence(drawingId);
+      // Only when something actually changed. Every presence update is a scene
+      // update on the receiving side, and a ping that says what the room already
+      // knows is a re-render for everyone in it.
+      if (presences.setActive(drawingId, socket.id, payload.isActive)) {
+        emitPresence(drawingId);
+      }
     });
 
     socket.on("leave-room", async (data: unknown) => {

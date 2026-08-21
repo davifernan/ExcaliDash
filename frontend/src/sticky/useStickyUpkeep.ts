@@ -23,6 +23,7 @@ export function useStickyUpkeep({ excalidrawAPI, canEdit }: Options) {
   /** The note under a resize handle on the previous change, if any. */
   const wasResizing = useRef<string | null>(null);
   const queued = useRef(false);
+  const watchingEditor = useRef(false);
   const alive = useRef(true);
 
   // Set on the way in as well as cleared on the way out. React mounts an effect
@@ -55,20 +56,61 @@ export function useStickyUpkeep({ excalidrawAPI, canEdit }: Options) {
       if (queued.current) return;
       queued.current = true;
 
+      const apply = (options: {
+        resized: ReadonlySet<string> | null;
+        editing: ReadonlySet<string> | null;
+      }) => {
+        const api = excalidrawAPI.current;
+        if (!api) return;
+        const next = normaliseStickyNotes(api.getSceneElementsIncludingDeleted(), options);
+        if (!next) return;
+        api.updateScene({ elements: next, captureUpdate: CAPTURE_UPDATE_NEVER });
+      };
+
+      // Closing the text editor is the one moment this cannot hear about.
+      //
+      // While somebody types, Excalidraw owns the label's box and only the font
+      // size is ours, so those passes leave the note at whatever height it grew
+      // to. Putting it back is the job of the pass that runs once the editor is
+      // gone -- and Excalidraw reports no scene change when it goes, so that
+      // pass never came. The note stayed outgrown until something unrelated
+      // touched the scene, which on a quiet board could be a long time and in
+      // the test suite was never.
+      //
+      // So the end of the edit is watched for rather than waited on: one cheap
+      // read of the app state per frame, only while an editor is actually open.
+      const watchForEditorClosing = () => {
+        if (watchingEditor.current) return;
+        watchingEditor.current = true;
+        const step = () => {
+          const state = alive.current ? excalidrawAPI.current?.getAppState?.() : null;
+          if (!state) {
+            watchingEditor.current = false;
+            return;
+          }
+          if (state.editingTextElement) {
+            requestAnimationFrame(step);
+            return;
+          }
+          watchingEditor.current = false;
+          // A drag that started the instant the editor closed gets the same
+          // courtesy as anywhere else: measuring mid-gesture settles on a size
+          // that is wrong a frame later.
+          if (state.resizingElement || state.newElement) return;
+          apply({ resized: null, editing: null });
+        };
+        requestAnimationFrame(step);
+      };
+
       queueMicrotask(() => {
         queued.current = false;
         if (!alive.current) return;
 
-        const api = excalidrawAPI.current;
-        if (!api) return;
-
-        const next = normaliseStickyNotes(api.getSceneElementsIncludingDeleted(), {
+        apply({
           resized: justResized ? new Set([justResized]) : null,
           editing: editingId ? new Set([editingId]) : null,
         });
-        if (!next) return;
-
-        api.updateScene({ elements: next, captureUpdate: CAPTURE_UPDATE_NEVER });
+        if (editingId) watchForEditorClosing();
       });
     },
     [canEdit, excalidrawAPI],

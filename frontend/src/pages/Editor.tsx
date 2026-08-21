@@ -5,7 +5,6 @@ import { getInitialLangCode } from "../components/LanguageSelector";
 import type { UserIdentity } from "../utils/identity";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { getFilesDelta } from "./editor/shared";
 import { useEditorChrome } from "./editor/useEditorChrome";
 import { useEditorIdentity } from "./editor/useEditorIdentity";
 import { EditorDialogs } from "./editor/EditorDialogs";
@@ -20,6 +19,7 @@ import { useStickyNotesFeature } from "../sticky";
 import { useEditorCommands } from "./editor/useEditorCommands";
 import { useEditorElementTracking } from "./editor/useEditorElementTracking";
 import { useEditorBroadcast } from "./editor/useEditorBroadcast";
+import { useEditorAddFilesBridge } from "./editor/useEditorAddFilesBridge";
 export const Editor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -71,7 +71,6 @@ export const Editor: React.FC = () => {
   const currentDrawingVersionRef = useRef<number | null>(null);
   const lastPersistedElementsRef = useRef<readonly any[]>([]);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const patchedAddFilesApisRef = useRef<WeakSet<object>>(new WeakSet());
   const suspiciousBlankLoadRef = useRef(false);
   const hasSceneChangesSinceLoadRef = useRef(false);
   const lastLocalChangeAtRef = useRef<number>(0);
@@ -119,58 +118,20 @@ export const Editor: React.FC = () => {
     recordElementVersion,
     onAccessDenied: handleSocketAccessDenied,
   });
-  const emitFilesDeltaIfNeeded = useCallback(
-    (nextFiles: Record<string, any>) => {
-      if (!socketRef.current || !id) return false;
-      const filesDelta = getFilesDelta(lastSyncedFilesRef.current, nextFiles || {});
-      if (Object.keys(filesDelta).length === 0) return false;
-      latestFilesRef.current = nextFiles;
-      lastSyncedFilesRef.current = nextFiles;
-      socketRef.current.emit("element-update", {
-        drawingId: id,
-        elements: [],
-        files: filesDelta,
-      });
-      return true;
-    },
-    [id, socketRef],
-  );
-  const setExcalidrawAPI = useCallback(
-    (api: any) => {
-      excalidrawAPI.current = api;
-      if (import.meta.env.DEV) {
-        (window as any).__EXCALIDASH_EXCALIDRAW_API__ = api;
-      }
-      if (
-        api &&
-        typeof api.addFiles === "function" &&
-        !patchedAddFilesApisRef.current.has(api as object)
-      ) {
-        patchedAddFilesApisRef.current.add(api as object);
-        const originalAddFiles = api.addFiles.bind(api);
-        api.addFiles = (filesInput: Record<string, any> | any[]) => {
-          const normalizedFiles = Array.isArray(filesInput)
-            ? filesInput
-            : Object.values(filesInput || {});
-          originalAddFiles(normalizedFiles);
-          if (isSyncing.current || isHistoryPreviewing.current) return;
-          const nextFiles = api.getFiles?.() || {};
-          const didEmit = emitFilesDeltaIfNeeded(nextFiles);
-          if (didEmit && id && latestAppStateRef.current && debouncedSaveRef.current) {
-            hasSceneChangesSinceLoadRef.current = true;
-            debouncedSaveRef.current(
-              id,
-              latestElementsRef.current,
-              latestAppStateRef.current,
-              latestFilesRef.current || {},
-            );
-          }
-        };
-      }
-      setIsReady(true);
-    },
-    [emitFilesDeltaIfNeeded, id, isSyncing],
-  );
+  const { emitFilesDeltaIfNeeded, setExcalidrawAPI } = useEditorAddFilesBridge({
+    drawingId: id,
+    debouncedSaveRef,
+    excalidrawAPIRef: excalidrawAPI,
+    hasSceneChangesSinceLoadRef,
+    isHistoryPreviewingRef: isHistoryPreviewing,
+    isSyncingRef: isSyncing,
+    lastSyncedFilesRef,
+    latestAppStateRef,
+    latestElementsRef,
+    latestFilesRef,
+    setIsReady,
+    socketRef,
+  });
   useLibraryImportFromUrl({ excalidrawAPIRef: excalidrawAPI, isReady, user });
   const persistenceRefs = React.useMemo(
     () => ({

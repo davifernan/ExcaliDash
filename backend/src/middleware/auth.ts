@@ -11,6 +11,7 @@ import {
   isApiKeyToken,
   parseApiKeyScopes,
   DRAWINGS_HISTORY_SCOPE,
+  DRAWINGS_READ_SCOPE,
   DRAWINGS_SHARE_SCOPE,
   DRAWINGS_WRITE_SCOPE,
 } from "../auth/apiKeys";
@@ -102,14 +103,6 @@ const isAllowedWhileMustResetPassword = (req: Request): boolean => {
   if (req.method === "POST" && path === "/auth/change-password") return true;
   if (req.method === "POST" && path === "/auth/must-reset-password") return true;
   return false;
-}; /* Subroutes of a single drawing that need a scope of their own. They are not in
-   the default set, so an ordinary key behaves exactly as before. */
-const DRAWING_SUB_RESOURCE_SCOPES: Record<string, string> = {
-  history: DRAWINGS_HISTORY_SCOPE,
-  permissions: DRAWINGS_SHARE_SCOPE,
-  sharing: DRAWINGS_SHARE_SCOPE,
-  "share-resolve": DRAWINGS_SHARE_SCOPE,
-  "link-shares": DRAWINGS_SHARE_SCOPE,
 };
 /** Readable with any key: who the key belongs to, and the shared shape library. */
 const SCOPE_FREE_API_KEY_PATHS = new Set(["/auth/me", "/library"]);
@@ -128,7 +121,9 @@ const getApiKeyRouteResource = (req: Request): "drawings" | "collections" | null
     ) {
       return "drawings";
     }
-    /* Everything hanging off a single drawing - history, sharing, permissions - is an operation on that drawing and rides on the same scope. Without this a key could edit a drawing but not read its own history. */ return null;
+    // Drawing sub-resources have their own exact route mapping below. Falling
+    // through here must not turn an unknown group into a generic drawing scope.
+    return null;
   }
   if (segments[0] === "collections") {
     if (segments.length === 1 && ["GET", "HEAD", "POST"].includes(method)) {
@@ -141,24 +136,70 @@ const getApiKeyRouteResource = (req: Request): "drawings" | "collections" | null
   }
   return null;
 };
-const getRequiredApiKeyScopes = (req: Request): string[] => {
+const isReadMethod = (method: string): boolean => method === "GET" || method === "HEAD";
+const getDrawingSubResourceScopes = (segments: string[], method: string): string[] => {
+  const subResource = segments[2];
+  if (subResource === "assets") {
+    if (segments.length === 3 && method === "POST") return [DRAWINGS_WRITE_SCOPE];
+    if (!isReadMethod(method)) return [];
+    if (segments.length === 4) return [DRAWINGS_READ_SCOPE];
+    if (segments.length === 5 && ["content", "original"].includes(segments[4] ?? "")) {
+      return [DRAWINGS_READ_SCOPE];
+    }
+    if (segments.length === 6 && segments[4] === "pages") return [DRAWINGS_READ_SCOPE];
+    return [];
+  }
+  if (subResource === "history") {
+    if (isReadMethod(method) && [3, 4].includes(segments.length)) {
+      return [DRAWINGS_HISTORY_SCOPE];
+    }
+    if (method === "POST" && segments.length === 5 && segments[4] === "restore") {
+      // Restoring reads a snapshot and writes the current drawing, so neither
+      // permission alone is enough.
+      return [DRAWINGS_WRITE_SCOPE, DRAWINGS_HISTORY_SCOPE];
+    }
+    return [];
+  }
+  if (subResource === "duplicate" && segments.length === 3 && method === "POST") {
+    return [DRAWINGS_WRITE_SCOPE];
+  }
+  if (subResource === "trim" && segments.length === 3 && method === "POST") {
+    return [DRAWINGS_WRITE_SCOPE];
+  }
+  if (subResource === "files" && segments.length === 4) {
+    if (segments[3] === "diff" && isReadMethod(method)) return [DRAWINGS_READ_SCOPE];
+    if (segments[3] === "orphans" && method === "DELETE") return [DRAWINGS_WRITE_SCOPE];
+    return [];
+  }
+  if (
+    segments.length === 3 &&
+    isReadMethod(method) &&
+    ["share-resolve", "sharing"].includes(subResource ?? "")
+  ) {
+    return [DRAWINGS_SHARE_SCOPE];
+  }
+  if (subResource === "permissions") {
+    if (segments.length === 3 && method === "POST") return [DRAWINGS_SHARE_SCOPE];
+    if (segments.length === 4 && method === "DELETE") return [DRAWINGS_SHARE_SCOPE];
+    return [];
+  }
+  if (subResource === "link-shares") {
+    if (segments.length === 3 && method === "POST") return [DRAWINGS_SHARE_SCOPE];
+    if (segments.length === 4 && method === "DELETE") return [DRAWINGS_SHARE_SCOPE];
+  }
+  return [];
+};
+export const getRequiredApiKeyScopes = (req: Request): string[] => {
   const segments = normalizeRequestPath(req).split("/").filter(Boolean);
   if (segments[0] === "drawings" && segments.length >= 3) {
-    if (segments[2] === "history") {
-      // Restoring is both: it writes the drawing, and it reads a snapshot to do
-      // it. Asking only for write would let a key without history access read
-      // historical content the long way round -- restore a known snapshot id,
-      // then read the drawing it just became.
-      return req.method === "GET" || req.method === "HEAD"
-        ? [DRAWINGS_HISTORY_SCOPE]
-        : [DRAWINGS_WRITE_SCOPE, DRAWINGS_HISTORY_SCOPE];
-    }
-    const scope = DRAWING_SUB_RESOURCE_SCOPES[segments[2]];
-    return scope ? [scope] : [];
+    return getDrawingSubResourceScopes(segments, req.method);
+  }
+  if (segments.length === 2 && segments[0] === "assets" && segments[1] === "usage") {
+    return isReadMethod(req.method) ? [DRAWINGS_READ_SCOPE] : [];
   }
   const resource = getApiKeyRouteResource(req);
   if (!resource) return [];
-  const access = req.method === "GET" || req.method === "HEAD" ? "read" : "write";
+  const access = isReadMethod(req.method) ? "read" : "write";
   return [`${resource}:${access}`];
 };
 const authorizeApiKeyRequest = (req: Request, res: Response, scopes: string[]): boolean => {

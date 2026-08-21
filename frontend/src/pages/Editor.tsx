@@ -100,6 +100,7 @@ export const Editor: React.FC = () => {
     cursorChatDraft,
     followers,
     workshopTimer,
+    documentPages,
     socketRef,
     isSyncing,
     onPointerUpdate,
@@ -161,6 +162,7 @@ export const Editor: React.FC = () => {
     lastLocalChangeAtRef,
     lastSyncedElementOrderSigRef,
     lastSyncedFilesRef,
+    lastPersistedAppStateSigRef,
     latestAppStateRef,
     latestFilesRef,
     socketRef,
@@ -332,6 +334,7 @@ export const Editor: React.FC = () => {
         peers={peers}
         theme={theme}
         workshopTimer={workshopTimer}
+        documentPages={documentPages}
         onBackClick={handleBackClick}
         onCanvasChange={handleChangeWithSelection}
         stickyOverlay={stickyOverlay}

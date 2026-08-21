@@ -1,28 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { getPdfAsset, getPdfOriginalUrl, getPdfPageUrl, type PdfAsset } from "../../api";
+import { useSharedDocumentPage, type DocumentPageSharing } from "./useSharedDocumentPage";
 import "./PdfWidget.css";
 
 type PdfWidgetProps = {
   assetId: string;
   drawingId: string;
   theme: "light" | "dark";
+  sharing: DocumentPageSharing;
 };
 
-export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
+export const PdfWidget = ({ assetId, drawingId, theme, sharing }: PdfWidgetProps) => {
   const [asset, setAsset] = useState<PdfAsset | null>(null);
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [requestedPage, setRequestedPage] = useState(1);
   const [displayedPage, setDisplayedPage] = useState<number | null>(null);
   const directionRef = useRef<1 | -1>(1);
+  const { page: requestedPage, goToPage } = useSharedDocumentPage({
+    sharing,
+    pageCount: asset?.pageCount ?? 1,
+  });
 
   useEffect(() => {
     let active = true;
     setAsset(null);
     setMetadataError(null);
     setPageError(null);
-    setRequestedPage(1);
     setDisplayedPage(null);
     getPdfAsset(drawingId, assetId)
       .then((nextAsset) => {
@@ -49,11 +53,11 @@ export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
     preload.src = getPdfPageUrl(drawingId, assetId, nextPage);
   }, [asset, assetId, displayedPage, drawingId]);
 
-  const requestPage = (direction: 1 | -1) => {
+  const turnPage = (direction: 1 | -1) => {
     if (!asset) return;
     directionRef.current = direction;
     setPageError(null);
-    setRequestedPage((current) => Math.min(asset.pageCount, Math.max(1, current + direction)));
+    goToPage(requestedPage + direction);
   };
 
   const requestedPageUrl = asset ? getPdfPageUrl(drawingId, assetId, requestedPage) : null;
@@ -109,7 +113,7 @@ export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
             className="pdf-widget__button"
             aria-label="Previous page"
             disabled={requestedPage <= 1}
-            onClick={() => requestPage(-1)}
+            onClick={() => turnPage(-1)}
           >
             <ChevronLeft size={18} />
           </button>
@@ -121,7 +125,7 @@ export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
             className="pdf-widget__button"
             aria-label="Next page"
             disabled={requestedPage >= asset.pageCount}
-            onClick={() => requestPage(1)}
+            onClick={() => turnPage(1)}
           >
             <ChevronRight size={18} />
           </button>

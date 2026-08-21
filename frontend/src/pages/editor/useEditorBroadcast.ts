@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
-import { getFilesDelta } from "./shared";
+import { boardSettingsSignature, getFilesDelta, shouldSaveBoardSettings } from "./shared";
 
 const ELEMENT_ORDER_BYTE_LIMIT = 8 * 1024 * 1024;
 const ELEMENT_UPDATE_ACK_TIMEOUT_MS = 3_000;
@@ -22,6 +22,7 @@ type UseEditorBroadcastParams = {
   lastSyncedFilesRef: MutableRefObject<Record<string, any>>;
   latestAppStateRef: MutableRefObject<any>;
   latestFilesRef: MutableRefObject<any>;
+  lastPersistedAppStateSigRef: MutableRefObject<string | null>;
   socketRef: MutableRefObject<any>;
   debouncedSave: (
     drawingId: string,
@@ -48,6 +49,7 @@ export const useEditorBroadcast = ({
   lastSyncedFilesRef,
   latestAppStateRef,
   latestFilesRef,
+  lastPersistedAppStateSigRef,
   socketRef,
   debouncedSave,
   debouncedSavePreview,
@@ -79,6 +81,21 @@ export const useEditorBroadcast = ({
       if (Object.keys(nextFiles || {}).length > 0) {
         latestFilesRef.current = nextFiles;
       }
+      // A board also remembers settings -- its background, its grid, whether it
+      // snaps. Those live in appState, not in any element, so a change to one of
+      // them produces no element, file or ordering difference and would reach
+      // the server nowhere.
+      //
+      // The baseline is set once the scene has hydrated, from the state
+      // Excalidraw itself reported. Treating "no baseline yet" as a change
+      // instead would make the first broadcast of every session write the board
+      // back unchanged -- bumping its version and its modified date for
+      // everybody, just because somebody opened it.
+      const settingsChanged = shouldSaveBoardSettings(
+        lastPersistedAppStateSigRef.current,
+        latestAppStateRef.current,
+      );
+
       if (changes.length > 0 || shouldSyncFiles || shouldSyncOrder) {
         setHasSceneChangesSinceLoad();
         lastLocalChangeAtRef.current = new Date().getTime();
@@ -125,8 +142,14 @@ export const useEditorBroadcast = ({
         } else {
           socket.emit("element-update", payload, acknowledge);
         }
+      }
+
+      if (changes.length > 0 || shouldSyncFiles || shouldSyncOrder || settingsChanged) {
         const appState = latestAppStateRef.current;
         if (appState) {
+          if (settingsChanged) {
+            lastPersistedAppStateSigRef.current = boardSettingsSignature(latestAppStateRef.current);
+          }
           debouncedSave(drawingId, normalizedElements, appState, nextFiles);
           debouncedSavePreview(drawingId);
         }
@@ -143,6 +166,7 @@ export const useEditorBroadcast = ({
       lastSyncedElementOrderSigRef,
       lastSyncedFilesRef,
       latestAppStateRef,
+      lastPersistedAppStateSigRef,
       latestFilesRef,
       normalizeImageElementStatus,
       recordElementVersion,

@@ -112,6 +112,7 @@ interface Config {
   s3: S3Config;
   assets: AssetConfig;
   socketMaxHttpBufferBytes: number;
+  linkPreviews: LinkPreviewConfig;
 }
 
 /**
@@ -143,6 +144,35 @@ export interface AssetConfig {
   pdfShrinkMinBytes: number;
   pdfShrinkConcurrency: number;
   pdfShrinkQueueLimit: number;
+}
+
+export interface LinkPreviewConfig {
+  positiveTtlMs: number;
+  negativeTtlMs: number;
+  dnsTimeoutMs: number;
+  connectTimeoutMs: number;
+  totalTimeoutMs: number;
+  maxRedirects: number;
+  allowedPorts: number[];
+  dnsConcurrency: number;
+  dnsQueueSize: number;
+  maxPageWireBytes: number;
+  maxPageDecodedBytes: number;
+  maxImageWireBytes: number;
+  maxImageDecodedBytes: number;
+  maxSanitizedImageBytes: number;
+  maxImagePixels: number;
+  maxImageDimension: number;
+  maxFaviconDimension: number;
+  imageProcessTimeoutMs: number;
+  maxConcurrentPerUser: number;
+  maxConcurrentInstance: number;
+  maxQueueSize: number;
+  cacheBudgetBytes: number;
+  maxBytesPerUser: number;
+  maxEntriesPerUser: number;
+  minFreeDiskPercent: number;
+  cleanupBatchSize: number;
 }
 
 export type AuthMode = "local" | "hybrid" | "oidc_enforced";
@@ -234,6 +264,16 @@ const parseCsvEnvList = (key: string): string[] => {
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+};
+
+const parsePortList = (key: string, fallback: number[]): number[] => {
+  const entries = parseCsvEnvList(key);
+  if (entries.length === 0) return fallback;
+  const ports = entries.map(Number);
+  if (ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65_535)) {
+    throw new Error(`${key} must contain comma-separated TCP ports between 1 and 65535`);
+  }
+  return [...new Set(ports)];
 };
 
 const resolveJwtSecret = (nodeEnv: string): string => {
@@ -495,6 +535,40 @@ export const config: Config = {
     pdfShrinkMinBytes: getRequiredEnvNumber("ASSET_PDF_SHRINK_MIN_MB", 4) * 1024 * 1024,
     pdfShrinkConcurrency: getRequiredEnvNumber("ASSET_PDF_SHRINK_CONCURRENCY", 1),
     pdfShrinkQueueLimit: getRequiredEnvNumber("ASSET_PDF_SHRINK_QUEUE_LIMIT", 2),
+  },
+  linkPreviews: {
+    positiveTtlMs: getRequiredEnvNumber("LINK_PREVIEW_POSITIVE_TTL_MS", 24 * 60 * 60 * 1000),
+    negativeTtlMs: getRequiredEnvNumber("LINK_PREVIEW_NEGATIVE_TTL_MS", 15 * 60 * 1000),
+    dnsTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_DNS_TIMEOUT_MS", 2_000),
+    connectTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_CONNECT_TIMEOUT_MS", 3_000),
+    totalTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_TOTAL_TIMEOUT_MS", 8_000),
+    maxRedirects: getRequiredEnvNumber("LINK_PREVIEW_MAX_REDIRECTS", 3),
+    // Link cards are web clients, not general-purpose TCP proxies. Additional
+    // web ports must be explicitly opted into by an operator.
+    allowedPorts: parsePortList("LINK_PREVIEW_ALLOWED_PORTS", [80, 443]),
+    dnsConcurrency: getRequiredEnvNumber("LINK_PREVIEW_DNS_CONCURRENCY", 8),
+    dnsQueueSize: getRequiredEnvNumber("LINK_PREVIEW_DNS_QUEUE_SIZE", 64),
+    // Both the bytes on the wire and the bytes after Content-Encoding are
+    // bounded independently. The latter is what defeats gzip/brotli bombs.
+    maxPageWireBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_PAGE_WIRE_KB", 256) * 1024,
+    maxPageDecodedBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_PAGE_DECODED_KB", 512) * 1024,
+    maxImageWireBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_WIRE_MB", 4) * 1024 * 1024,
+    maxImageDecodedBytes:
+      getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_DECODED_MB", 8) * 1024 * 1024,
+    maxSanitizedImageBytes:
+      getRequiredEnvNumber("LINK_PREVIEW_MAX_STORED_IMAGE_MB", 2) * 1024 * 1024,
+    maxImagePixels: getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_PIXELS", 16_000_000),
+    maxImageDimension: getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_DIMENSION", 2_048),
+    maxFaviconDimension: getRequiredEnvNumber("LINK_PREVIEW_MAX_FAVICON_DIMENSION", 256),
+    imageProcessTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_IMAGE_TIMEOUT_MS", 10_000),
+    maxConcurrentPerUser: getRequiredEnvNumber("LINK_PREVIEW_CONCURRENCY_PER_USER", 2),
+    maxConcurrentInstance: getRequiredEnvNumber("LINK_PREVIEW_CONCURRENCY_INSTANCE", 4),
+    maxQueueSize: getRequiredEnvNumber("LINK_PREVIEW_QUEUE_SIZE", 16),
+    cacheBudgetBytes: getRequiredEnvNumber("LINK_PREVIEW_CACHE_BUDGET_MB", 256) * 1024 * 1024,
+    maxBytesPerUser: getRequiredEnvNumber("LINK_PREVIEW_MAX_PER_USER_MB", 64) * 1024 * 1024,
+    maxEntriesPerUser: getRequiredEnvNumber("LINK_PREVIEW_MAX_ENTRIES_PER_USER", 100),
+    minFreeDiskPercent: getRequiredEnvNumber("LINK_PREVIEW_MIN_FREE_DISK_PERCENT", 20),
+    cleanupBatchSize: getRequiredEnvNumber("LINK_PREVIEW_CLEANUP_BATCH_SIZE", 100),
   },
 };
 

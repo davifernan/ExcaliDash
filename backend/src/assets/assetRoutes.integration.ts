@@ -211,6 +211,83 @@ describe("document routes", () => {
       expect(res.headers["content-security-policy"]).toContain("sandbox");
     });
 
+    it("re-stores content whose deduplicated file went missing", async () => {
+      // Identical bytes normally reuse the existing row. If that row's file is
+      // gone, reusing it hands the uploader a document that can never be read
+      // and no error to explain it, for every future upload of that content.
+      const asset = await prisma.asset.findUnique({
+        where: { id: assetId },
+        include: { blob: true },
+      });
+      const path = resolveStoragePath(storageDir, asset!.blob.storageKey);
+      const bytes = await readFile(path);
+      await rm(path);
+
+      const again = await request(app)
+        .post(`/drawings/${drawingId}/assets?name=nochmal.pdf`)
+        .set("Content-Type", "application/pdf")
+        .send(bytes)
+        .expect(201);
+
+      const restored = await request(app)
+        .get(`/drawings/${drawingId}/assets/${again.body.id}/original`)
+        .expect(200);
+      expect(restored.body).toEqual(bytes);
+      // And the original document, which shares those bytes, reads again too.
+      await request(app).get(url("/original")).expect(200);
+    });
+
+    it("does not reuse bytes that are being deleted", async () => {
+      // Matching content normally reuses the row. A row claimed for deletion is
+      // about to lose its file, so adopting it would hand the uploader a
+      // document whose bytes vanish moments later.
+      const asset = await prisma.asset.findUnique({
+        where: { id: assetId },
+        include: { blob: true },
+      });
+      const bytes = await readFile(resolveStoragePath(storageDir, asset!.blob.storageKey));
+      await prisma.storedBlob.update({
+        where: { id: asset!.blob.id },
+        data: { state: "DELETING" },
+      });
+
+      const again = await request(app)
+        .post(`/drawings/${drawingId}/assets?name=umkaempft.pdf`)
+        .set("Content-Type", "application/pdf")
+        .send(bytes)
+        .expect(201);
+
+      const stored = await prisma.asset.findUnique({
+        where: { id: again.body.id },
+        include: { blob: true },
+      });
+      expect(stored!.blob.state).toBe("READY");
+      await request(app).get(`/drawings/${drawingId}/assets/${again.body.id}/original`).expect(200);
+    });
+
+    it("answers rather than dying when the stored file is gone", async () => {
+      // A blob row whose file is missing — a partial restore, a file removed by
+      // hand — used to reach an unhandled stream error, and an unhandled stream
+      // error ends the process. One absent file must not put everybody off
+      // their boards.
+      const asset = await prisma.asset.findUnique({
+        where: { id: assetId },
+        include: { blob: true },
+      });
+      const path = resolveStoragePath(storageDir, asset!.blob.storageKey);
+      const bytes = await readFile(path);
+      await rm(path);
+      try {
+        const res = await request(app).get(url("/original"));
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe("Document unavailable");
+        // The server is still answering, which is the whole point.
+        await request(app).get(`/drawings/${drawingId}/assets/does-not-exist`).expect(404);
+      } finally {
+        await writeFile(path, bytes);
+      }
+    });
+
     it("carries the real filename for clients that can read it", async () => {
       const res = await request(app).get(url("/original")).expect(200);
       expect(res.headers["content-disposition"]).toContain("filename*=UTF-8''");

@@ -9,6 +9,9 @@ backend/prisma/*.db-journal
 backend/prisma/**/*.db-journal
 backend/prisma/dev.db
 backend/prisma/e2e-test.db
+# Documents uploaded by the browser tests, which need somewhere outside the
+# container path the server defaults to.
+backend/prisma/e2e-assets/
 backend/prisma/*.backup
 
 # SQLite artifacts anywhere (avoid committing dev DBs)

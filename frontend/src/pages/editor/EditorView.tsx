@@ -13,6 +13,7 @@ import { useExcalidrawUiState } from "./useExcalidrawUiState";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
 import type { WorkshopTimerController } from "./workshopTimer";
+import type { DocumentPageController } from "./documentPages";
 import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
 import { InviteHereOverlay, type InviteHereUiState } from "./InviteHereOverlay";
 import { CursorChatComposer } from "./CursorChatComposer";
@@ -35,6 +36,7 @@ type EditorViewProps = {
   peers: Peer[];
   theme: string;
   workshopTimer: WorkshopTimerController;
+  documentPages: DocumentPageController;
   inviteHere: InviteHereUiState;
   cursorChatDraft: string | null;
   onCursorChatType: (text: string) => void;
@@ -80,6 +82,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   peers,
   theme,
   workshopTimer,
+  documentPages,
   inviteHere,
   cursorChatDraft,
   onCursorChatType,
@@ -152,7 +155,18 @@ export const EditorView: React.FC<EditorViewProps> = ({
             renderEmbeddable={(element, appState) => {
               const data = getAssetWidgetData(element);
               return data && id ? (
-                <AssetWidget data={data} drawingId={id} theme={appState.theme} />
+                <AssetWidget
+                  data={data}
+                  drawingId={id}
+                  theme={appState.theme}
+                  sharing={{
+                    elementId: element.id,
+                    assetId: data.assetId,
+                    sharedPage: documentPages.pages[element.id],
+                    canControl: canEdit,
+                    onRequestPage: documentPages.requestPage,
+                  }}
+                />
               ) : null;
             }}
             renderTopRightUI={(isMobile) => (

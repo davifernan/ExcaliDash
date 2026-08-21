@@ -129,6 +129,35 @@ export function contentDisposition(kind: "inline" | "attachment", filename: stri
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
+/**
+ * Send a stored file, and survive it not being there.
+ *
+ * `pipe` does not carry a read error to the response: the stream throws, and an
+ * unhandled stream error takes the whole process with it. A single blob missing
+ * from disk — a partial restore, a file removed by hand, a write that failed —
+ * would put every user off the board, so the error is answered instead.
+ */
+function streamStoredFile(res: Response, path: string): void {
+  const stream = createReadStream(path);
+  stream.on("error", (err) => {
+    console.error(`[assets] cannot read ${path}: ${err}`);
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    // The file's own headers were set before streaming began. Left in place,
+    // Content-Encoding would have the client try to decompress this answer.
+    for (const header of ["Content-Encoding", "Content-Disposition", "Content-Type", "ETag"]) {
+      res.removeHeader(header);
+    }
+    res.status(404).json({
+      error: "Document unavailable",
+      message: "The stored file for this document could not be read.",
+    });
+  });
+  stream.pipe(res);
+}
+
 export function registerAssetRoutes(deps: AssetRouteDeps): void {
   const { app, asyncHandler } = deps;
 
@@ -291,7 +320,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
       if (blob.contentEncoding) res.setHeader("Content-Encoding", blob.contentEncoding);
 
       if (req.headers["if-none-match"] === `"${blob.sha256}"`) return res.status(304).end();
-      return createReadStream(resolveStoragePath(deps.storageDir, blob.storageKey)).pipe(res);
+      return streamStoredFile(res, resolveStoragePath(deps.storageDir, blob.storageKey));
     }),
   );
 
@@ -338,7 +367,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
 
       if (req.headers["if-none-match"] === `"${blob.sha256}"`) return res.status(304).end();
 
-      return createReadStream(resolveStoragePath(deps.storageDir, blob.storageKey)).pipe(res);
+      return streamStoredFile(res, resolveStoragePath(deps.storageDir, blob.storageKey));
     }),
   );
 

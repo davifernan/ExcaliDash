@@ -3,6 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDocumentAsset, getDocumentContent } from "../../api";
 import { TextDocumentWidget } from "./TextDocumentWidget";
 
+// A widget that is not sharing its page with anybody: the same object every
+// render, so the shared-page effect does not refire on its own.
+const soloSharing = {
+  elementId: "widget-1",
+  assetId: "asset-1",
+  canControl: false,
+} as const;
+
 vi.mock("../../api", () => ({
   getDocumentAsset: vi.fn(),
   getDocumentContent: vi.fn(),
@@ -41,6 +49,7 @@ describe("TextDocumentWidget", () => {
         drawingId="drawing-1"
         theme="light"
         widgetKind="markdown"
+        sharing={soloSharing}
       />,
     );
 
@@ -73,6 +82,7 @@ describe("TextDocumentWidget", () => {
         drawingId="drawing-1"
         theme="light"
         widgetKind="text"
+        sharing={soloSharing}
       />,
     );
 
@@ -95,6 +105,7 @@ describe("TextDocumentWidget", () => {
         drawingId="drawing-1"
         theme="light"
         widgetKind="markdown"
+        sharing={soloSharing}
       />,
     );
 
@@ -121,6 +132,7 @@ describe("TextDocumentWidget", () => {
         drawingId="drawing-1"
         theme="light"
         widgetKind="markdown"
+        sharing={soloSharing}
       />,
     );
 

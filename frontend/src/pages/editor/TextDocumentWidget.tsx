@@ -10,6 +10,7 @@ import {
 } from "../../api";
 import type { AssetWidgetKind } from "./pdfWidgetElements";
 import { paginateDocumentSource } from "./documentPagination";
+import { useSharedDocumentPage, type DocumentPageSharing } from "./useSharedDocumentPage";
 import "./TextDocumentWidget.css";
 
 const markdownComponents: Components = {
@@ -35,6 +36,7 @@ type TextDocumentWidgetProps = {
   drawingId: string;
   theme: "light" | "dark";
   widgetKind: Extract<AssetWidgetKind, "markdown" | "text">;
+  sharing: DocumentPageSharing;
 };
 
 type LoadedDocument = { asset: TextAsset; content: string };
@@ -44,17 +46,16 @@ export const TextDocumentWidget = ({
   drawingId,
   theme,
   widgetKind,
+  sharing,
 }: TextDocumentWidgetProps) => {
   const [loaded, setLoaded] = useState<LoadedDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pageIndex, setPageIndex] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
     setLoaded(null);
     setError(null);
-    setPageIndex(0);
     Promise.all([getDocumentAsset(drawingId, assetId), getDocumentContent(drawingId, assetId)])
       .then(([asset, content]) => {
         if (!active) return;
@@ -78,12 +79,18 @@ export const TextDocumentWidget = ({
     [loaded],
   );
 
+  const pageCount = pages.length;
+  // How many pages a text document has is decided here, not on the server: the
+  // split happens in the browser. So the room's page number is clamped to the
+  // pages this reader actually has.
+  const { page: pageNumber, goToPage } = useSharedDocumentPage({ sharing, pageCount });
+  const pageIndex = Math.min(Math.max(0, pageNumber - 1), Math.max(0, pageCount - 1));
+
   const downloadUrl = getDocumentOriginalUrl(drawingId, assetId);
   const page = pages[pageIndex] ?? "";
-  const pageCount = pages.length;
 
   const changePage = (direction: 1 | -1) => {
-    setPageIndex((current) => Math.min(pageCount - 1, Math.max(0, current + direction)));
+    goToPage(pageNumber + direction);
     if (bodyRef.current) {
       bodyRef.current.scrollTop = 0;
       bodyRef.current.scrollLeft = 0;

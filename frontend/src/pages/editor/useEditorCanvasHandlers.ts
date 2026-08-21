@@ -14,7 +14,6 @@ import {
   haveSameElements,
   isStaleNonRenderableSnapshot,
   isSuspiciousEmptySnapshot,
-  shouldSaveBoardSettings,
 } from "./shared";
 
 type CanvasHandlerRefs = {
@@ -133,23 +132,11 @@ export const useEditorCanvasHandlers = ({
       }
       if (isBootstrappingSceneRef.current && !hasRenderable) return;
       latestElementsRef.current = allElements;
-      // Board settings -- the grid, snapping, the canvas colour -- belong to the
-      // drawing and are saved with it, but they change nothing about any
-      // element. Broadcasting only carries elements, files and their ordering,
-      // so a settings change on its own would reach the server nowhere: it
-      // would hold until something happened to be drawn, and on an untouched
-      // board it would be lost at the reload it was meant to survive.
-      if (drawingId && shouldSaveBoardSettings(lastPersistedAppStateSigRef.current, appState)) {
-        lastPersistedAppStateSigRef.current = boardSettingsSignature(appState);
-        debouncedSaveRef.current?.(drawingId, allElements, appState, currentFiles);
-      }
       broadcastChanges(allElements, currentFiles);
     },
     [
       broadcastChanges,
       canEdit,
-      debouncedSaveRef,
-      drawingId,
       excalidrawAPIRef,
       hasHydratedInitialSceneRef,
       initialSceneElementsRef,

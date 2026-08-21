@@ -81,4 +81,30 @@ describe("link preview routes", () => {
     );
     expect(result.body.faviconUrl).not.toContain("example.com");
   });
+
+  it("returns only the generic unavailable code for a cached fetch failure", async () => {
+    const harness = routeHarness(
+      (req: any, _res: any, next: any) => {
+        req.user = { id: "user-1" };
+        next();
+      },
+      async () => ({
+        id: "00000000-0000-0000-0000-000000000002",
+        status: "NEGATIVE",
+        failureCode: "UNAVAILABLE",
+        requestedUrl: "https://internal-name.example",
+        resolvedUrl: null,
+        title: null,
+        description: null,
+        imageBlobId: null,
+        faviconBlobId: null,
+      }),
+    );
+
+    const result = await harness.invokePost();
+    expect(result.statusCode).toBe(422);
+    expect(result.body.code).toBe("UNAVAILABLE");
+    expect(JSON.stringify(result.body)).not.toContain("SSRF_BLOCKED");
+    expect(JSON.stringify(result.body)).not.toContain("NETWORK_ERROR");
+  });
 });

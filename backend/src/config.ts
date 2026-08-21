@@ -152,6 +152,9 @@ export interface LinkPreviewConfig {
   connectTimeoutMs: number;
   totalTimeoutMs: number;
   maxRedirects: number;
+  allowedPorts: number[];
+  dnsConcurrency: number;
+  dnsQueueSize: number;
   maxPageWireBytes: number;
   maxPageDecodedBytes: number;
   maxImageWireBytes: number;
@@ -164,6 +167,11 @@ export interface LinkPreviewConfig {
   maxConcurrentPerUser: number;
   maxConcurrentInstance: number;
   maxQueueSize: number;
+  cacheBudgetBytes: number;
+  maxBytesPerUser: number;
+  maxEntriesPerUser: number;
+  minFreeDiskPercent: number;
+  cleanupBatchSize: number;
 }
 
 export type AuthMode = "local" | "hybrid" | "oidc_enforced";
@@ -255,6 +263,16 @@ const parseCsvEnvList = (key: string): string[] => {
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+};
+
+const parsePortList = (key: string, fallback: number[]): number[] => {
+  const entries = parseCsvEnvList(key);
+  if (entries.length === 0) return fallback;
+  const ports = entries.map(Number);
+  if (ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65_535)) {
+    throw new Error(`${key} must contain comma-separated TCP ports between 1 and 65535`);
+  }
+  return [...new Set(ports)];
 };
 
 const resolveJwtSecret = (nodeEnv: string): string => {
@@ -523,6 +541,11 @@ export const config: Config = {
     connectTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_CONNECT_TIMEOUT_MS", 3_000),
     totalTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_TOTAL_TIMEOUT_MS", 8_000),
     maxRedirects: getRequiredEnvNumber("LINK_PREVIEW_MAX_REDIRECTS", 3),
+    // Link cards are web clients, not general-purpose TCP proxies. Additional
+    // web ports must be explicitly opted into by an operator.
+    allowedPorts: parsePortList("LINK_PREVIEW_ALLOWED_PORTS", [80, 443]),
+    dnsConcurrency: getRequiredEnvNumber("LINK_PREVIEW_DNS_CONCURRENCY", 8),
+    dnsQueueSize: getRequiredEnvNumber("LINK_PREVIEW_DNS_QUEUE_SIZE", 64),
     // Both the bytes on the wire and the bytes after Content-Encoding are
     // bounded independently. The latter is what defeats gzip/brotli bombs.
     maxPageWireBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_PAGE_WIRE_KB", 256) * 1024,
@@ -539,6 +562,11 @@ export const config: Config = {
     maxConcurrentPerUser: getRequiredEnvNumber("LINK_PREVIEW_CONCURRENCY_PER_USER", 2),
     maxConcurrentInstance: getRequiredEnvNumber("LINK_PREVIEW_CONCURRENCY_INSTANCE", 4),
     maxQueueSize: getRequiredEnvNumber("LINK_PREVIEW_QUEUE_SIZE", 16),
+    cacheBudgetBytes: getRequiredEnvNumber("LINK_PREVIEW_CACHE_BUDGET_MB", 256) * 1024 * 1024,
+    maxBytesPerUser: getRequiredEnvNumber("LINK_PREVIEW_MAX_PER_USER_MB", 64) * 1024 * 1024,
+    maxEntriesPerUser: getRequiredEnvNumber("LINK_PREVIEW_MAX_ENTRIES_PER_USER", 100),
+    minFreeDiskPercent: getRequiredEnvNumber("LINK_PREVIEW_MIN_FREE_DISK_PERCENT", 20),
+    cleanupBatchSize: getRequiredEnvNumber("LINK_PREVIEW_CLEANUP_BATCH_SIZE", 100),
   },
 };
 

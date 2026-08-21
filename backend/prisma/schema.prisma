@@ -260,6 +260,8 @@ model StoredBlob {
   /// Set when the file is stored compressed and must be served that way.
   contentEncoding String?
   storageKey  String    @unique
+  /// Origin of the bytes; preview cache blobs remain identifiable after row races.
+  purpose     String    @default("ASSET")
   /// STAGING while the upload is still running, READY once it is usable,
   /// DELETING once nothing references it any more.
   state       String    @default("STAGING")
@@ -273,6 +275,7 @@ model StoredBlob {
   updatedAt   DateTime  @updatedAt
 
   @@index([state, deleteAfter])
+  @@index([purpose, createdAt])
 }
 
 /// Cached public metadata. Foreign image URLs never leave the backend; only
@@ -288,7 +291,10 @@ model LinkPreview {
   description   String?
   imageBlobId   String?
   faviconBlobId String?
+  /// Creator charged for this cache entry. Null only for rows predating this field.
+  ownerUserId   String?
   expiresAt     DateTime
+  lastAccessedAt DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -296,6 +302,8 @@ model LinkPreview {
   faviconBlob StoredBlob? @relation("LinkPreviewFavicon", fields: [faviconBlobId], references: [id], onDelete: SetNull)
 
   @@index([expiresAt])
+  @@index([ownerUserId, lastAccessedAt])
+  @@index([lastAccessedAt])
   @@index([imageBlobId])
   @@index([faviconBlobId])
 }

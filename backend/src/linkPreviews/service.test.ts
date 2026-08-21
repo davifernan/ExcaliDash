@@ -1,68 +1,45 @@
-import { describe, expect, it, vi } from "vitest";
-import type { LinkPreviewConfig } from "../config";
-import { createLinkPreviewService, LinkPreviewBusyError } from "./service";
+import { createServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { connect as netConnect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewFetchError } from "./network";
+import { createLinkPreviewService, FAILURE_FLOOR_MS, LinkPreviewBusyError } from "./service";
+import { fakePreviewPrisma, previewTestConfig as config } from "./testSupport";
 
-const config: LinkPreviewConfig = {
-  positiveTtlMs: 60_000,
-  negativeTtlMs: 10_000,
-  dnsTimeoutMs: 100,
-  connectTimeoutMs: 100,
-  totalTimeoutMs: 1_000,
-  maxRedirects: 2,
-  maxPageWireBytes: 10_000,
-  maxPageDecodedBytes: 10_000,
-  maxImageWireBytes: 10_000,
-  maxImageDecodedBytes: 10_000,
-  maxSanitizedImageBytes: 10_000,
-  maxImagePixels: 1_000_000,
-  maxImageDimension: 1_000,
-  maxFaviconDimension: 128,
-  imageProcessTimeoutMs: 1_000,
-  maxConcurrentPerUser: 1,
-  maxConcurrentInstance: 2,
-  maxQueueSize: 2,
-};
+const tempDirs: string[] = [];
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
-function fakePrisma() {
-  const rows = new Map<string, any>();
-  let ids = 0;
-  return {
-    rows,
-    linkPreview: {
-      findUnique: async ({ where }: any) =>
-        where.cacheKey ? (rows.get(where.cacheKey) ?? null) : null,
-      upsert: async ({ where, create, update }: any) => {
-        const old = rows.get(where.cacheKey);
-        const row = old
-          ? { ...old, ...update, updatedAt: new Date() }
-          : {
-              id: `00000000-0000-0000-0000-${String(++ids).padStart(12, "0")}`,
-              failureCode: null,
-              resolvedUrl: null,
-              title: null,
-              description: null,
-              imageBlobId: null,
-              faviconBlobId: null,
-              ...create,
-            };
-        rows.set(where.cacheKey, row);
-        return row;
-      },
-      deleteMany: async ({ where }: any) => {
-        for (const [key, value] of rows) if (value.id === where.id) rows.delete(key);
-      },
-      count: async () => 0,
-      findMany: async () => [],
-    },
-    asset: { count: async () => 0 },
-    storedBlob: { findUnique: async () => null },
-  };
+async function withHttpServer<T>(
+  handler: Parameters<typeof createServer>[0],
+  work: (port: number) => Promise<T>,
+): Promise<T> {
+  const server = createServer(handler);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Test server has no TCP port");
+  try {
+    return await work(address.port);
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+  }
 }
 
 describe("link preview caching and admission", () => {
   it("serves repeated successful requests from the persistent cache", async () => {
-    const prisma = fakePrisma();
+    const prisma = fakePreviewPrisma();
     const fetchResource = vi.fn().mockResolvedValue({
       body: Buffer.from(
         '<html><head><title>Cached title</title><link rel="icon" href="data:,x"></head>',
@@ -85,8 +62,8 @@ describe("link preview caching and admission", () => {
     expect(fetchResource).toHaveBeenCalledTimes(1);
   });
 
-  it("caches failures so a bad target is not fetched repeatedly", async () => {
-    const prisma = fakePrisma();
+  it("caches one public failure code so a bad target is not fetched repeatedly", async () => {
+    const prisma = fakePreviewPrisma();
     const fetchResource = vi
       .fn()
       .mockRejectedValue(new PreviewFetchError("TOO_LARGE", "too large"));
@@ -95,15 +72,56 @@ describe("link preview caching and admission", () => {
       storageDir: "/unused",
       config,
       fetchResource,
+      logger: { warn: vi.fn() },
+      delay: async () => undefined,
     });
 
-    expect((await getPreview("user-1", "https://example.com/huge")).failureCode).toBe("TOO_LARGE");
-    expect((await getPreview("user-1", "https://example.com/huge")).failureCode).toBe("TOO_LARGE");
+    expect((await getPreview("user-1", "https://example.com/huge")).failureCode).toBe(
+      "UNAVAILABLE",
+    );
+    expect((await getPreview("user-1", "https://example.com/huge")).failureCode).toBe(
+      "UNAVAILABLE",
+    );
     expect(fetchResource).toHaveBeenCalledTimes(1);
   });
 
+  it("makes blocked and unreachable hosts outwardly indistinguishable", async () => {
+    const outcomes = [
+      new PreviewFetchError("SSRF_BLOCKED", "private address"),
+      new PreviewFetchError("NETWORK_ERROR", "name not found"),
+    ];
+    const observed: Array<{ code: string | null; delay: number }> = [];
+    const warnings: string[] = [];
+    for (const [index, failure] of outcomes.entries()) {
+      let delayed = 0;
+      const getPreview = createLinkPreviewService({
+        prisma: fakePreviewPrisma(),
+        storageDir: "/unused",
+        config,
+        fetchResource: vi.fn().mockRejectedValue(failure),
+        logger: { warn: (message) => warnings.push(String(message)) },
+        delay: async (ms) => {
+          delayed = ms;
+        },
+      });
+      const result = await getPreview(`user-${index}`, `https://${index}.example.test`);
+      observed.push({ code: result.failureCode, delay: delayed });
+    }
+
+    expect(observed.map(({ code }) => code)).toEqual(["UNAVAILABLE", "UNAVAILABLE"]);
+    // Written out rather than taken from the constant under test: comparing a
+    // value against itself passes however the service behaves, including with
+    // the wait removed altogether. Lowering the floor is a security decision,
+    // so it should have to be made here as well.
+    expect(observed.every(({ delay }) => delay >= 1_500)).toBe(true);
+    expect(FAILURE_FLOOR_MS).toBeGreaterThanOrEqual(1_500);
+    expect(observed[0].delay).toBe(observed[1].delay);
+    expect(warnings.join("\n")).toContain("SSRF_BLOCKED");
+    expect(warnings.join("\n")).toContain("NETWORK_ERROR");
+  });
+
   it("coalesces concurrent requests for the same address", async () => {
-    const prisma = fakePrisma();
+    const prisma = fakePreviewPrisma();
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -132,7 +150,7 @@ describe("link preview caching and admission", () => {
   });
 
   it("limits simultaneous preview work per user", async () => {
-    const prisma = fakePrisma();
+    const prisma = fakePreviewPrisma();
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -159,5 +177,46 @@ describe("link preview caching and admission", () => {
     );
     release();
     await first;
+  });
+
+  it("fetches a valid page and its image through the same pinned HTTP path", async () => {
+    const seen: string[] = [];
+    await withHttpServer(
+      (request, response) => {
+        seen.push(request.url ?? "");
+        if (request.url === "/page") {
+          response.setHeader("Content-Type", "text/html");
+          response.end(
+            '<head><title>Real service</title><meta property="og:image" content="/image.png"><link rel="icon" href="data:,none"></head>',
+          );
+          return;
+        }
+        response.setHeader("Content-Type", "image/png");
+        response.end(Buffer.from("89504e470d0a1a0a", "hex"));
+      },
+      async (port) => {
+        const prisma = fakePreviewPrisma();
+        const storageDir = await mkdtemp(join(tmpdir(), "link-preview-service-"));
+        tempDirs.push(storageDir);
+        const getPreview = createLinkPreviewService({
+          prisma,
+          storageDir,
+          config: { ...config, allowedPorts: [port] },
+          networkDeps: {
+            lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+            connect: (options: any) => {
+              expect(options.host ?? options.hostname).toBe("93.184.216.34");
+              return netConnect({ host: "127.0.0.1", port });
+            },
+          },
+          sanitizeImage: vi.fn(async () => Buffer.from("sanitized-webp")),
+        });
+
+        const result = await getPreview("user-1", `http://public.test:${port}/page`);
+        expect(result.title).toBe("Real service");
+        expect(result.imageBlobId).toBeTruthy();
+        expect(seen).toEqual(["/page", "/image.png"]);
+      },
+    );
   });
 });

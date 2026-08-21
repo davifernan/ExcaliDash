@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -21,6 +21,41 @@ export class PreviewImageError extends Error {
 }
 
 type RasterFormat = "png" | "jpeg" | "gif" | "webp" | "ico";
+
+/** Resource policy is passed before any input path, so it governs decoder allocation. */
+export function imageMagickResourceArgs(limits: ImageLimits): string[] {
+  return [
+    "-limit",
+    "memory",
+    "64MiB",
+    "-limit",
+    "map",
+    "128MiB",
+    "-limit",
+    "disk",
+    "0",
+    "-limit",
+    "area",
+    String(limits.maxPixels),
+    "-limit",
+    "width",
+    String(limits.maxDimension),
+    "-limit",
+    "height",
+    String(limits.maxDimension),
+    "-limit",
+    // ImageMagick refuses at the limit rather than above it, so 1 rejects even
+    // a single-image file: every preview image failed to re-encode, and the
+    // catch below reported it as an unsafe image. 2 permits exactly one image,
+    // which is all a preview ever needs. Animated files are turned away before
+    // this by the frame count identify reports.
+    "list-length",
+    "2",
+    "-limit",
+    "thread",
+    "1",
+  ];
+}
 
 /** Magic bytes, not a remote Content-Type, decide which decoder is allowed. */
 export function sniffRasterFormat(bytes: Buffer): RasterFormat | null {
@@ -69,6 +104,9 @@ export function parseImageIdentity(
     if (frameWidth * frameHeight > limits.maxPixels) {
       throw new PreviewImageError("The image exceeds the pixel limit.");
     }
+    if (frameWidth > limits.maxDimension || frameHeight > limits.maxDimension) {
+      throw new PreviewImageError("The image exceeds the decoder dimension limit.");
+    }
     width = Math.max(width, frameWidth);
     height = Math.max(height, frameHeight);
   }
@@ -83,20 +121,7 @@ export async function sanitizePreviewImage(bytes: Buffer, limits: ImageLimits): 
   const dir = await mkdtemp(join(tmpdir(), "link-preview-"));
   const input = join(dir, `input.${format === "jpeg" ? "jpg" : format}`);
   const output = join(dir, "output.webp");
-  const resourceArgs = [
-    "-limit",
-    "memory",
-    "64MiB",
-    "-limit",
-    "map",
-    "128MiB",
-    "-limit",
-    "disk",
-    "0",
-    "-limit",
-    "area",
-    String(limits.maxPixels),
-  ];
+  const resourceArgs = imageMagickResourceArgs(limits);
   try {
     await writeFile(input, bytes, { mode: 0o600 });
     let identity: string;
@@ -109,7 +134,7 @@ export async function sanitizePreviewImage(bytes: Buffer, limits: ImageLimits): 
     } catch {
       throw new PreviewImageError("The image could not be decoded safely.");
     }
-    parseImageIdentity(identity, limits, format === "ico");
+    parseImageIdentity(identity, limits);
 
     try {
       await run(
@@ -130,10 +155,11 @@ export async function sanitizePreviewImage(bytes: Buffer, limits: ImageLimits): 
     } catch {
       throw new PreviewImageError("The image could not be re-encoded safely.");
     }
-    const sanitized = await readFile(output);
-    if (sanitized.length < 1 || sanitized.length > limits.maxOutputBytes) {
+    const outputSize = (await stat(output)).size;
+    if (outputSize < 1 || outputSize > limits.maxOutputBytes) {
       throw new PreviewImageError("The sanitized image exceeds the byte limit.");
     }
+    const sanitized = await readFile(output);
     return sanitized;
   } finally {
     await rm(dir, { recursive: true, force: true });

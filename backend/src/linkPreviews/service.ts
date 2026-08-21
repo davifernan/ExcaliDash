@@ -1,20 +1,39 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { removeStored } from "../assets/assetStorage";
 import { storeBlob } from "../assets/assetService";
+import { freeDiskPercent } from "../assets/pageCache";
 import { BoundedTaskQueue } from "../utils/boundedTaskQueue";
 import type { LinkPreviewConfig } from "../config";
+import {
+  evictLinkPreviewCache,
+  freshCached,
+  previewDiskBytes,
+  replaceCachedRow,
+  type LinkPreviewCacheDeps,
+} from "./cache";
 import { sanitizePreviewImage, type ImageLimits } from "./imageProcessor";
 import { extractLinkMetadata } from "./metadata";
-import { fetchPreviewResource, PreviewFetchError, type PreviewNetworkLimits } from "./network";
+import {
+  fetchPreviewResource,
+  PreviewFetchError,
+  type PreviewNetworkDeps,
+  type PreviewNetworkLimits,
+} from "./network";
 
-type ServiceDeps = {
-  prisma: any;
-  storageDir: string;
-  config: LinkPreviewConfig;
-  now?: () => number;
+/**
+ * How long a failed preview takes to answer, at the very least.
+ *
+ * Long enough that everything which fails quickly — a blocked private address,
+ * a name that does not exist, a refused connection — is timed alike.
+ */
+export const FAILURE_FLOOR_MS = 2_000;
+
+type ServiceDeps = LinkPreviewCacheDeps & {
   fetchResource?: typeof fetchPreviewResource;
   sanitizeImage?: typeof sanitizePreviewImage;
+  networkDeps?: PreviewNetworkDeps;
+  logger?: Pick<Console, "warn">;
+  delay?: (ms: number) => Promise<void>;
 };
 
 export class LinkPreviewBusyError extends Error {
@@ -61,6 +80,9 @@ function networkLimits(config: LinkPreviewConfig, kind: "page" | "image"): Previ
     connectTimeoutMs: config.connectTimeoutMs,
     totalTimeoutMs: config.totalTimeoutMs,
     maxRedirects: config.maxRedirects,
+    allowedPorts: config.allowedPorts,
+    dnsConcurrency: config.dnsConcurrency,
+    dnsQueueSize: config.dnsQueueSize,
     maxWireBytes: kind === "page" ? config.maxPageWireBytes : config.maxImageWireBytes,
     maxDecodedBytes: kind === "page" ? config.maxPageDecodedBytes : config.maxImageDecodedBytes,
   };
@@ -90,11 +112,32 @@ function publicResult(row: any): LinkPreviewResult {
 }
 
 async function storeSanitizedImage(deps: ServiceDeps, bytes: Buffer) {
+  if (bytes.length > deps.config.cacheBudgetBytes) {
+    throw new Error("The sanitized image is larger than the preview cache budget.");
+  }
+  await evictLinkPreviewCache(deps);
+  const free = await freeDiskPercent(deps.storageDir);
+  if (free !== null && free < deps.config.minFreeDiskPercent) {
+    await evictLinkPreviewCache(deps, undefined, true);
+    const after = await freeDiskPercent(deps.storageDir);
+    if (after !== null && after < deps.config.minFreeDiskPercent) {
+      throw new Error("The preview cache cannot preserve the configured disk reserve.");
+    }
+  }
+  let used = await previewDiskBytes(deps.prisma);
+  if (used + bytes.length > deps.config.cacheBudgetBytes) {
+    await evictLinkPreviewCache(deps, undefined, true);
+    used = await previewDiskBytes(deps.prisma);
+    if (used + bytes.length > deps.config.cacheBudgetBytes) {
+      throw new Error("The preview cache byte budget is exhausted.");
+    }
+  }
   const { blob } = await storeBlob(
     { prisma: deps.prisma, storageDir: deps.storageDir },
     {
       source: Readable.from([bytes]),
       limitBytes: deps.config.maxSanitizedImageBytes,
+      purpose: "LINK_PREVIEW",
     },
   );
   return blob;
@@ -107,11 +150,14 @@ async function mirrorImage(
 ): Promise<any | null> {
   if (!url) return null;
   try {
-    const fetched = await (deps.fetchResource ?? fetchPreviewResource)(
-      url,
-      "image",
-      networkLimits(deps.config, "image"),
-    );
+    const fetched = deps.fetchResource
+      ? await deps.fetchResource(url, "image", networkLimits(deps.config, "image"))
+      : await fetchPreviewResource(
+          url,
+          "image",
+          networkLimits(deps.config, "image"),
+          deps.networkDeps,
+        );
     const clean = await (deps.sanitizeImage ?? sanitizePreviewImage)(
       fetched.body,
       imageLimits(deps.config, favicon),
@@ -124,101 +170,98 @@ async function mirrorImage(
   }
 }
 
-async function removeUnusedBlob(deps: Pick<ServiceDeps, "prisma" | "storageDir">, blobId: string) {
-  const [assets, previews] = await Promise.all([
-    deps.prisma.asset.count({ where: { blobId } }),
-    deps.prisma.linkPreview.count({
-      where: { OR: [{ imageBlobId: blobId }, { faviconBlobId: blobId }] },
-    }),
-  ]);
-  if (assets + previews > 0) return false;
-  const blob = await deps.prisma.storedBlob.findUnique({ where: { id: blobId } });
-  if (!blob) return false;
-  await removeStored(deps.storageDir, blob.storageKey);
-  await deps.prisma.storedBlob.delete({ where: { id: blobId } });
-  return true;
-}
-
-async function discardRow(deps: ServiceDeps, row: any): Promise<void> {
-  await deps.prisma.linkPreview.deleteMany({ where: { id: row.id } });
-  const blobIds = [...new Set([row.imageBlobId, row.faviconBlobId].filter(Boolean))] as string[];
-  for (const blobId of blobIds) await removeUnusedBlob(deps, blobId);
-}
-
-async function freshCached(deps: ServiceDeps, cacheKey: string): Promise<any | null> {
-  const row = await deps.prisma.linkPreview.findUnique({ where: { cacheKey } });
-  if (!row) return null;
-  if (row.expiresAt.getTime() > (deps.now?.() ?? Date.now())) return row;
-  await discardRow(deps, row);
-  return null;
-}
-
-async function cacheFailure(deps: ServiceDeps, key: string, url: URL, code: string) {
+async function cacheFailure(
+  deps: ServiceDeps,
+  key: string,
+  url: URL,
+  code: string,
+  userId: string,
+) {
   const now = deps.now?.() ?? Date.now();
-  return deps.prisma.linkPreview.upsert({
-    where: { cacheKey: key },
-    create: {
+  const values = {
+    requestedUrl: url.href,
+    resolvedUrl: null,
+    status: "NEGATIVE",
+    failureCode: code,
+    title: null,
+    description: null,
+    imageBlobId: null,
+    faviconBlobId: null,
+    ownerUserId: userId,
+    lastAccessedAt: new Date(now),
+    expiresAt: new Date(now + deps.config.negativeTtlMs),
+  };
+  return replaceCachedRow(
+    deps,
+    key,
+    {
       cacheKey: key,
-      requestedUrl: url.href,
-      status: "NEGATIVE",
-      failureCode: code,
-      expiresAt: new Date(now + deps.config.negativeTtlMs),
+      ...values,
     },
-    update: {
-      requestedUrl: url.href,
-      resolvedUrl: null,
-      status: "NEGATIVE",
-      failureCode: code,
-      title: null,
-      description: null,
-      imageBlobId: null,
-      faviconBlobId: null,
-      expiresAt: new Date(now + deps.config.negativeTtlMs),
-    },
-  });
+    values,
+  );
 }
 
-async function buildPreview(deps: ServiceDeps, key: string, url: URL) {
+async function buildPreview(deps: ServiceDeps, key: string, url: URL, userId: string) {
+  const startedAt = Date.now();
   try {
-    const page = await (deps.fetchResource ?? fetchPreviewResource)(
-      url,
-      "html",
-      networkLimits(deps.config, "page"),
-    );
+    const page = deps.fetchResource
+      ? await deps.fetchResource(url, "html", networkLimits(deps.config, "page"))
+      : await fetchPreviewResource(
+          url,
+          "html",
+          networkLimits(deps.config, "page"),
+          deps.networkDeps,
+        );
     const metadata = extractLinkMetadata(page.body, page.finalUrl);
     const image = await mirrorImage(deps, metadata.imageUrl, false);
     const favicon = await mirrorImage(deps, metadata.faviconUrl, true);
     if (!metadata.title && !metadata.description && !image && !favicon) {
-      return cacheFailure(deps, key, url, "NO_METADATA");
+      return cacheFailure(deps, key, url, "NO_METADATA", userId);
     }
     const now = deps.now?.() ?? Date.now();
-    return await deps.prisma.linkPreview.upsert({
-      where: { cacheKey: key },
-      create: {
+    const values = {
+      requestedUrl: url.href,
+      resolvedUrl: page.finalUrl.href,
+      status: "READY",
+      failureCode: null,
+      title: metadata.title,
+      description: metadata.description,
+      imageBlobId: image?.id ?? null,
+      faviconBlobId: favicon?.id ?? null,
+      ownerUserId: userId,
+      lastAccessedAt: new Date(now),
+      expiresAt: new Date(now + deps.config.positiveTtlMs),
+    };
+    return await replaceCachedRow(
+      deps,
+      key,
+      {
         cacheKey: key,
-        requestedUrl: url.href,
-        resolvedUrl: page.finalUrl.href,
-        status: "READY",
-        title: metadata.title,
-        description: metadata.description,
-        imageBlobId: image?.id ?? null,
-        faviconBlobId: favicon?.id ?? null,
-        expiresAt: new Date(now + deps.config.positiveTtlMs),
+        ...values,
       },
-      update: {
-        resolvedUrl: page.finalUrl.href,
-        status: "READY",
-        failureCode: null,
-        title: metadata.title,
-        description: metadata.description,
-        imageBlobId: image?.id ?? null,
-        faviconBlobId: favicon?.id ?? null,
-        expiresAt: new Date(now + deps.config.positiveTtlMs),
-      },
-    });
+      values,
+    );
   } catch (error) {
-    const code = error instanceof PreviewFetchError ? error.code : "FETCH_FAILED";
-    return cacheFailure(deps, key, url, code);
+    const internalCode = error instanceof PreviewFetchError ? error.code : "FETCH_FAILED";
+    (deps.logger ?? console).warn(
+      `[link-preview] ${url.hostname} failed with ${internalCode}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    // A private DNS answer, NXDOMAIN and a refused public connection must not
+    // become a hostname/port oracle. They share one public code and one minimum
+    // response time; the detailed cause remains in the server log above.
+    //
+    // The floor is deliberately shorter than the total timeout. Every one of
+    // those answers arrives within milliseconds, so a floor well above them
+    // makes them indistinguishable from each other, which is the oracle worth
+    // closing. Holding each failure for the full timeout instead would let four
+    // bad links occupy every worker for eight seconds and leave nobody able to
+    // fetch a preview at all.
+    const remaining = FAILURE_FLOOR_MS - (Date.now() - startedAt);
+    if (remaining > 0) {
+      await (deps.delay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(remaining);
+    }
+    return cacheFailure(deps, key, url, "UNAVAILABLE", userId);
   }
 }
 
@@ -245,8 +288,14 @@ export function createLinkPreviewService(deps: ServiceDeps) {
           maxWaiting: deps.config.maxQueueSize,
         },
         async () =>
-          publicResult((await freshCached(deps, key)) ?? (await buildPreview(deps, key, url))),
+          publicResult(
+            (await freshCached(deps, key)) ?? (await buildPreview(deps, key, url, userId)),
+          ),
       )
+      .then(async (result) => {
+        await evictLinkPreviewCache(deps, userId);
+        return result;
+      })
       .finally(() => {
         const remaining = (activeByUser.get(userId) ?? 1) - 1;
         if (remaining > 0) activeByUser.set(userId, remaining);
@@ -256,12 +305,4 @@ export function createLinkPreviewService(deps: ServiceDeps) {
     inFlight.set(key, work);
     return work;
   };
-}
-
-export async function collectExpiredLinkPreviews(deps: ServiceDeps): Promise<number> {
-  const expired = await deps.prisma.linkPreview.findMany({
-    where: { expiresAt: { lte: new Date(deps.now?.() ?? Date.now()) } },
-  });
-  for (const row of expired) await discardRow(deps, row);
-  return expired.length;
 }

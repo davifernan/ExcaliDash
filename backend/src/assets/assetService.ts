@@ -57,7 +57,12 @@ type BlobDeps = Pick<Deps, "prisma" | "storageDir">;
  */
 export async function storeBlob(
   deps: BlobDeps,
-  input: { source: Readable; limitBytes: number; compress?: boolean },
+  input: {
+    source: Readable;
+    limitBytes: number;
+    compress?: boolean;
+    purpose?: "ASSET" | "LINK_PREVIEW";
+  },
 ) {
   const provisionalId = randomUUID();
   const stored = await storeStream(
@@ -71,10 +76,14 @@ export async function storeBlob(
   let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
   if (blob) {
     await removeStored(deps.storageDir, stored.storageKey);
-    if (blob.deleteAfter) {
+    if (blob.deleteAfter || (input.purpose === "LINK_PREVIEW" && blob.purpose !== "LINK_PREVIEW")) {
       blob = await deps.prisma.storedBlob.update({
         where: { id: blob.id },
-        data: { deleteAfter: null, state: "READY" },
+        data: {
+          deleteAfter: null,
+          state: "READY",
+          ...(input.purpose === "LINK_PREVIEW" ? { purpose: "LINK_PREVIEW" } : {}),
+        },
       });
     }
   } else {
@@ -87,6 +96,7 @@ export async function storeBlob(
           storedBytes: stored.storedBytes,
           contentEncoding: stored.contentEncoding,
           storageKey: stored.storageKey,
+          purpose: input.purpose ?? "ASSET",
           state: "READY",
         },
       });

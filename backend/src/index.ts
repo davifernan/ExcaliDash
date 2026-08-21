@@ -46,7 +46,8 @@ import { processFilesForS3 as processFilesForS3WithPrisma } from "./fileProcessi
 import { initS3 } from "./s3";
 import { startScheduledMaintenance } from "./backups/scheduler";
 import { registerLinkPreviewRoutes } from "./linkPreviews/routes";
-import { collectExpiredLinkPreviews, createLinkPreviewService } from "./linkPreviews/service";
+import { collectExpiredLinkPreviews } from "./linkPreviews/cache";
+import { createLinkPreviewService } from "./linkPreviews/service";
 const backendRoot = path.resolve(__dirname, "../");
 const redactDatabaseUrl = (value: string | undefined): string => {
   if (!value) return "<unset>";
@@ -658,11 +659,11 @@ setInterval(async () => {
     const swept = await sweepUnclaimed(assetDeps);
     const collected = await collectExpired(assetDeps);
     const expiredPreviews = await collectExpiredLinkPreviews(linkPreviewDeps);
-    if (swept.pending || collected.assets || expiredPreviews) {
+    if (swept.pending || collected.assets || expiredPreviews.previews || expiredPreviews.blobs) {
       console.log(
         `[assets] released ${swept.pending} unclaimed upload(s), ` +
-          `removed ${collected.assets} document(s), ${expiredPreviews} link preview(s) ` +
-          `and ${collected.blobs} file(s)`,
+          `removed ${collected.assets} document(s), ${expiredPreviews.previews} link preview(s) ` +
+          `and ${collected.blobs + expiredPreviews.blobs} file(s)`,
       );
     }
   } catch (error) {

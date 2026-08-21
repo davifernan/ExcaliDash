@@ -21,6 +21,12 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+
+      # The same decoders the container image carries. Tests that exercise them
+      # skip themselves when the binary is missing, so without this a broken
+      # decoder invocation passes as a green run.
+      - name: Install document and image tools
+        run: sudo apt-get update && sudo apt-get install -y imagemagick poppler-utils ghostscript
       
       - name: Setup Node.js
         uses: actions/setup-node@v4

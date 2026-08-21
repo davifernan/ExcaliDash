@@ -57,7 +57,6 @@ export const Editor: React.FC = () => {
   const latestFilesRef = useRef<any>(null);
   const lastSyncedFilesRef = useRef<Record<string, any>>({});
   const lastSyncedElementOrderSigRef = useRef<string>("");
-  const elementUpdateRefusalHandlerRef = useRef<(() => void) | null>(null);
   const lastPersistedFilesRef = useRef<Record<string, any>>({});
   const latestAppStateRef = useRef<any>(null);
   const debouncedSaveRef = useRef<
@@ -111,7 +110,6 @@ export const Editor: React.FC = () => {
     isReady,
     excalidrawAPI,
     editorContainerRef,
-    elementUpdateRefusalHandlerRef,
     lastSyncedFilesRef,
     lastSyncedElementOrderSigRef,
     latestElementsRef,
@@ -156,10 +154,8 @@ export const Editor: React.FC = () => {
   const markSceneChangedSinceLoad = useCallback(() => {
     hasSceneChangesSinceLoadRef.current = true;
   }, []);
-  const { broadcastChanges, broadcastFiles } = useEditorBroadcast({
+  const broadcastChanges = useEditorBroadcast({
     drawingId: id,
-    elementUpdateRefusalHandlerRef,
-    elementVersionMap,
     excalidrawAPI,
     lastLocalChangeAtRef,
     lastSyncedElementOrderSigRef,
@@ -186,7 +182,8 @@ export const Editor: React.FC = () => {
     latestElementsRef,
     latestFilesRef,
     setIsReady,
-    broadcastFiles,
+    socketRef,
+    lastSyncedFilesRef,
   });
   const sceneLoaderRefs = React.useMemo(
     () => ({

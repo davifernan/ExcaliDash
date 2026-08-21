@@ -39,21 +39,26 @@ import {
   createKeyedByteLimiter,
   createKeyedRateLimiter,
   createRateLimiter,
-  ELEMENT_UPDATE_TRAFFIC_LIMITS,
   parseDrawingId,
-  SOCKET_QUEUE_LIMITS,
-  SOCKET_LIMITS,
+  ELEMENT_UPDATE_TRAFFIC_LIMITS,
   type ElementUpdateTrafficLimits,
+  SOCKET_LIMITS,
+  SOCKET_QUEUE_LIMITS,
 } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
 import { ipKeyGenerator } from "express-rate-limit";
 import { resolveSocketClientAddress, type TrustProxySetting } from "./socketClientAddress";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
-import { registerSelectionRoomEvent, SELECTION_LIMITS } from "./socketSelection";
-import { CURSOR_CHAT_LIMITS, registerCursorChatRoomEvent } from "./socketCursorChat";
+import {
+  registerSelectionRoomEvent,
+  SELECTION_LIMITS,
+  SELECTION_SNAPSHOT_EVENT,
+} from "./socketSelection";
+import { registerCursorChatRoomEvent, CURSOR_CHAT_LIMITS } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import { createSocketInviteHereManager } from "./socketInviteHere";
+import { createRoomEventFeedback, type RoomEventAck } from "./socketRoomEvent";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -66,7 +71,7 @@ type RegisterSocketHandlersDeps = {
   elementUpdateTrafficLimits?: ElementUpdateTrafficLimits;
   /**
    * The same setting the HTTP side uses. Without it every socket behind a
-   * reverse proxy shares one address -- and therefore one budget.
+   * reverse proxy reports the proxy's address -- and shares one budget.
    */
   trustProxy?: TrustProxySetting;
 };
@@ -89,9 +94,16 @@ export const registerSocketHandlers = ({
   const drawingBySocket = new Map<string, string>();
   // Keyed by who, not by which connection: a per-socket budget for activity
   // pings resets on reconnect, and reconnecting is free.
+  // Budgets that outlive a connection. Everything a client can repeat by
+  // opening another tab belongs here: the tab is free, the budget must not be.
+  // Joining and following stay per connection on purpose -- those refuse
+  // somebody outright, and an office behind one address is one actor here.
   const allowActivity = createKeyedRateLimiter(20, 10_000);
-  const allowSelection = createKeyedRateLimiter(SELECTION_LIMITS.eventsPerSecond, 1_000);
-  const allowCursorChat = createKeyedRateLimiter(CURSOR_CHAT_LIMITS.eventsPerSecond, 1_000);
+  // Four times the per-connection allowance: two tabs and a phone are normal,
+  // fifty connections are not, and the point is to stop the budget growing with
+  // them rather than to punish a second window.
+  const allowCursorMove = createKeyedRateLimiter(40 * 4, 1_000);
+  const allowElementUpdateEvents = createKeyedRateLimiter(120 * 4, 1_000);
   // The old two 10k-key maps allowed 20k live buckets total. Actor+board keys
   // multiply faster, so four 5k-key maps retain that same 20k worst case; each
   // map purges expired windows and refuses new keys rather than evicting a live
@@ -117,6 +129,9 @@ export const registerSocketHandlers = ({
     elementUpdateTrafficLimits.windowMs,
     elementBudgetMaxKeys,
   );
+
+  const allowSelection = createKeyedRateLimiter(SELECTION_LIMITS.eventsPerSecond * 4, 1_000);
+  const allowCursorChat = createKeyedRateLimiter(CURSOR_CHAT_LIMITS.eventsPerSecond * 4, 1_000);
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
   let followManager: ReturnType<typeof createSocketFollowManager>;
@@ -249,19 +264,26 @@ export const registerSocketHandlers = ({
     let joinRevision = 0;
     let joinQueue = Promise.resolve();
     let pendingJoins = 0;
-    const allowJoin = createRateLimiter(10, 60_000);
-    const allowFollow = createRateLimiter(12, 60_000);
-    const allowUnfollow = createRateLimiter(12, 60_000);
-    const allowViewport = createRateLimiter(30, 1_000);
-    const actor = () => {
+    // Who a shared budget belongs to. An account is itself; anyone else is
+    // their address, normalised the way the HTTP limiter does it -- a raw
+    // address hands anyone with an IPv6 range a fresh budget per connection.
+    const actorKey = () => {
       const principal = principals.get(socket.id);
       return principal && !principal.allowInactive
-        ? { key: `account:${principal.userId}`, isAccount: true }
-        : {
-            key: `address:${ipKeyGenerator(resolveSocketClientAddress(socket.handshake, trustProxy)) || "unknown"}`,
-            isAccount: false,
-          };
+        ? `account:${principal.userId}`
+        : // Resolved the way Express resolves req.ip. Behind a proxy the raw
+          // handshake address is the proxy for everyone, which would hand every
+          // anonymous visitor one shared budget.
+          `address:${ipKeyGenerator(resolveSocketClientAddress(socket.handshake, trustProxy)) || "unknown"}`;
     };
+    const allowJoin = createRateLimiter(10, 60_000);
+    const leaveRoomFeedback = createRoomEventFeedback(socket, "leave-room", 60_000);
+    const allowFollow = createRateLimiter(12, 60_000);
+    const allowViewport = createRateLimiter(30, 1_000);
+    // Unfollowing has its own budget: it returns before the shared seam so it
+    // can still overtake a slow follow and cancel it, which means it would
+    // otherwise be the one room event with no limit at all.
+    const allowUnfollow = createRateLimiter(12, 60_000);
     followManager.registerHandlers(socket, allowFollow, allowViewport, allowUnfollow);
     registerCoreRoomEvents({
       socket,
@@ -270,24 +292,26 @@ export const registerSocketHandlers = ({
       setActive: (drawingId, presenceId, active) =>
         presences.setActive(drawingId, presenceId, active),
       emitPresence,
-      allowActivity: () => {
-        return allowActivity(actor().key);
-      },
+      allowActivity: () => allowActivity(actorKey()),
+      allowCursorMove: () => allowCursorMove(actorKey()),
       allowElementUpdate: (drawingId, serializedBytes) => {
-        const currentActor = actor();
-        const boardKey = JSON.stringify([currentActor.key, drawingId]);
-        if (currentActor.isAccount) {
+        const key = actorKey();
+        if (!allowElementUpdateEvents(key)) return false;
+        // Rate is not the only unit that matters: 120 small updates a second
+        // are harmless and 120 large ones are not. Budgets are per actor and
+        // board, with an overall cap so that opening more boards cannot buy
+        // unlimited throughput.
+        const boardKey = JSON.stringify([key, drawingId]);
+        if (key.startsWith("account:")) {
           return (
             allowAccountBoardElementBytes(boardKey, serializedBytes) &&
-            allowAccountActorElementBytes(currentActor.key, serializedBytes)
+            allowAccountActorElementBytes(key, serializedBytes)
           );
         }
-        // Link guests and auth-disabled visitors are address-keyed and capped
-        // below signed-in accounts. IPv6 is normalised by ipKeyGenerator.
         if (serializedBytes > SOCKET_LIMITS.anonymousElementUpdateBytes) return false;
         return (
           allowAnonymousBoardElementBytes(boardKey, serializedBytes) &&
-          allowAnonymousActorElementBytes(currentActor.key, serializedBytes)
+          allowAnonymousActorElementBytes(key, serializedBytes)
         );
       },
     });
@@ -295,12 +319,12 @@ export const registerSocketHandlers = ({
       socket,
       presences,
       requireAccess,
-      allow: () => allowSelection(actor().key),
+      allow: () => allowSelection(actorKey()),
     });
     registerCursorChatRoomEvent({
       socket,
       requireAccess,
-      allow: () => allowCursorChat(actor().key),
+      allow: () => allowCursorChat(actorKey()),
     });
     registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
     inviteHereManager.registerHandlers(socket);
@@ -411,19 +435,21 @@ export const registerSocketHandlers = ({
         }
         const presence: PresenceEntry = {
           presenceId: socket.id,
-          accountId: isAccount && principal ? principal.userId : null,
+          accountId: principal?.userId || null,
           name,
           initials: toPresenceInitials(name),
           color,
           kind,
           isActive: true,
           selectedElementIds: {},
+          allSelected: false,
         };
         drawingBySocket.set(socket.id, drawingId);
         if (shareToken) shareTokenBySocket.set(socket.id, shareToken);
         else shareTokenBySocket.delete(socket.id);
         presences.join(drawingId, presence);
         emitPresence(drawingId);
+        socket.emit(SELECTION_SNAPSHOT_EVENT, presences.selectionSnapshot(drawingId));
         socket.emit("workshop-timer-update", workshopTimers.snapshot(drawingId));
         followManager.invalidateAccess(socket.id);
         ack?.({ ok: true, presence: toPublicPresence(presence) });
@@ -440,16 +466,24 @@ export const registerSocketHandlers = ({
       return result;
     });
 
-    socket.on("leave-room", async (data: unknown) => {
+    socket.on("leave-room", async (data: unknown, ack?: RoomEventAck) => {
       joinRevision += 1;
-      if (!allowJoin()) return;
+      if (!allowJoin()) {
+        leaveRoomFeedback.rateLimited();
+        return;
+      }
       const drawingId =
         data && typeof data === "object"
           ? parseDrawingId((data as Record<string, unknown>).drawingId)
           : null;
+      if (!drawingId) {
+        leaveRoomFeedback.invalid(ack);
+        return;
+      }
       if (drawingId && drawingBySocket.get(socket.id) === drawingId) {
         await removeFromDrawing(socket, "left-room");
       }
+      leaveRoomFeedback.succeeded(ack);
     });
 
     socket.on("disconnect", async () => {

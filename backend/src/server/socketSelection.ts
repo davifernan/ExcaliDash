@@ -4,27 +4,38 @@ import { parseDrawingId } from "./socketProtocol";
 import { registerAuthorizedRoomEvent, type RoomEventPayload } from "./socketRoomEvent";
 
 export const SELECTION_LIMITS = {
-  ids: 256,
-  idLength: 200,
+  // One transport budget accepts real imported ids without letting their format
+  // silently decide how much of a selection survives.
+  payloadBytes: 256 * 1024,
   eventsPerSecond: 40,
 } as const;
 
-export type SelectionPayload = RoomEventPayload & { selectedElementIds: string[] };
+export const SELECTION_SNAPSHOT_EVENT = "selection-snapshot";
+
+export type SelectionPayload = RoomEventPayload &
+  ({ selectedElementIds: string[] } | { allSelected: true });
 
 export const parseSelectionPayload = (value: unknown): SelectionPayload | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const data = value as Record<string, unknown>;
   const drawingId = parseDrawingId(data.drawingId);
-  if (!drawingId || !Array.isArray(data.selectedElementIds)) return null;
-  if (
-    data.selectedElementIds.length > SELECTION_LIMITS.ids ||
-    !data.selectedElementIds.every(
-      (id) => typeof id === "string" && id.length > 0 && id.length <= SELECTION_LIMITS.idLength,
-    )
-  ) {
-    return null;
+  if (!drawingId) return null;
+  if (data.allSelected === true) {
+    return data.selectedElementIds === undefined ? { drawingId, allSelected: true } : null;
   }
-  return { drawingId, selectedElementIds: data.selectedElementIds };
+  if (!Array.isArray(data.selectedElementIds)) return null;
+
+  let overBudget = false;
+  let payloadBytes = Buffer.byteLength(JSON.stringify({ drawingId, selectedElementIds: [] }));
+  for (const [index, id] of data.selectedElementIds.entries()) {
+    if (typeof id !== "string" || id.length === 0) return null;
+    if (overBudget) continue;
+    payloadBytes += Buffer.byteLength(JSON.stringify(id)) + (index ? 1 : 0);
+    overBudget = payloadBytes > SELECTION_LIMITS.payloadBytes;
+  }
+  return overBudget
+    ? { drawingId, allSelected: true }
+    : { drawingId, selectedElementIds: data.selectedElementIds as string[] };
 };
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
@@ -38,6 +49,7 @@ export const registerSelectionRoomEvent = ({
   socket: Socket;
   presences: PresenceRegistry;
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
+  /** Budget shared across this person's connections; see socketRoomEvent. */
   allow?: () => boolean;
 }): void => {
   registerAuthorizedRoomEvent({
@@ -49,13 +61,15 @@ export const registerSelectionRoomEvent = ({
     requireAccess,
     allow,
     handle: (payload) => {
-      if (!presences.setSelection(payload.drawingId, socket.id, payload.selectedElementIds)) return;
-      const selection = presences.get(payload.drawingId, socket.id)?.selectedElementIds;
-      if (!selection) return;
+      const allSelected = "allSelected" in payload;
+      const selectedElementIds = allSelected ? [] : payload.selectedElementIds;
+      if (!presences.setSelection(payload.drawingId, socket.id, selectedElementIds, allSelected)) {
+        return;
+      }
       socket.to(roomName(payload.drawingId)).emit("selection-update", {
         drawingId: payload.drawingId,
         presenceId: socket.id,
-        selectedElementIds: selection,
+        ...(allSelected ? { allSelected: true } : { selectedElementIds }),
       });
     },
   });

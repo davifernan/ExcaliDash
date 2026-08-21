@@ -16,7 +16,8 @@ type CoreRoomEventDeps = {
   emitPresence: (drawingId: string) => void;
   /** Shared, keyed budget for activity pings; see registerAuthorizedRoomEvent. */
   allowActivity: () => boolean;
-  /** Shared actor-and-board serialized-byte budgets for scene relays. */
+  /** Budgets shared across this person's connections; see socketRoomEvent. */
+  allowCursorMove: () => boolean;
   allowElementUpdate: (drawingId: string, serializedBytes: number) => boolean;
 };
 
@@ -40,6 +41,7 @@ export const registerCoreRoomEvents = ({
   setActive,
   emitPresence,
   allowActivity,
+  allowCursorMove,
   allowElementUpdate,
 }: CoreRoomEventDeps): void => {
   registerAuthorizedRoomEvent({
@@ -49,6 +51,7 @@ export const registerCoreRoomEvents = ({
     windowMs: 1_000,
     parse: parseCursorPayload,
     requireAccess,
+    allow: allowCursorMove,
     handle: (payload) => {
       const self = getPresence(socket.id);
       if (!self) return;
@@ -69,12 +72,8 @@ export const registerCoreRoomEvents = ({
     limit: 120,
     windowMs: 1_000,
     parse: parseElementUpdatePayload,
-    allowPayload: (payload) => allowElementUpdate(payload.drawingId, payload.serializedBytes),
-    // Only the sender hears this. The change is still saved over HTTP, so
-    // nothing is lost -- but without a word the sender keeps drawing and
-    // nobody else sees any of it, which is the worse failure.
-    onRefused: () => socket.emit("element-update-refused"),
     requireAccess,
+    allowPayload: (payload) => allowElementUpdate(payload.drawingId, payload.serializedBytes),
     requireEdit: true,
     handle: (payload) => {
       socket.to(roomName(payload.drawingId)).emit("element-update", {
@@ -82,6 +81,14 @@ export const registerCoreRoomEvents = ({
         files: payload.files,
         elementOrder: payload.elementOrder,
       });
+      if (payload.elementOrderOmittedBytes) {
+        return {
+          warning: {
+            code: "payload-too-large",
+            message: `Element ordering was omitted because it uses ${payload.elementOrderOmittedBytes} bytes`,
+          },
+        };
+      }
     },
   });
 

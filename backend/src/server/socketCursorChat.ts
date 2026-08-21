@@ -49,9 +49,9 @@ export const registerCursorChatRoomEvent = ({
 }: {
   socket: Socket;
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
+  /** Budget shared across this person's connections; see socketRoomEvent. */
   allow?: () => boolean;
 }): void => {
-  let clearRequired = false;
   registerAuthorizedRoomEvent({
     socket,
     event: CURSOR_CHAT_EVENT,
@@ -60,16 +60,6 @@ export const registerCursorChatRoomEvent = ({
     parse: parseCursorChatPayload,
     requireAccess,
     allow,
-    // Only an admitted sentence earns one exempt clear, and admission is
-    // recorded before the ordered access queue. An immediate close therefore
-    // cannot race its text, while repeated null spam returns to the ordinary
-    // limiter. The clear still passes room authorization below and can only
-    // remove this socket's own ephemeral bubble.
-    rateLimitExempt: (value) => clearRequired && parseCursorChatPayload(value)?.text === null,
-    onRateLimitAdmitted: (value) => {
-      const payload = parseCursorChatPayload(value);
-      if (payload) clearRequired = payload.text !== null;
-    },
     handle: (payload) => {
       // Volatile: a bubble that arrives late is a bubble nobody wants.
       socket.volatile.to(roomName(payload.drawingId)).emit(CURSOR_CHAT_EVENT, {

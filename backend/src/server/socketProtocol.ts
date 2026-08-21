@@ -4,17 +4,17 @@ export const SOCKET_LIMITS = {
   viewportSpan: 100_000_000,
   elementsPerUpdate: 10_000,
   filesPerUpdate: 1_000,
-  elementOrderLength: 20_000,
+  elementOrderBytes: 8 * 1024 * 1024,
   elementBytes: 512 * 1024,
   fileBytes: 10 * 1024 * 1024 + 4 * 1024,
   fileDataUrlLength: 10 * 1024 * 1024,
   elementUpdateBytes: 15 * 1024 * 1024,
   // The largest legitimate event measured is a single maximum embedded image at
-  // 10.49 MB. 11 MiB left barely half a megabyte over that -- close enough that
-  // an ordinary board would start losing live updates as it grew, and a guest
-  // editing through a share link is a real collaborator, not a suspect. 13 MiB
-  // keeps them below an account's ceiling with room to move.
+  // 10.49 MB. A ceiling barely above that is not a margin: an ordinary board
+  // would start losing live updates as it grew, and somebody editing through a
+  // share link is a real collaborator rather than a suspect.
   anonymousElementUpdateBytes: 13 * 1024 * 1024,
+
 } as const;
 
 export type ElementUpdateTrafficLimits = {
@@ -53,11 +53,12 @@ export type CursorPayload = {
 };
 
 export type ElementUpdatePayload = {
+  serializedBytes: number;
   drawingId: string;
   elements: unknown[];
   files?: Record<string, unknown>;
   elementOrder?: string[];
-  serializedBytes: number;
+  elementOrderOmittedBytes?: number;
 };
 
 export const parseDrawingId = (value: unknown): string | null => {
@@ -232,6 +233,8 @@ const hasPlausibleFileFields = (fileId: string, value: unknown): boolean => {
 
 export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload | null => {
   if (!isPlainRecord(value)) return null;
+  // Measured before anything else: an oversized packet costs memory whatever it
+  // turns out to contain.
   const serializedBytes = serializedByteLength(value);
   if (serializedBytes === null || serializedBytes > SOCKET_LIMITS.elementUpdateBytes) return null;
   const drawingId = parseDrawingId(value.drawingId);
@@ -247,30 +250,53 @@ export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload 
   if (value.files !== undefined) {
     if (!isPlainRecord(value.files)) return null;
     if (Object.keys(value.files).length > SOCKET_LIMITS.filesPerUpdate) return null;
-    if (!Object.entries(value.files).every(([id, file]) => hasPlausibleFileFields(id, file))) {
-      return null;
+    for (const [fileId, file] of Object.entries(value.files)) {
+      if (!hasPlausibleFileFields(fileId, file)) return null;
     }
     files = value.files;
   }
 
   let elementOrder: string[] | undefined;
+  let elementOrderOmittedBytes: number | undefined;
   if (value.elementOrder !== undefined) {
     if (
       !Array.isArray(value.elementOrder) ||
-      value.elementOrder.length > SOCKET_LIMITS.elementOrderLength ||
       !value.elementOrder.every(
         (id) => typeof id === "string" && id.length > 0 && id.length <= 200,
       ) ||
       // No element belongs in an ordering twice. Allowing it let a small
-      // payload expand into a huge scene on every receiver.
+      // payload expand into one scene entry per mention on every receiver.
       new Set(value.elementOrder).size !== value.elementOrder.length
     ) {
       return null;
     }
-    elementOrder = value.elementOrder;
+    const byteLength = value.elementOrder.reduce(
+      (total, id, index) => total + Buffer.byteLength(JSON.stringify(id)) + (index > 0 ? 1 : 0),
+      2,
+    );
+    if (byteLength > SOCKET_LIMITS.elementOrderBytes) {
+      elementOrderOmittedBytes = byteLength;
+    } else {
+      elementOrder = value.elementOrder;
+    }
+  } else if (value.elementOrderOmittedBytes !== undefined) {
+    if (
+      !Number.isSafeInteger(value.elementOrderOmittedBytes) ||
+      (value.elementOrderOmittedBytes as number) <= SOCKET_LIMITS.elementOrderBytes
+    ) {
+      return null;
+    }
+    elementOrderOmittedBytes = value.elementOrderOmittedBytes as number;
   }
 
-  return { drawingId, elements: value.elements, files, elementOrder, serializedBytes };
+  return {
+    drawingId,
+    serializedBytes,
+    elements: value.elements,
+    files,
+    elementOrder,
+    elementOrderOmittedBytes,
+  };
 };
 
 export const createRateLimiter = (limit: number, windowMs: number) => {

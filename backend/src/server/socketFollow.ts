@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { canViewDrawing, type DrawingAccess } from "../authz/sharing";
 import { parseDrawingId, parseSceneBounds, type PresenceUser } from "./socketProtocol";
+import { createRoomEventFeedback, type RoomEventAck } from "./socketRoomEvent";
 
 type SocketFollowManagerDeps = {
   io: Server;
@@ -140,7 +141,9 @@ export const createSocketFollowManager = ({
     let pendingFollowCommands = 0;
     let followCancellationRevision = 0;
     const MAX_PENDING_FOLLOW_COMMANDS = 8;
-    socket.on("follow-user", (data: unknown, ack?: (value: unknown) => void) => {
+    const followFeedback = createRoomEventFeedback(socket, "follow-user", 60_000);
+    const viewportFeedback = createRoomEventFeedback(socket, "viewport-bounds", 1_000);
+    socket.on("follow-user", (data: unknown, ack?: RoomEventAck) => {
       const drawingId =
         data && typeof data === "object"
           ? parseDrawingId((data as Record<string, unknown>).drawingId)
@@ -150,7 +153,7 @@ export const createSocketFollowManager = ({
         ack?.({ ok: false, error: { code: reason, message } });
       };
       if (!drawingId) {
-        reject("invalid-request", "Invalid follow command");
+        followFeedback.invalid(ack);
         return;
       }
       const payload = data as Record<string, unknown>;
@@ -170,7 +173,7 @@ export const createSocketFollowManager = ({
         return run();
       }
       if (!allowFollow()) {
-        reject("rate-limited", "Follow command rate limit exceeded");
+        if (followFeedback.rateLimited()) emitFollowStatus(socket, drawingId, "rate-limited");
         return;
       }
       if (pendingFollowCommands >= MAX_PENDING_FOLLOW_COMMANDS) {
@@ -188,13 +191,16 @@ export const createSocketFollowManager = ({
           typeof payload.targetPresenceId === "string" && payload.targetPresenceId.length <= 200
             ? payload.targetPresenceId
             : null;
-        if (payload.action !== "FOLLOW" || !targetId || targetId === socket.id) {
-          emitFollowStatus(
-            socket,
-            drawingId,
-            targetId === socket.id ? "self-follow" : "invalid-request",
-          );
-          ack?.({ ok: false, error: { code: "invalid-request" } });
+        if (payload.action !== "FOLLOW" || !targetId) {
+          followFeedback.invalid(ack);
+          return;
+        }
+        if (targetId === socket.id) {
+          emitFollowStatus(socket, drawingId, "self-follow");
+          ack?.({
+            ok: false,
+            error: { code: "invalid-request", message: "Cannot follow your own presence" },
+          });
           return;
         }
         const targetSocket = connectedSockets.get(targetId);
@@ -204,7 +210,10 @@ export const createSocketFollowManager = ({
           !targetSocket.rooms.has(roomName(drawingId))
         ) {
           emitFollowStatus(socket, drawingId, "target-unavailable");
-          ack?.({ ok: false, error: { code: "target-unavailable" } });
+          ack?.({
+            ok: false,
+            error: { code: "target-unavailable", message: "Follow target is unavailable" },
+          });
           return;
         }
         const targetAccess = await getAccess(targetId, drawingId);
@@ -220,7 +229,10 @@ export const createSocketFollowManager = ({
             await removeFromDrawing(targetSocket, "access-revoked");
           }
           emitFollowStatus(socket, drawingId, "target-unavailable");
-          ack?.({ ok: false, error: { code: "target-unavailable" } });
+          ack?.({
+            ok: false,
+            error: { code: "target-unavailable", message: "Follow target is unavailable" },
+          });
           return;
         }
         if (
@@ -229,12 +241,18 @@ export const createSocketFollowManager = ({
           !targetSocket.rooms.has(roomName(drawingId))
         ) {
           emitFollowStatus(socket, drawingId, "target-unavailable");
-          ack?.({ ok: false, error: { code: "target-unavailable" } });
+          ack?.({
+            ok: false,
+            error: { code: "target-unavailable", message: "Follow target is unavailable" },
+          });
           return;
         }
         if (wouldCreateCycle(socket.id, targetId)) {
           emitFollowStatus(socket, drawingId, "cycle-detected");
-          ack?.({ ok: false, error: { code: "cycle-detected" } });
+          ack?.({
+            ok: false,
+            error: { code: "cycle-detected", message: "Follow cycle detected" },
+          });
           return;
         }
         clearFollower(socket.id, "target-changed", false);
@@ -258,12 +276,23 @@ export const createSocketFollowManager = ({
       return result;
     });
 
-    socket.on("viewport-bounds", async (data: unknown) => {
-      if (!allowViewport() || !data || typeof data !== "object") return;
+    socket.on("viewport-bounds", async (data: unknown, ack?: RoomEventAck) => {
+      if (!allowViewport()) {
+        viewportFeedback.rateLimited();
+        return;
+      }
+      if (!data || typeof data !== "object") {
+        viewportFeedback.invalid(ack);
+        return;
+      }
       const payload = data as Record<string, unknown>;
       const drawingId = parseDrawingId(payload.drawingId);
       const sceneBounds = parseSceneBounds(payload.sceneBounds);
-      if (!drawingId || !sceneBounds || !(await requireAccess(socket, drawingId))) {
+      if (!drawingId || !sceneBounds) {
+        viewportFeedback.invalid(ack);
+        return;
+      }
+      if (!(await requireAccess(socket, drawingId))) {
         return;
       }
       const sequence = (viewportSequenceBySocket.get(socket.id) || 0) + 1;
@@ -300,6 +329,7 @@ export const createSocketFollowManager = ({
           sequence,
         });
       }
+      viewportFeedback.succeeded(ack);
     });
   };
 

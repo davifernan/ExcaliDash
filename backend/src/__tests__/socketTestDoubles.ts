@@ -85,6 +85,15 @@ export class FakeSocket {
     this.rooms.delete(scope);
   }
 
+  disconnected = false;
+
+  // The seam closes a connection after enough hard failures. Without this the
+  // double throws instead, so a test could never tell a refusal that keeps the
+  // connection from one that drops it.
+  disconnect(_close?: boolean) {
+    this.disconnected = true;
+  }
+
   async trigger(event: string, ...args: any[]) {
     return await this.handlers.get(event)?.(...args);
   }

@@ -2,6 +2,91 @@ import type { Socket } from "socket.io";
 import { createRateLimiter } from "./socketProtocol";
 
 export type RoomEventPayload = { drawingId: string };
+export type RoomEventError = { code: string; message: string };
+export type RoomEventAck = (
+  value: { ok: true; warning?: RoomEventError } | { ok: false; error: RoomEventError },
+) => void;
+export type RoomEventResult = { warning: RoomEventError } | void;
+
+const ROOM_EVENT_FEEDBACK_EVENT = "room-event-error";
+const HARD_FAILURE_LIMIT = 10;
+const HARD_FAILURE_WINDOW_MS = 60_000;
+const hardFailures = new WeakMap<Socket, { windowStartedAt: number; count: number }>();
+
+const reportHardFailure = (
+  socket: Socket,
+  event: string,
+  error: RoomEventError,
+  ack?: RoomEventAck,
+) => {
+  if (ack) ack({ ok: false, error });
+  else socket.emit(ROOM_EVENT_FEEDBACK_EVENT, { event, error });
+
+  const now = Date.now();
+  let failures = hardFailures.get(socket);
+  if (!failures || now - failures.windowStartedAt >= HARD_FAILURE_WINDOW_MS) {
+    failures = { windowStartedAt: now, count: 0 };
+    hardFailures.set(socket, failures);
+  }
+  failures.count += 1;
+  // A normal client cannot produce a stream of invalid packets. Closing the
+  // connection bounds error traffic while every packet the server accepts is
+  // still answered exactly once.
+  if (failures.count >= HARD_FAILURE_LIMIT) socket.disconnect(true);
+};
+
+export const createRoomEventFeedback = (socket: Socket, event: string, windowMs: number) => {
+  let nextRateLimitNoticeAt = 0;
+  return {
+    invalid(ack?: RoomEventAck) {
+      reportHardFailure(
+        socket,
+        event,
+        { code: "invalid-request", message: `Invalid ${event} payload` },
+        ack,
+      );
+    },
+    rateLimited() {
+      const now = Date.now();
+      if (now < nextRateLimitNoticeAt) return false;
+      nextRateLimitNoticeAt = now + windowMs;
+      socket.emit(ROOM_EVENT_FEEDBACK_EVENT, {
+        event,
+        error: { code: "rate-limited", message: `${event} rate limit exceeded` },
+      });
+      return true;
+    },
+    /**
+     * A budget refusal, not a malformed packet. It answers the ack so the
+     * sender stops waiting on its timeout and knows the change never went out,
+     * and it never counts toward the hard-failure limit: a board that has grown
+     * large is not a client behaving badly, and disconnecting it would turn a
+     * throughput ceiling into a lockout.
+     */
+    refused(ack?: RoomEventAck) {
+      const error: RoomEventError = {
+        code: "rate-limited",
+        message: `${event} rate limit exceeded`,
+      };
+      if (ack) {
+        ack({ ok: false, error });
+        return;
+      }
+      const now = Date.now();
+      if (now < nextRateLimitNoticeAt) return;
+      nextRateLimitNoticeAt = now + windowMs;
+      socket.emit(ROOM_EVENT_FEEDBACK_EVENT, { event, error });
+    },
+    succeeded(ack?: RoomEventAck, warning?: RoomEventError) {
+      if (warning) {
+        if (ack) ack({ ok: true, warning });
+        else socket.emit(ROOM_EVENT_FEEDBACK_EVENT, { event, error: warning });
+        return;
+      }
+      ack?.({ ok: true });
+    },
+  };
+};
 
 type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
   socket: Socket;
@@ -12,31 +97,36 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
   requireEdit?: boolean;
   /**
-   * A budget that outlives this socket.
+   * A budget that outlives this socket, checked in addition to the
+   * per-connection one rather than instead of it.
    *
-   * The default limiter is per-connection, which is fine for anything a client
-   * only gains by doing quickly. It is not fine where reconnecting would reset
-   * the budget: there the caller passes a shared limiter keyed by account or
-   * address, so dropping and redialling buys nothing.
+   * The per-connection limiter is fine for anything a client only gains by
+   * doing quickly. It is not fine where opening a second tab hands out a second
+   * budget: there the caller passes a limiter keyed by account or address, so
+   * reconnecting -- or connecting fifty times -- buys nothing. Both apply,
+   * because a shared budget large enough for several tabs would otherwise let
+   * a single tab spend all of it.
    */
   allow?: () => boolean;
-  /** Valid no-op/removal payloads that must remain deliverable over budget. */
-  rateLimitExempt?: (value: unknown) => boolean;
-  /** Observes accepted or exempt events synchronously, before they enter the queue. */
-  onRateLimitAdmitted?: (value: unknown) => void;
-  /** Payload-aware budget, evaluated after validation but before access I/O. */
+  /**
+   * A budget that can only be spent once the payload is known -- bytes rather
+   * than events. Rate alone is the wrong unit for anything that carries a
+   * scene: 120 small updates a second are harmless and 120 large ones are not.
+   *
+   * Checked after parsing and before the access round trip, and answered as a
+   * refusal rather than silence, so the sender knows to try again.
+   */
   allowPayload?: (payload: Payload) => boolean;
   /**
-   * Told when a payload is refused on its own merits -- malformed, too large,
-   * over budget. Deliberately not called for a failed access check: that answer
-   * belongs to the authorisation path, and saying more would describe the board
-   * to somebody who is not allowed to see it.
-   *
-   * Without this a refusal is silent, and the sender goes on drawing while
-   * nobody else sees any of it.
+   * Lets a payload past the per-event limiter. Only for messages that can
+   * merely remove something the sender already put there -- a clear cannot add
+   * anything, and losing it leaves the sender's own leftovers on every other
+   * screen.
    */
-  onRefused?: () => void;
-  handle: (payload: Payload) => void | Promise<void>;
+  rateLimitExempt?: (value: unknown) => boolean;
+  /** Sees each admitted event synchronously, before it enters the queue. */
+  onRateLimitAdmitted?: (value: unknown) => void;
+  handle: (payload: Payload) => RoomEventResult | Promise<RoomEventResult>;
 };
 
 /**
@@ -62,27 +152,36 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   requireAccess,
   requireEdit = false,
   allow: sharedAllow,
+  allowPayload,
   rateLimitExempt,
   onRateLimitAdmitted,
-  allowPayload,
-  onRefused,
   handle,
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
-  const allow = sharedAllow ?? createRateLimiter(limit, windowMs);
+  const allowThisConnection = createRateLimiter(limit, windowMs);
+  const allow = () => allowThisConnection() && (sharedAllow?.() ?? true);
+  const feedback = createRoomEventFeedback(socket, event, windowMs);
   let tail: Promise<void> = Promise.resolve();
-  socket.on(event, (value: unknown) => {
+  socket.on(event, (value: unknown, ack?: RoomEventAck) => {
     // Rate limiting stays synchronous and outside the queue: refusing traffic
     // is the one thing that must not wait behind the traffic it is refusing.
-    if (!rateLimitExempt?.(value) && !allow()) return;
+    if (!rateLimitExempt?.(value) && !allow()) {
+      feedback.rateLimited();
+      return;
+    }
     onRateLimitAdmitted?.(value);
     tail = tail.then(async () => {
       const payload = parse(value);
-      if (!payload || (allowPayload && !allowPayload(payload))) {
-        onRefused?.();
+      if (!payload) {
+        feedback.invalid(ack);
+        return;
+      }
+      if (allowPayload && !allowPayload(payload)) {
+        feedback.refused(ack);
         return;
       }
       if (!(await requireAccess(socket, payload.drawingId, requireEdit))) return;
-      await handle(payload);
+      const result = await handle(payload);
+      feedback.succeeded(ack, result ? result.warning : undefined);
     });
     // A thrown handler must not poison the tail for everything after it.
     tail = tail.catch(() => {});

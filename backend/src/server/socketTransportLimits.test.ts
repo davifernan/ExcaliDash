@@ -297,14 +297,26 @@ describe("element-update transport limits", () => {
     ]);
     io.emissions.length = 0;
 
-    await sender.trigger("element-update", payload);
+    const answers: unknown[] = [];
+    // Twelve, past the ten hard failures that close a connection: a client on a
+    // board too large to relay would otherwise be thrown off for it.
+    for (let index = 0; index < 12; index += 1) {
+      await sender.trigger("element-update", payload, (value: unknown) => answers.push(value));
+    }
+    expect(answers).toHaveLength(12);
+    expect(sender.disconnected).toBe(false);
+    answers.length = 1;
 
-    const refusals = io.emissions.filter((item) => item.event === "element-update-refused");
-    expect(refusals).toHaveLength(1);
-    // Straight to that one socket, not into the room.
-    expect(refusals[0].scope).toBe("sender");
+    // Answered on the sender's own callback rather than left to time out, so a
+    // client that has already drawn the change learns straight away that nobody
+    // else received it.
+    expect(answers).toEqual([
+      { ok: false, error: { code: "rate-limited", message: "element-update rate limit exceeded" } },
+    ]);
     // Refused means refused: nobody else saw the change either.
     expect(io.emissions.filter((item) => item.event === "element-update")).toHaveLength(0);
+    // And a refusal is a budget, not misbehaviour -- the connection stays up.
+    expect(sender.disconnected).not.toBe(true);
   });
   it("refuses an ordering that names the same element more than once", () => {
     // Defence in depth for the receiver, which now also places each element

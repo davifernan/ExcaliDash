@@ -3,6 +3,7 @@ import type { MutableRefObject, RefObject } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 import type { UserIdentity } from "../../utils/identity";
+import { buildRemoteSceneUpdate, heldElementIds } from "./shared";
 import { bindFollowMode, getFollowInterruptionMessage, type Follower } from "./followMode";
 import { bindCanvasWheelZoom } from "./wheelZoom";
 import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
@@ -10,7 +11,6 @@ import { getShareLinkToken } from "../../api";
 import { bindSocketCollaborators } from "./socketCollaborators";
 import type { Peer } from "./socketCollaborators";
 import { bindRemoteSelection } from "./remoteSelection";
-import { bindElementUpdateRefusals } from "./elementUpdateRefusal";
 import { startCursorChat, type CursorChatController } from "./cursorChat";
 import {
   bindSocketWorkshopTimer,
@@ -19,7 +19,6 @@ import {
   type WorkshopTimerAction,
 } from "./workshopTimer";
 import { bindInviteHere, type InviteHereStatus, type ViewportInvitation } from "./inviteHere";
-import { bindRemoteSceneUpdates } from "./remoteSceneUpdates";
 export type { Peer } from "./socketCollaborators";
 
 type UseEditorCollaborationInput = {
@@ -28,7 +27,6 @@ type UseEditorCollaborationInput = {
   isReady: boolean;
   excalidrawAPI: MutableRefObject<any>;
   editorContainerRef: RefObject<HTMLDivElement>;
-  elementUpdateRefusalHandlerRef: MutableRefObject<(() => void) | null>;
   lastSyncedFilesRef: MutableRefObject<Record<string, any>>;
   lastSyncedElementOrderSigRef: MutableRefObject<string>;
   latestElementsRef: MutableRefObject<readonly any[]>;
@@ -51,7 +49,6 @@ export const useEditorCollaboration = ({
   isReady,
   excalidrawAPI,
   editorContainerRef,
-  elementUpdateRefusalHandlerRef,
   lastSyncedFilesRef,
   lastSyncedElementOrderSigRef,
   latestElementsRef,
@@ -79,6 +76,11 @@ export const useEditorCollaboration = ({
   const lastCursorEmit = useRef<number>(0);
   const selectionPublisherRef = useRef<((appState: any) => void) | null>(null);
   const isSyncing = useRef(false);
+  const pendingRemoteElementsRef = useRef<Map<string, any>>(new Map());
+  const pendingRemoteFilesRef = useRef<Record<string, any>>({});
+  const pendingRemoteElementOrderRef = useRef<string[] | null>(null);
+  const remoteFlushScheduledRef = useRef(false);
+  const remoteFlushRafIdRef = useRef<number | null>(null);
   const shareToken = getShareLinkToken();
   useEffect(() => {
     if (!drawingId || !isReady) return;
@@ -121,11 +123,6 @@ export const useEditorCollaboration = ({
       },
       decorateName: chat.decorateName,
     });
-    const refusals = bindElementUpdateRefusals({
-      socket,
-      notify: toast.warning,
-      onRefused: () => elementUpdateRefusalHandlerRef.current?.(),
-    });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
     const workshopTimer = bindSocketWorkshopTimer({
       socket,
@@ -150,6 +147,13 @@ export const useEditorCollaboration = ({
       }
       if (message) toast.error(message);
     });
+    socket.on("room-event-error", (payload: any) => {
+      const message = typeof payload?.error?.message === "string" ? payload.error.message : null;
+      if (!message) return;
+      console.warn("[Editor] Room event rejected:", payload);
+      if (payload?.error?.code === "rate-limited") toast.info(message);
+      else toast.error(message);
+    });
     const unbindFollowMode = bindFollowMode({
       socket,
       drawingId,
@@ -158,19 +162,24 @@ export const useEditorCollaboration = ({
       onFollowersChange: setFollowers,
       onFollowInterrupted: (reason) => toast.info(getFollowInterruptionMessage(reason)),
     });
-    let remoteSceneUpdates: ReturnType<typeof bindRemoteSceneUpdates> | null = null;
     const resetConnectionState = () => {
       unbindFollowMode.resetConnectionState();
       // The clearing message is volatile: dropped mid-sentence it never
       // arrives, and the same presence returns wearing what it used to say.
       cursorChat.pruneTo([]);
       collaborators.reset();
-      refusals.reset();
       remoteSelection.reset();
       workshopTimer.reset();
       inviteHereController.reset();
       setFollowers([]);
-      remoteSceneUpdates?.reset();
+      pendingRemoteElementsRef.current.clear();
+      pendingRemoteFilesRef.current = {};
+      pendingRemoteElementOrderRef.current = null;
+      if (remoteFlushRafIdRef.current !== null) {
+        cancelAnimationFrame(remoteFlushRafIdRef.current);
+      }
+      remoteFlushRafIdRef.current = null;
+      remoteFlushScheduledRef.current = false;
     };
     const unbindSocketRoomLifecycle = bindSocketRoomLifecycle({
       socket,
@@ -193,17 +202,102 @@ export const useEditorCollaboration = ({
       getFollowTargetPresenceId: () =>
         excalidrawAPI.current?.getAppState().userToFollow?.socketId || null,
     });
-    remoteSceneUpdates = bindRemoteSceneUpdates({
-      socket,
-      excalidrawAPI,
-      isSyncingRef: isSyncing,
-      lastSyncedFilesRef,
-      lastSyncedElementOrderSigRef,
-      latestElementsRef,
-      latestFilesRef,
-      computeElementOrderSig,
-      recordElementVersion,
-    });
+    const hasNonEmptyArray = (value: unknown): value is any[] =>
+      Array.isArray(value) && value.length > 0;
+    const flushRemoteUpdates = () => {
+      remoteFlushScheduledRef.current = false;
+      remoteFlushRafIdRef.current = null;
+      if (!excalidrawAPI.current) return;
+      const hasPendingElements = pendingRemoteElementsRef.current.size > 0;
+      const hasPendingFiles = Object.keys(pendingRemoteFilesRef.current || {}).length > 0;
+      const pendingOrderRaw = pendingRemoteElementOrderRef.current;
+      const hasPendingOrder = hasNonEmptyArray(pendingOrderRaw);
+      if (!hasPendingElements && !hasPendingFiles && !hasPendingOrder) return;
+      isSyncing.current = true;
+      try {
+        const pendingElements = Array.from(pendingRemoteElementsRef.current.values());
+        pendingRemoteElementsRef.current.clear();
+        const incomingFiles = pendingRemoteFilesRef.current || {};
+        pendingRemoteFilesRef.current = {};
+        const elementOrder = hasPendingOrder ? pendingOrderRaw : null;
+        pendingRemoteElementOrderRef.current = null;
+        const { sceneUpdate, mergedElements, nextFiles, shouldUpdateFiles } =
+          buildRemoteSceneUpdate({
+            localElements: excalidrawAPI.current.getSceneElementsIncludingDeleted(),
+            pendingElements,
+            elementOrder,
+            lastSyncedFiles: lastSyncedFilesRef.current,
+            incomingFiles,
+            protectedIds: heldElementIds(excalidrawAPI.current.getAppState?.()),
+          });
+        if (shouldUpdateFiles && typeof excalidrawAPI.current.addFiles === "function") {
+          excalidrawAPI.current.addFiles(Object.values(incomingFiles));
+        }
+        if (mergedElements) {
+          if (elementOrder) {
+            lastSyncedElementOrderSigRef.current = computeElementOrderSig(mergedElements);
+          }
+          pendingElements.forEach((el: any) => {
+            recordElementVersion(el);
+          });
+          if (sceneUpdate) excalidrawAPI.current.updateScene(sceneUpdate);
+          latestElementsRef.current = mergedElements;
+        } else if (sceneUpdate) {
+          excalidrawAPI.current.updateScene(sceneUpdate);
+        }
+        if (shouldUpdateFiles) {
+          latestFilesRef.current = nextFiles;
+          lastSyncedFilesRef.current = nextFiles;
+        }
+      } finally {
+        isSyncing.current = false;
+      }
+      const moreElements = pendingRemoteElementsRef.current.size > 0;
+      const moreFiles = Object.keys(pendingRemoteFilesRef.current || {}).length > 0;
+      const moreOrder = hasNonEmptyArray(pendingRemoteElementOrderRef.current);
+      if (moreElements || moreFiles || moreOrder) {
+        if (!remoteFlushScheduledRef.current) {
+          remoteFlushScheduledRef.current = true;
+          remoteFlushRafIdRef.current = requestAnimationFrame(flushRemoteUpdates);
+        }
+      }
+    };
+    const scheduleRemoteFlush = () => {
+      if (remoteFlushScheduledRef.current) return;
+      remoteFlushScheduledRef.current = true;
+      remoteFlushRafIdRef.current = requestAnimationFrame(flushRemoteUpdates);
+    };
+    socket.on(
+      "element-update",
+      ({
+        elements,
+        files,
+        elementOrder,
+      }: {
+        elements: any[];
+        files?: Record<string, any>;
+        elementOrder?: string[];
+      }) => {
+        if (Array.isArray(elements)) {
+          for (const el of elements) {
+            const id = el?.id;
+            if (typeof id === "string" && id.length > 0) {
+              pendingRemoteElementsRef.current.set(id, el);
+            }
+          }
+        }
+        if (files && typeof files === "object") {
+          pendingRemoteFilesRef.current = {
+            ...pendingRemoteFilesRef.current,
+            ...files,
+          };
+        }
+        if (Array.isArray(elementOrder) && elementOrder.length > 0) {
+          pendingRemoteElementOrderRef.current = elementOrder;
+        }
+        scheduleRemoteFlush();
+      },
+    );
     socket.on("drawing-server-update", (payload: { drawingId?: string }) => {
       if (!payload?.drawingId || payload.drawingId !== drawingId) return;
       toast.info("Drawing storage changed on the server. Reloading the editor.");
@@ -229,7 +323,8 @@ export const useEditorCollaboration = ({
       document.removeEventListener("mouseenter", onMouseEnter);
       document.removeEventListener("mouseleave", onMouseLeave);
       socket.off("error");
-      remoteSceneUpdates?.unbind();
+      socket.off("room-event-error");
+      socket.off("element-update");
       socket.off("drawing-server-update");
       unbindSocketRoomLifecycle();
       unbindFollowMode();
@@ -237,7 +332,6 @@ export const useEditorCollaboration = ({
       cursorChatRef.current = null;
       setCursorChatDraft(null);
       collaborators.dispose();
-      refusals.dispose();
       remoteSelection.dispose();
       workshopTimer.dispose();
       inviteHereController.dispose();
@@ -246,7 +340,14 @@ export const useEditorCollaboration = ({
         selectionPublisherRef.current = null;
       }
       socket.disconnect();
-      remoteSceneUpdates?.reset();
+      if (remoteFlushRafIdRef.current !== null) {
+        cancelAnimationFrame(remoteFlushRafIdRef.current);
+        remoteFlushRafIdRef.current = null;
+      }
+      remoteFlushScheduledRef.current = false;
+      pendingRemoteElementsRef.current.clear();
+      pendingRemoteFilesRef.current = {};
+      pendingRemoteElementOrderRef.current = null;
     };
   }, [
     drawingId,
@@ -254,7 +355,6 @@ export const useEditorCollaboration = ({
     isReady,
     excalidrawAPI,
     editorContainerRef,
-    elementUpdateRefusalHandlerRef,
     lastSyncedFilesRef,
     lastSyncedElementOrderSigRef,
     latestElementsRef,

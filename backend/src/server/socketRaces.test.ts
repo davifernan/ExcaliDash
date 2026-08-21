@@ -267,6 +267,50 @@ describe("socket collaboration races", () => {
     expect(lastEmission("followed-by-update", "socket-target")).toBeUndefined();
   });
 
+  it("acknowledges an invalid viewport packet as a hard failure", async () => {
+    const socket = await io.connect("viewport-sender");
+    await join(socket);
+    let ack: any;
+
+    await socket.trigger(
+      "viewport-bounds",
+      { drawingId: "drawing-1", sceneBounds: [0, 0, Number.POSITIVE_INFINITY, 100] },
+      (value: any) => {
+        ack = value;
+      },
+    );
+
+    expect(ack).toEqual({
+      ok: false,
+      error: {
+        code: "invalid-request",
+        message: "Invalid viewport-bounds payload",
+      },
+    });
+  });
+
+  it("coalesces viewport rate-limit feedback", async () => {
+    const socket = await io.connect("viewport-sender");
+    await join(socket);
+    io.emissions.length = 0;
+
+    for (let index = 0; index < 35; index += 1) {
+      await socket.trigger("viewport-bounds", {
+        drawingId: "drawing-1",
+        sceneBounds: [index, index, index + 100, index + 100],
+      });
+    }
+
+    expect(
+      io.emissions.filter(
+        (item) =>
+          item.scope === "viewport-sender" &&
+          item.event === "room-event-error" &&
+          item.payload.event === "viewport-bounds",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("bounds a flooded follow queue while its first access lookup is blocked", async () => {
     const target = await io.connect("flood-target");
     const follower = await io.connect("flood-follower");
@@ -299,7 +343,7 @@ describe("socket collaboration races", () => {
       io.emissions.filter(
         (item) => item.event === "follow-status" && item.payload.reason === "rate-limited",
       ),
-    ).toHaveLength(18);
+    ).toHaveLength(1);
 
     drawingLookup = normalLookup;
     release?.();

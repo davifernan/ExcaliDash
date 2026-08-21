@@ -1,4 +1,6 @@
 import jwt from "jsonwebtoken";
+import { SELECTION_LIMITS } from "./socketSelection";
+import { CURSOR_CHAT_LIMITS } from "./socketCursorChat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
@@ -119,6 +121,83 @@ describe("socket collaboration security and follow state", () => {
     });
   });
 
+  it("relays element content and ordering beyond the former 20,000-id ceiling", async () => {
+    const sender = await io.connect("socket-sender");
+    const receiver = await io.connect("socket-receiver");
+    await join(sender);
+    await join(receiver);
+    io.emissions.length = 0;
+    const elementOrder = Array.from({ length: 20_001 }, (_, index) => `element-${index}`);
+    const ack = vi.fn();
+
+    await sender.trigger(
+      "element-update",
+      {
+        drawingId: "drawing-1",
+        elements: [{ id: "changed-element" }],
+        elementOrder,
+      },
+      ack,
+    );
+
+    const update = lastEmission("element-update", room("drawing-1"));
+    expect(update?.payload.elements).toEqual([{ id: "changed-element" }]);
+    expect(update?.payload.elementOrder).toBe(elementOrder);
+    expect(ack).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("relays element content and warns the sender when ordering exceeds its byte budget", async () => {
+    const sender = await io.connect("socket-sender");
+    const receiver = await io.connect("socket-receiver");
+    await join(sender);
+    await join(receiver);
+    io.emissions.length = 0;
+    const elementOrder = Array.from(
+      { length: 42_000 },
+      (_, index) => `${index.toString().padStart(6, "0")}-${"x".repeat(193)}`,
+    );
+    const ack = vi.fn();
+
+    await sender.trigger(
+      "element-update",
+      {
+        drawingId: "drawing-1",
+        elements: [{ id: "important-change" }],
+        elementOrder,
+      },
+      ack,
+    );
+
+    expect(lastEmission("element-update", room("drawing-1"))?.payload).toEqual({
+      elements: [{ id: "important-change" }],
+      files: undefined,
+      elementOrder: undefined,
+    });
+    expect(ack).toHaveBeenCalledWith({
+      ok: true,
+      warning: {
+        code: "payload-too-large",
+        message: expect.stringMatching(/^Element ordering was omitted because it uses \d+ bytes$/),
+      },
+    });
+  });
+
+  it("reports an invalid leave-room payload to its sender", async () => {
+    const socket = await io.connect("socket-a");
+    await join(socket);
+    const ack = vi.fn();
+
+    await socket.trigger("leave-room", { drawingId: 42 }, ack);
+
+    expect(ack).toHaveBeenCalledWith({
+      ok: false,
+      error: {
+        code: "invalid-request",
+        message: "Invalid leave-room payload",
+      },
+    });
+  });
+
   it("routes finite viewport bounds only to a registered follower", async () => {
     const target = await io.connect("socket-target");
     const follower = await io.connect("socket-follower");
@@ -160,7 +239,15 @@ describe("socket collaboration security and follow state", () => {
       drawingId: "drawing-1",
       sceneBounds: [0, 0, Number.POSITIVE_INFINITY, 100],
     });
-    expect(io.emissions).toHaveLength(1);
+    expect(io.emissions).toHaveLength(2);
+    expect(io.emissions.at(-1)).toMatchObject({
+      scope: "socket-target",
+      event: "room-event-error",
+      payload: {
+        event: "viewport-bounds",
+        error: { code: "invalid-request" },
+      },
+    });
   });
 
   it("rejects self-follow and cleans both edge directions on disconnect", async () => {
@@ -386,9 +473,11 @@ describe("who the server decides someone is", () => {
       { userId: "account-1", email: "one@example.test", type: "access" },
       "test-secret",
     );
-    const first = await io.connect("socket-first", { token });
-    const second = await io.connect("socket-second", { token });
-    for (const socket of [first, second]) {
+    const sockets = await Promise.all(
+      Array.from({ length: 5 }, (_, index) => io.connect(`socket-${index}`, { token })),
+    );
+    const [first, second] = sockets;
+    for (const socket of sockets) {
       await socket.trigger("join-room", { drawingId: "drawing-1", user: {} });
     }
     io.emissions.length = 0;
@@ -407,23 +496,32 @@ describe("who the server decides someone is", () => {
     expect(io.emissions.filter((item) => item.event === "presence-update")).toHaveLength(20);
 
     io.emissions.length = 0;
-    for (let index = 0; index < 21; index += 1) {
-      await first.trigger("selection-update", {
-        drawingId: "drawing-1",
-        selectedElementIds: [`first-${index}`],
-      });
-      await second.trigger("selection-update", {
-        drawingId: "drawing-1",
-        selectedElementIds: [`second-${index}`],
-      });
+    // One tab is allowed a burst, so two of them never reach the account's
+    // ceiling and a two-socket test would pass with no shared budget at all.
+    // Five do reach it: the point is that the ceiling stops being a multiple of
+    // the number of connections somebody opens.
+    const selectionShared = SELECTION_LIMITS.eventsPerSecond * 4;
+    for (let index = 0; index <= SELECTION_LIMITS.eventsPerSecond; index += 1) {
+      for (const socket of sockets) {
+        await socket.trigger("selection-update", {
+          drawingId: "drawing-1",
+          selectedElementIds: [`element-${index}`],
+        });
+      }
     }
-    expect(io.emissions.filter((item) => item.event === "selection-update")).toHaveLength(40);
+    const selections = io.emissions.filter((item) => item.event === "selection-update");
+    expect(selections).toHaveLength(selectionShared);
+    expect(selections.length).toBeLessThan(sockets.length * SELECTION_LIMITS.eventsPerSecond);
 
     io.emissions.length = 0;
-    for (let index = 0; index < 6; index += 1) {
-      await first.trigger("cursor-chat", { drawingId: "drawing-1", text: `first ${index}` });
-      await second.trigger("cursor-chat", { drawingId: "drawing-1", text: `second ${index}` });
+    const chatShared = CURSOR_CHAT_LIMITS.eventsPerSecond * 4;
+    for (let index = 0; index <= CURSOR_CHAT_LIMITS.eventsPerSecond; index += 1) {
+      for (const socket of sockets) {
+        await socket.trigger("cursor-chat", { drawingId: "drawing-1", text: `hallo ${index}` });
+      }
     }
-    expect(io.emissions.filter((item) => item.event === "cursor-chat")).toHaveLength(10);
+    const chats = io.emissions.filter((item) => item.event === "cursor-chat");
+    expect(chats).toHaveLength(chatShared);
+    expect(chats.length).toBeLessThan(sockets.length * CURSOR_CHAT_LIMITS.eventsPerSecond);
   });
 });

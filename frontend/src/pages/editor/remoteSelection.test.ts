@@ -35,13 +35,64 @@ describe("remote selection binding", () => {
     socket.trigger("selection-update", {
       drawingId: "drawing-1",
       presenceId: "peer",
-      selectedElementIds: { a: true, b: true },
+      selectedElementIds: ["a", "b"],
     });
 
     const collaborators = api.updateScene.mock.calls[0][0].collaborators;
     expect(collaborators.get("peer")).toEqual({
       ...collaborator,
       selectedElementIds: { a: true, b: true },
+    });
+  });
+
+  it("applies a private join snapshot in wire order", () => {
+    const socket = new FakeSocket();
+    let collaborators = new Map<string, any>();
+    const api = {
+      getAppState: () => ({ collaborators }),
+      updateScene: vi.fn((scene: any) => {
+        collaborators = scene.collaborators;
+      }),
+    };
+    bindRemoteSelection({ socket: socket as any, drawingId: "drawing-1", api });
+
+    socket.trigger("selection-snapshot", {
+      drawingId: "drawing-1",
+      selections: [{ presenceId: "peer", selectedElementIds: ["before"] }],
+    });
+    socket.trigger("selection-update", {
+      drawingId: "drawing-1",
+      presenceId: "peer",
+      selectedElementIds: ["after"],
+    });
+
+    expect(collaborators.get("peer")?.selectedElementIds).toEqual({ after: true });
+  });
+
+  it("renders an all-selected marker as a large-selection status without guessed ids", () => {
+    const socket = new FakeSocket();
+    const collaborator = {
+      id: "peer",
+      username: "Nilo",
+      selectedElementIds: { stale: true },
+    };
+    const api = {
+      getAppState: () => ({ collaborators: new Map([["peer", collaborator]]) }),
+      updateScene: vi.fn(),
+    };
+    bindRemoteSelection({ socket: socket as any, drawingId: "drawing-1", api });
+
+    socket.trigger("selection-update", {
+      drawingId: "drawing-1",
+      presenceId: "peer",
+      allSelected: true,
+    });
+
+    const rendered = api.updateScene.mock.calls[0][0].collaborators.get("peer");
+    expect(rendered).toMatchObject({
+      username: "Nilo · large selection",
+      selectionAllSelected: true,
+      selectedElementIds: {},
     });
   });
 
@@ -68,7 +119,7 @@ describe("remote selection binding", () => {
     });
   });
 
-  it("caps outgoing ids and omits overlong ids", () => {
+  it("budgets outgoing selections by encoded bytes instead of id count or character length", () => {
     const socket = new FakeSocket();
     const binding = bindRemoteSelection({
       socket: socket as any,
@@ -76,18 +127,27 @@ describe("remote selection binding", () => {
       api: { getAppState: () => ({}), updateScene: vi.fn() },
       throttleMs: 0,
     });
-    const selectedElementIds = Object.fromEntries(
-      Array.from({ length: REMOTE_SELECTION_LIMITS.ids + 1 }, (_, index) => [`id-${index}`, true]),
-    );
-    selectedElementIds["x".repeat(REMOTE_SELECTION_LIMITS.idLength + 1)] = true;
+    const longId = "x".repeat(300);
+    const selectedElementIds = Object.fromEntries([
+      ...Array.from({ length: 300 }, (_, index) => [`id-${index}`, true] as const),
+      [longId, true] as const,
+    ]);
 
     binding.publish({ selectedElementIds });
 
-    expect(socket.emit.mock.calls[0][1].selectedElementIds).toHaveLength(
-      REMOTE_SELECTION_LIMITS.ids,
+    expect(socket.emit.mock.calls[0][1].selectedElementIds).toHaveLength(301);
+    expect(socket.emit.mock.calls[0][1].selectedElementIds).toContain(longId);
+    expect(
+      new TextEncoder().encode(JSON.stringify(socket.emit.mock.calls[0][1])).byteLength,
+    ).toBeLessThanOrEqual(REMOTE_SELECTION_LIMITS.payloadBytes);
+
+    const oversizedSelection = Object.fromEntries(
+      Array.from({ length: 30_000 }, (_, index) => [`element-${index}`, true]),
     );
-    expect(socket.emit.mock.calls[0][1].selectedElementIds).not.toContain(
-      "x".repeat(REMOTE_SELECTION_LIMITS.idLength + 1),
-    );
+    binding.publish({ selectedElementIds: oversizedSelection });
+    expect(socket.emit).toHaveBeenLastCalledWith("selection-update", {
+      drawingId: "drawing-1",
+      allSelected: true,
+    });
   });
 });

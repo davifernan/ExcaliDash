@@ -29,7 +29,12 @@ import {
   toPresenceInitials,
   toPresenceName,
 } from "./socketPresence";
-import { PresenceRegistry, type PresenceEntry, type PresenceKind } from "./presenceRegistry";
+import {
+  PresenceRegistry,
+  toPublicPresence,
+  type PresenceEntry,
+  type PresenceKind,
+} from "./presenceRegistry";
 import {
   createRateLimiter,
   parseCursorPayload,
@@ -76,7 +81,7 @@ export const registerSocketHandlers = ({
   io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
   const emitPresence = (drawingId: string) => {
-    io.to(roomName(drawingId)).emit("presence-update", presences.list(drawingId));
+    io.to(roomName(drawingId)).emit("presence-update", presences.listPublic(drawingId));
   };
 
   const getPresence = (socketId: string): PresenceEntry | null => {
@@ -292,7 +297,7 @@ export const registerSocketHandlers = ({
         presences.join(drawingId, presence);
         emitPresence(drawingId);
         followManager.invalidateAccess(socket.id);
-        ack?.({ ok: true, presence });
+        ack?.({ ok: true, presence: toPublicPresence(presence) });
       };
       const result = joinQueue.then(run, run);
       joinQueue = result.then(

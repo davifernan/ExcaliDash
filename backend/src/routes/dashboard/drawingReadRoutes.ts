@@ -53,10 +53,14 @@ export const registerDrawingReadRoutes = (app: express.Express, context: Drawing
       }
 
       const isOwner = principal?.kind === "user" && principal.userId === drawing.userId;
-      const { createdBy, createdByUserId: _createdByUserId, ...row } = drawing;
+      const { createdBy, createdByUserId: _createdByUserId, userId, ...row } = drawing;
       return res.json({
         ...row,
-        // Who drew it is worth showing; which account row that is, is not.
+        // Who drew it is worth showing; which account row that is, is not. That
+        // goes for the owner as well: this route answers anonymous share-link
+        // visitors, and an account id handed to one of them identifies the same
+        // person on every other board they are ever linked to.
+        ...(isOwner ? { userId } : {}),
         creatorName: createdBy?.name ?? null,
         // Collections (and trash mapping) are owner-scoped. For shared/public access, avoid leaking
         // owner collection ids like `trash:<ownerId>` and avoid implying the viewer can organize it.

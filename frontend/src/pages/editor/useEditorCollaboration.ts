@@ -11,7 +11,8 @@ import { getShareLinkToken } from "../../api";
 
 export interface Peer {
   presenceId: string;
-  accountId: string | null;
+  // No account id: the server keeps that to itself, because a share link puts
+  // anonymous visitors in the same room as everyone else.
   name: string;
   initials: string;
   color: string;

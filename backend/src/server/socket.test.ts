@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import jwt from "jsonwebtoken";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 import { registerSocketHandlers } from "./socket";
@@ -98,8 +99,9 @@ class FakeIo {
     return new FakeOperator(this.emissions, "io", scope);
   }
 
-  async connect(id: string) {
+  async connect(id: string, auth: Record<string, unknown> = {}) {
     const socket = new FakeSocket(id, this.emissions);
+    Object.assign(socket.handshake.auth, auth);
     await new Promise<void>((resolve, reject) => {
       this.middleware?.(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });
@@ -166,10 +168,10 @@ describe("socket collaboration security and follow state", () => {
     const oldAck = await join(oldTab);
     const newAck = await join(newTab);
 
-    expect(oldAck.presence).toMatchObject({
-      presenceId: "socket-old",
-      accountId: BOOTSTRAP_USER_ID,
-    });
+    // Which account a presence belongs to is not on the wire any more; that
+    // grouping is asserted against the registry in presenceRegistry.test.ts.
+    expect(oldAck.presence).toMatchObject({ presenceId: "socket-old" });
+    expect(oldAck.presence).not.toHaveProperty("accountId");
     expect(newAck.presence.presenceId).toBe("socket-new");
     expect(lastEmission("presence-update", room("drawing-1"))?.payload).toHaveLength(2);
 
@@ -364,6 +366,65 @@ describe("socket share-link secrets", () => {
     );
     return ack;
   };
+
+  it("tells the room who is there without telling it which account that is", async () => {
+    // Everyone in the room gets presence-update, and a share link means that
+    // room contains people with no account at all. The name is the point of
+    // showing presence; the account id is a handle to a real row and stays on
+    // the server, where the member list matches it with a scoped subject key.
+    const io = new FakeIo();
+    const token = buildShareLinkToken();
+    const prisma = {
+      drawing: { findUnique: async () => ({ userId: "owner-account-id" }) },
+      drawingLinkShare: {
+        findFirst: async () => ({ permission: "view", tokenHash: hashShareLinkToken(token) }),
+      },
+      user: {
+        findUnique: async () => ({ id: "owner-account-id", isActive: true, name: "Owner Real" }),
+      },
+      collection: { findFirst: async () => null, findMany: async () => [] },
+      collectionShare: { findFirst: async () => null, findMany: async () => [] },
+      drawingPermission: { findUnique: async () => null, findMany: async () => [] },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+
+    const ownerToken = jwt.sign(
+      { userId: "owner-account-id", email: "owner@example.test", type: "access" },
+      "test-secret",
+    );
+    const owner = await io.connect("socket-owner", { token: ownerToken });
+    let ownerAck: any;
+    await owner.trigger(
+      "join-room",
+      // The client claims a name of its own. The server has an account row and
+      // uses that instead, which is the whole point of asking the server.
+      { drawingId: "drawing-1", user: { id: "made-up", name: "Owner Claimed" } },
+      (p: any) => {
+        ownerAck = p;
+      },
+    );
+    expect(ownerAck?.ok).toBe(true);
+
+    await join(await io.connect("socket-guest"), token);
+
+    const broadcast = io.emissions.filter((e) => e.event === "presence-update").at(-1);
+    expect(broadcast?.payload).toHaveLength(2);
+    expect(JSON.stringify(broadcast?.payload)).not.toContain("owner-account-id");
+    for (const entry of broadcast!.payload) expect(entry).not.toHaveProperty("accountId");
+    // Still useful: the owner is named and marked as the owner.
+    expect(broadcast?.payload).toContainEqual(
+      expect.objectContaining({ presenceId: "socket-owner", name: "Owner Real", kind: "owner" }),
+    );
+    expect(JSON.stringify(broadcast?.payload)).not.toContain("Owner Claimed");
+    expect(JSON.stringify(broadcast?.payload)).not.toContain("made-up");
+    // The joiner's own acknowledgement carries the same shape.
+    expect(ownerAck.presence).not.toHaveProperty("accountId");
+  });
 
   it("rejects missing, wrong, and rotated tokens while accepting only the current token", async () => {
     const io = new FakeIo();

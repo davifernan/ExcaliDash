@@ -18,6 +18,7 @@ import {
   WORKSHOP_TIMER_COMMAND_EVENT,
   type WorkshopTimerAction,
 } from "./workshopTimer";
+import { useDocumentPageSharing } from "./useDocumentPageSharing";
 import { bindInviteHere, type InviteHereStatus, type ViewportInvitation } from "./inviteHere";
 export type { Peer } from "./socketCollaborators";
 
@@ -73,6 +74,7 @@ export const useEditorCollaboration = ({
   const [viewportInvitation, setViewportInvitation] = useState<ViewportInvitation | null>(null);
   const [inviteHereStatus, setInviteHereStatus] = useState<InviteHereStatus | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const documentPageSharing = useDocumentPageSharing({ drawingId, socketRef });
   const inviteHereRef = useRef<ReturnType<typeof bindInviteHere> | null>(null);
   const lastCursorEmit = useRef<number>(0);
   const selectionPublisherRef = useRef<((appState: any) => void) | null>(null);
@@ -127,6 +129,7 @@ export const useEditorCollaboration = ({
       drawingId,
       onChange: setWorkshopTimerSnapshot,
     });
+    const sharedPages = documentPageSharing.bind(socket);
     const inviteHereController = bindInviteHere({
       socket,
       drawingId,
@@ -158,6 +161,7 @@ export const useEditorCollaboration = ({
       collaborators.reset();
       remoteSelection.reset();
       workshopTimer.reset();
+      sharedPages.reset();
       inviteHereController.reset();
       setFollowers([]);
       pendingRemoteElementsRef.current.clear();
@@ -321,6 +325,7 @@ export const useEditorCollaboration = ({
       collaborators.dispose();
       remoteSelection.dispose();
       workshopTimer.dispose();
+      sharedPages.dispose();
       inviteHereController.dispose();
       if (inviteHereRef.current === inviteHereController) inviteHereRef.current = null;
       if (selectionPublisherRef.current === remoteSelection.publish) {
@@ -390,6 +395,7 @@ export const useEditorCollaboration = ({
     selfIdentity,
     followers,
     workshopTimer: { snapshot: workshopTimerSnapshot, sendCommand: sendWorkshopTimerCommand },
+    documentPages: documentPageSharing.controller,
     socketRef,
     isSyncing,
     onPointerUpdate,

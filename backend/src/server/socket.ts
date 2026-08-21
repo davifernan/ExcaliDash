@@ -47,6 +47,11 @@ import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent } from "./socketSelection";
 import { registerCursorChatRoomEvent } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
+import {
+  createDocumentPageManager,
+  DOCUMENT_PAGE_EVENT,
+  registerDocumentPageRoomEvent,
+} from "./socketDocumentPages";
 import { createSocketInviteHereManager } from "./socketInviteHere";
 
 type RegisterSocketHandlersDeps = {
@@ -78,6 +83,7 @@ export const registerSocketHandlers = ({
   const allowActivity = createKeyedRateLimiter(20, 10_000);
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
+  const documentPages = createDocumentPageManager({ io, prisma });
   let followManager: ReturnType<typeof createSocketFollowManager>;
   let inviteHereManager: ReturnType<typeof createSocketInviteHereManager>;
   const activeAccounts = new ActiveAccountCache(async (userId) => {
@@ -231,6 +237,7 @@ export const registerSocketHandlers = ({
     registerSelectionRoomEvent({ socket, presences, requireAccess });
     registerCursorChatRoomEvent({ socket, requireAccess });
     registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
+    registerDocumentPageRoomEvent({ socket, pages: documentPages, requireAccess });
     inviteHereManager.registerHandlers(socket);
 
     socket.on("join-room", (data: unknown, ack?: (value: unknown) => void) => {
@@ -353,6 +360,12 @@ export const registerSocketHandlers = ({
         presences.join(drawingId, presence);
         emitPresence(drawingId);
         socket.emit("workshop-timer-update", workshopTimers.snapshot(drawingId));
+        // Somebody arriving mid-meeting should see the page the room is on,
+        // not page one. Sent only to this socket; nobody else has to repaint.
+        documentPages
+          .snapshot(drawingId)
+          .then((pages) => socket.emit(DOCUMENT_PAGE_EVENT, pages))
+          .catch(() => {});
         followManager.invalidateAccess(socket.id);
         ack?.({ ok: true, presence: toPublicPresence(presence) });
       };

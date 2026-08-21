@@ -3,6 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getPdfAsset, getPdfPageUrl } from "../../api";
 import { PdfWidget } from "./PdfWidget";
 
+// A widget that is not sharing its page with anybody: the same object every
+// render, so the shared-page effect does not refire on its own.
+const soloSharing = {
+  elementId: "widget-1",
+  assetId: "asset-1",
+  canControl: false,
+} as const;
+
 vi.mock("../../api", () => ({
   getPdfAsset: vi.fn(),
   getPdfOriginalUrl: (drawingId: string, assetId: string) =>
@@ -34,7 +42,7 @@ describe("PdfWidget", () => {
 
   it("keeps the previous page visible while switching pages", async () => {
     const { container } = render(
-      <PdfWidget assetId="asset-1" drawingId="drawing-1" theme="light" />,
+      <PdfWidget assetId="asset-1" drawingId="drawing-1" theme="light" sharing={soloSharing} />,
     );
 
     expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
@@ -58,7 +66,7 @@ describe("PdfWidget", () => {
 
   it("disables navigation at the first and last page", async () => {
     const { container } = render(
-      <PdfWidget assetId="asset-1" drawingId="drawing-1" theme="light" />,
+      <PdfWidget assetId="asset-1" drawingId="drawing-1" theme="light" sharing={soloSharing} />,
     );
 
     await screen.findByText("Page 1 of 3");
@@ -76,7 +84,7 @@ describe("PdfWidget", () => {
 
   it("renders document pages as images rather than inline documents", async () => {
     const { container } = render(
-      <PdfWidget assetId="asset-1" drawingId="drawing-1" theme="light" />,
+      <PdfWidget assetId="asset-1" drawingId="drawing-1" theme="light" sharing={soloSharing} />,
     );
 
     await screen.findByText("Page 1 of 3");

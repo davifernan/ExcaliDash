@@ -123,10 +123,14 @@ jobs:
           cd backend
           # The suite issues far more than the default 60 CSRF requests, so
           # without raising the limits it locks itself out with HTTP 429.
+          # Uploaded documents default to the path they live at inside the
+          # container, which nothing outside it may create, so tests that add a
+          # document need somewhere in the workspace to put it.
           DATABASE_URL="file:${{ github.workspace }}/backend/prisma/e2e-test.db" \
             FRONTEND_URL="http://localhost:6767" \
             CSRF_MAX_REQUESTS=100000 \
             RATE_LIMIT_MAX_REQUESTS=100000 \
+            ASSET_STORAGE_DIR="${{ github.workspace }}/backend/prisma/e2e-assets" \
             npm run dev &
           BACKEND_PID=$!
           cd ..

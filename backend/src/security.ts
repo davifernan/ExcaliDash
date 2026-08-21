@@ -251,6 +251,8 @@ export const sanitizeText = (input: unknown, maxLength: number = 1000): string =
 export const sanitizeUrl = (url: unknown): string => {
   if (typeof url !== "string") return "";
   const trimmed = url.trim();
+  // These exact non-navigable links identify first-party document widgets.
+  if (/^excalidash:\/\/(?:pdf-widget|asset-widget)$/.test(trimmed)) return trimmed;
   if (/^(javascript|data|vbscript):/i.test(trimmed)) {
     return "";
   }

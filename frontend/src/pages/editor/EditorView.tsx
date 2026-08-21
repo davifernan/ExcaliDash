@@ -14,8 +14,8 @@ import { Toaster } from "sonner";
 import { LanguageSelector } from "../../components/LanguageSelector";
 import type { UserIdentity } from "../../utils/identity";
 import { UIOptions } from "./shared";
-import { PdfWidget } from "./PdfWidget";
-import { getPdfWidgetAssetId, validateEmbeddableLink } from "./pdfWidgetElements";
+import { AssetWidget } from "./AssetWidget";
+import { getAssetWidgetData, validateEmbeddableLink } from "./pdfWidgetElements";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
 
@@ -267,9 +267,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
             viewModeEnabled={!canEdit}
             validateEmbeddable={validateEmbeddableLink}
             renderEmbeddable={(element, appState) => {
-              const assetId = getPdfWidgetAssetId(element);
-              return assetId && id ? (
-                <PdfWidget assetId={assetId} drawingId={id} theme={appState.theme} />
+              const data = getAssetWidgetData(element);
+              return data && id ? (
+                <AssetWidget data={data} drawingId={id} theme={appState.theme} />
               ) : null;
             }}
           >

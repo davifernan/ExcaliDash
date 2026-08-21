@@ -36,7 +36,8 @@ describe("history preview persistence guard", () => {
       serverState.version += 1;
       serverState.elements = [...elements];
     });
-    let canvasChange: ((elements: readonly any[], appState: any, files?: any) => void) | null = null;
+    let canvasChange: ((elements: readonly any[], appState: any, files?: any) => void) | null =
+      null;
 
     const Harness = () => {
       const isHistoryPreviewing = useRef(false);

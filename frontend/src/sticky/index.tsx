@@ -64,11 +64,7 @@ export function useStickyNotesFeature({
       <StickyToolbarButton containerRef={containerRef} armed={armed} color={color} onArm={arm} />
       {armed && <StickyPalette toolbar={toolbar} color={color} onPick={setColor} />}
       {armed && (
-        <StickyPreview
-          excalidrawAPI={excalidrawAPI}
-          containerRef={containerRef}
-          color={color}
-        />
+        <StickyPreview excalidrawAPI={excalidrawAPI} containerRef={containerRef} color={color} />
       )}
       <StickyHandles excalidrawAPI={excalidrawAPI} containerRef={containerRef} canEdit={canEdit} />
     </>

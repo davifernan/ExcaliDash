@@ -54,6 +54,10 @@ export const useEditorCollaboration = ({
   onAccessDenied,
 }: UseEditorCollaborationInput) => {
   const [peers, setPeers] = useState<Peer[]>([]);
+  // What the server decided this connection is called. For an account it agrees
+  // with the local identity; for a share-link visitor the server picks the name,
+  // and showing them a different one than everyone else sees is a small lie.
+  const [selfIdentity, setSelfIdentity] = useState<UserIdentity | null>(null);
   const [followers, setFollowers] = useState<Follower[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const lastPresenceUsersRef = useRef<Peer[] | null>(null);
@@ -70,6 +74,7 @@ export const useEditorCollaboration = ({
   const remoteFlushRafIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (!drawingId || !isReady) return;
+    setSelfIdentity(null);
     const socket = io(getSocketUrl(), {
       path: "/socket.io",
       transports: ["websocket", "polling"],
@@ -197,6 +202,14 @@ export const useEditorCollaboration = ({
       resetConnectionState,
       onJoined: (serverUser) => {
         selfPresenceIdRef.current = serverUser.presenceId;
+        if (serverUser.name && serverUser.color) {
+          setSelfIdentity({
+            id: me.id,
+            name: serverUser.name,
+            initials: serverUser.initials || me.initials,
+            color: serverUser.color,
+          });
+        }
         const lastUsers = lastPresenceUsersRef.current;
         if (lastUsers) {
           setPeers(lastUsers.filter((user) => user.presenceId !== selfPresenceIdRef.current));
@@ -377,6 +390,7 @@ export const useEditorCollaboration = ({
 
   return {
     peers,
+    selfIdentity,
     followers,
     socketRef,
     isSyncing,

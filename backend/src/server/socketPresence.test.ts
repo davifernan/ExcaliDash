@@ -38,11 +38,23 @@ describe("presence identity", () => {
 
   it("names guests itself, stably per seed", () => {
     expect(deriveGuestName("socket-1")).toBe(deriveGuestName("socket-1"));
-    expect(deriveGuestName("socket-1")).toMatch(/^Guest [A-Z][0-9]$/);
     expect(deriveGuestName("socket-1")).not.toBe(deriveGuestName("socket-2"));
   });
 
+  it("never lets a guest arrive under a name they chose", () => {
+    // Whatever the browser sends, the name comes from the seed alone.
+    const names = new Set(
+      Array.from({ length: 200 }, (_, index) => deriveGuestName(`socket-${index}`)),
+    );
+    expect(names.size).toBeGreaterThan(20);
+    for (const name of names) {
+      expect(name).not.toContain("Davi");
+      expect(name.trim()).toBe(name);
+      expect(name.length).toBeLessThan(40);
+    }
+  });
+
   it("still derives initials from the name it decided on", () => {
-    expect(toPresenceInitials(deriveGuestName("socket-1"))).toMatch(/^G[A-Z]$/);
+    expect(toPresenceInitials(deriveGuestName("socket-1"))).toMatch(/^[A-Z]{2}$/);
   });
 });

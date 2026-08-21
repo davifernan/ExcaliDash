@@ -54,16 +54,70 @@ const hashSeed = (seed: string): number => {
 export const derivePresenceColor = (seed: string): string =>
   PRESENCE_COLORS[hashSeed(seed) % PRESENCE_COLORS.length];
 
-const GUEST_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-
 /**
+ * The same cast the frontend has always given anonymous visitors
+ * (`frontend/src/utils/identity.ts`), moved here.
+ *
  * A visitor holding a share link is not an account, so nothing they send about
- * themselves can be checked. Rather than render an unverifiable name next to
- * verified ones, the server names them.
+ * themselves can be checked -- including their name. Picking it here keeps a
+ * guest from arriving as "Davi Fernandes" next to names the server read from
+ * the database, and the name is still a name rather than a case number.
  */
-export const deriveGuestName = (seed: string): string => {
-  const hash = hashSeed(seed);
-  const letter = GUEST_LETTERS[hash % GUEST_LETTERS.length];
-  const digit = Math.floor(hash / GUEST_LETTERS.length) % 10;
-  return `Guest ${letter}${digit}`;
-};
+const GUEST_NAMES = [
+  "Optimus Prime",
+  "Megatron",
+  "Starscream",
+  "Bumblebee",
+  "Ultra Magnus",
+  "Shockwave",
+  "Soundwave",
+  "Ironhide",
+  "Ratchet",
+  "Prowl",
+  "Jazz",
+  "Hot Rod",
+  "Alpha Trion",
+  "Wheeljack",
+  "Sideswipe",
+  "Sunstreaker",
+  "Inferno",
+  "Grapple",
+  "Blaster",
+  "Perceptor",
+  "Trailbreaker",
+  "Cosmos",
+  "Warpath",
+  "Powerglide",
+  "Arcee",
+  "Springer",
+  "Kup",
+  "Blurr",
+  "Grimlock",
+  "Swoop",
+  "Skywarp",
+  "Thundercracker",
+  "Ramjet",
+  "Cyclonus",
+  "Scourge",
+  "Galvatron",
+  "Astrotrain",
+  "Blitzwing",
+  "Rumble",
+  "Frenzy",
+  "Laserbeak",
+  "Ravage",
+  "Unicron",
+  "Devastator",
+  "Menasor",
+  "Bruticus",
+  "Motormaster",
+  "Scrapper",
+  "Mixmaster",
+  "Bonecrusher",
+  "Hook",
+  "Vortex",
+  "Swindle",
+] as const;
+
+export const deriveGuestName = (seed: string): string =>
+  GUEST_NAMES[hashSeed(seed) % GUEST_NAMES.length];

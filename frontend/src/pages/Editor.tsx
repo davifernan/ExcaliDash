@@ -99,20 +99,21 @@ export const Editor: React.FC = () => {
       replace: true,
     });
   }, [id, location.hash, location.pathname, location.search, navigate]);
-  const { peers, followers, socketRef, isSyncing, onPointerUpdate } = useEditorCollaboration({
-    drawingId: id,
-    me,
-    isReady,
-    excalidrawAPI,
-    editorContainerRef,
-    lastSyncedFilesRef,
-    lastSyncedElementOrderSigRef,
-    latestElementsRef,
-    latestFilesRef,
-    computeElementOrderSig,
-    recordElementVersion,
-    onAccessDenied: handleSocketAccessDenied,
-  });
+  const { peers, selfIdentity, followers, socketRef, isSyncing, onPointerUpdate } =
+    useEditorCollaboration({
+      drawingId: id,
+      me,
+      isReady,
+      excalidrawAPI,
+      editorContainerRef,
+      lastSyncedFilesRef,
+      lastSyncedElementOrderSigRef,
+      latestElementsRef,
+      latestFilesRef,
+      computeElementOrderSig,
+      recordElementVersion,
+      onAccessDenied: handleSocketAccessDenied,
+    });
   const emitFilesDeltaIfNeeded = useCallback(
     (nextFiles: Record<string, any>) => {
       if (!socketRef.current || !id) return false;
@@ -343,7 +344,7 @@ export const Editor: React.FC = () => {
         isSceneLoading={isSceneLoading}
         langCode={langCode}
         loadError={loadError}
-        me={me}
+        me={selfIdentity ?? me}
         newName={newName}
         peers={peers}
         theme={theme}

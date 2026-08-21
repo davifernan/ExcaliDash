@@ -2,9 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 import { createDrawing, deleteDrawing } from "./helpers/api";
 
 /**
- * The slash key is the whole risk in this feature. Every other whiteboard uses
- * it, but it is also an ordinary character, and taking it away from people
- * writing on the board would be a worse bug than not having cursor chat.
+ * The key is the whole risk in this feature. Enter is free on an idle canvas
+ * and reads as "start saying something", but it is not ours unconditionally:
+ * with a selection it opens that element's text editor, and that is exactly how
+ * a freshly placed sticky note gets its label. Taking it blindly would break
+ * creating notes -- so that case gets a test of its own.
  */
 test.describe("cursor chat", () => {
   const open = async (page: Page, id: string) => {
@@ -14,11 +16,11 @@ test.describe("cursor chat", () => {
     await page.locator(".excalidraw__canvas.interactive").click({ position: { x: 600, y: 400 } });
   };
 
-  test("slash opens the composer on an idle canvas", async ({ page, request }) => {
+  test("Enter opens the composer on an idle canvas", async ({ page, request }) => {
     const drawing = await createDrawing(request, { name: "Chat Key" });
     await open(page, drawing.id);
 
-    await page.keyboard.press("/");
+    await page.keyboard.press("Enter");
     const composer = page.getByTestId("cursor-chat-composer");
     await expect(composer).toBeVisible({ timeout: 5000 });
 
@@ -31,18 +33,42 @@ test.describe("cursor chat", () => {
     await deleteDrawing(request, drawing.id);
   });
 
-  test("slash still types a slash inside a sticky note", async ({ page, request }) => {
+  test("placing a sticky note still opens its label, not the chat", async ({ page, request }) => {
+    // The note is created, selected, and sent a synthetic Enter to open its
+    // label. If cursor chat claimed Enter unconditionally it would swallow that
+    // and notes could no longer be written on at all.
     const drawing = await createDrawing(request, { name: "Chat Key Sticky" });
     await open(page, drawing.id);
 
     await page.locator('[data-testid="toolbar-sticky"]').click();
     await page.locator(".excalidraw__canvas.interactive").click({ position: { x: 400, y: 300 } });
+
     const label = page.locator("textarea.excalidraw-wysiwyg");
     await expect(label).toBeVisible();
-
-    await page.keyboard.type("before/after");
     await expect(page.getByTestId("cursor-chat-composer")).toHaveCount(0);
-    await expect(label).toHaveValue("before/after");
+
+    await page.keyboard.type("a note");
+    await expect(label).toHaveValue("a note");
+
+    await deleteDrawing(request, drawing.id);
+  });
+
+  test("Enter belongs to the selected element, not to the chat", async ({ page, request }) => {
+    const drawing = await createDrawing(request, { name: "Chat Key Selection" });
+    await open(page, drawing.id);
+
+    await page.locator('[data-testid="toolbar-sticky"]').click();
+    await page.locator(".excalidraw__canvas.interactive").click({ position: { x: 400, y: 300 } });
+    await expect(page.locator("textarea.excalidraw-wysiwyg")).toBeVisible();
+    await page.keyboard.type("selected");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600);
+
+    // The note is still selected: Enter reopens its label rather than the chat.
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(600);
+    await expect(page.getByTestId("cursor-chat-composer")).toHaveCount(0);
+    await expect(page.locator("textarea.excalidraw-wysiwyg")).toBeVisible();
 
     await deleteDrawing(request, drawing.id);
   });

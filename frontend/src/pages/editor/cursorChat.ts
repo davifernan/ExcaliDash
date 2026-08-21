@@ -1,5 +1,5 @@
 /**
- * Cursor chat: press "/", say one thing, let it go.
+ * Cursor chat: press Enter, say one thing, let it go.
  *
  * The point is that it does not take your eyes off the board. A side panel
  * makes you look away, type, and look back; this puts the sentence next to the
@@ -36,6 +36,15 @@ export type CursorChatSocket = {
 export type CursorChatController = {
   /** What each remote participant is saying right now, by presence id. */
   remote: Map<string, string>;
+  /**
+   * Drop anyone the room no longer lists.
+   *
+   * A visitor who speaks and then leaves would otherwise stay in this map for
+   * the life of the editor, and somebody reconnecting repeatedly could grow it
+   * without limit on every other screen. Presence is the authority on who is
+   * here, so it is what prunes this.
+   */
+  pruneTo: (presenceIds: Iterable<string>) => void;
   /** Our own draft, or null when the composer is closed. */
   draft: string | null;
   open: () => void;
@@ -47,20 +56,35 @@ export type CursorChatController = {
 /**
  * Whether a keystroke should open the composer.
  *
- * "/" is the key every other whiteboard uses, and it is only free while nothing
- * is being typed into. Excalidraw puts the label editor in a textarea and the
- * shape properties in inputs; a slash meant for any of those must reach them,
- * or people cannot write a slash in a sticky note.
+ * Enter, and only on an idle canvas. Every other whiteboard uses "/", but a
+ * slash is also an ordinary character somebody may be trying to write, and
+ * Enter reads as "start saying something" without needing to be learned.
+ *
+ * The price is that Enter is not ours unconditionally, and should not be:
+ *
+ *  - With something selected it belongs to Excalidraw, which uses it to start
+ *    editing that element's text. Taking it would break placing a sticky note
+ *    outright, because the note is created, selected, and then sent a synthetic
+ *    Enter to open its label (see sticky/stickyPlacement.ts).
+ *  - While anything is being typed into it belongs to that field -- the rename
+ *    box, a dialog, the label editor.
+ *  - With a modifier it belongs to whoever claimed the combination; Ctrl+Enter
+ *    already places a note below the selected one.
  */
-export const shouldOpenCursorChat = (event: {
-  key: string;
-  ctrlKey?: boolean;
-  metaKey?: boolean;
-  altKey?: boolean;
-  target?: unknown;
-}): boolean => {
-  if (event.key !== "/") return false;
-  if (event.ctrlKey || event.metaKey || event.altKey) return false;
+export const shouldOpenCursorChat = (
+  event: {
+    key: string;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
+    target?: unknown;
+  },
+  context: { hasSelection: boolean } = { hasSelection: false },
+): boolean => {
+  if (event.key !== "Enter") return false;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+  if (context.hasSelection) return false;
   const target = event.target as { tagName?: string; isContentEditable?: boolean } | undefined;
   const tag = target?.tagName?.toUpperCase();
   if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return false;
@@ -131,6 +155,17 @@ export const bindCursorChat = ({
     get draft() {
       return draft;
     },
+    pruneTo: (presenceIds) => {
+      const alive = new Set(presenceIds);
+      let removed = false;
+      for (const presenceId of [...remote.keys()]) {
+        if (!alive.has(presenceId)) {
+          remote.delete(presenceId);
+          removed = true;
+        }
+      }
+      if (removed) onRemoteChange();
+    },
     open: () => {
       if (draft !== null) return;
       draft = "";
@@ -168,3 +203,33 @@ export const bindCursorChat = ({
  */
 export const withCursorChat = (name: string, chat: string | undefined): string =>
   chat ? `${name}: ${chat}` : name;
+
+/**
+ * The two hooks the collaborator plumbing needs from cursor chat.
+ *
+ * Kept here so the collaboration hook stays about collaboration: it hands over
+ * a controller and gets back the pieces it has to wire, rather than growing
+ * another paragraph of chat handling of its own.
+ */
+export const startCursorChat = ({
+  socket,
+  drawingId,
+  onDraftChange,
+  onRemoteChange,
+}: {
+  socket: CursorChatSocket;
+  drawingId: string;
+  onDraftChange: (draft: string | null) => void;
+  onRemoteChange: () => void;
+}) => {
+  const controller = bindCursorChat({ socket, drawingId, onRemoteChange, onDraftChange });
+  return { controller, ...cursorChatBindings(controller) };
+};
+
+export const cursorChatBindings = (chat: CursorChatController) => ({
+  decorateName: (name: string, presenceId: string) =>
+    withCursorChat(name, chat.remote.get(presenceId)),
+  /** Presence is the authority on who is here, so it prunes what they said. */
+  prunePeers: (peers: readonly { presenceId: string }[]) =>
+    chat.pruneTo(peers.map((peer) => peer.presenceId)),
+});

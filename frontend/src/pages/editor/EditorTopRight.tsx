@@ -30,7 +30,6 @@ import type { InviteHereUiState } from "./InviteHereOverlay";
 
 type EditorTopRightProps = {
   isMobile: boolean;
-  canEdit: boolean;
   followerNotice: string | null;
   showInvite: boolean;
   inviteHere: InviteHereUiState;
@@ -71,8 +70,9 @@ export const EditorTopRight: React.FC<EditorTopRightProps> = ({
   showShare,
   onShareOpen,
 }) => {
-  // On a phone the top row is already crowded by Excalidraw's own controls, and
-  // these three all have a home in the main menu. Better nothing than a squeeze.
+  // Excalidraw's mobile tool row already fills the width -- an island beside it
+  // pushes tools off the screen. Sharing and inviting move into the main menu
+  // there, which is the one place that exists at every size.
   if (isMobile) return null;
 
   return (
@@ -88,8 +88,14 @@ export const EditorTopRight: React.FC<EditorTopRightProps> = ({
             background: "var(--color-primary-light, #e3e2fe)",
             color: "var(--color-primary-darker, #4a47b1)",
             whiteSpace: "nowrap",
+            // A display name may be long; this column is narrow, and the
+            // avatars are what lose when it overflows.
+            maxWidth: "9rem",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
           data-testid="editor-follower-notice"
+          title={followerNotice}
         >
           {followerNotice}
         </span>

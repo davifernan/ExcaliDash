@@ -295,12 +295,14 @@ export const Editor: React.FC = () => {
     canEdit,
     onCanvasChange: handleCanvasChange,
   });
-  const handleCursorChatOpen = useCallback(() => cursorChatRef.current?.open(), [cursorChatRef]);
-
   useCursorChatKey({
     containerRef: editorContainerRef,
-    enabled: canEdit,
-    onOpen: handleCursorChatOpen,
+
+    // View access is enough to speak: the server says so explicitly, and a
+    // visitor on a read-only link is still in the meeting.
+    enabled: accessLevel !== "none",
+    excalidrawAPI,
+    chatRef: cursorChatRef,
   });
 
   const handleChangeWithSelection = useCallback(

@@ -11,7 +11,7 @@ import { getShareLinkToken } from "../../api";
 import { bindSocketCollaborators } from "./socketCollaborators";
 import type { Peer } from "./socketCollaborators";
 import { bindRemoteSelection } from "./remoteSelection";
-import { bindCursorChat, withCursorChat, type CursorChatController } from "./cursorChat";
+import { startCursorChat, type CursorChatController } from "./cursorChat";
 import {
   bindSocketWorkshopTimer,
   createIdleWorkshopTimerSnapshot,
@@ -59,8 +59,7 @@ export const useEditorCollaboration = ({
   onAccessDenied,
 }: UseEditorCollaborationInput) => {
   const [peers, setPeers] = useState<Peer[]>([]);
-  // Controller in a ref because it outlives renders; draft in state because the
-  // composer draws it and React has to hear about every keystroke.
+  // Ref because it outlives renders; the draft is state because React draws it.
   const cursorChatRef = useRef<CursorChatController | null>(null);
   const [cursorChatDraft, setCursorChatDraft] = useState<string | null>(null);
   // What the server decided this connection is called. For an account it agrees
@@ -105,23 +104,26 @@ export const useEditorCollaboration = ({
         (window as any).__EXCALIDASH_SOCKET_STATUS__ = { connected: false };
       });
     }
-    // Bound before the collaborators (they read it) and referred to after (a
+    // Bound before the collaborators (they read it), referred to after (a
     // message has to refresh the names).
     let collaborators: ReturnType<typeof bindSocketCollaborators> | null = null;
-
-    const cursorChat = bindCursorChat({
+    const chat = startCursorChat({
       socket,
       drawingId,
       onRemoteChange: () => collaborators?.refresh(),
       onDraftChange: setCursorChatDraft,
     });
+    const cursorChat = chat.controller;
     cursorChatRef.current = cursorChat;
 
     collaborators = bindSocketCollaborators({
       socket,
       api: excalidrawAPI.current,
-      onPeersChange: setPeers,
-      decorateName: (name, presenceId) => withCursorChat(name, cursorChat.remote.get(presenceId)),
+      onPeersChange: (nextPeers) => {
+        chat.prunePeers(nextPeers);
+        setPeers(nextPeers);
+      },
+      decorateName: chat.decorateName,
     });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
     const workshopTimer = bindSocketWorkshopTimer({
@@ -158,6 +160,9 @@ export const useEditorCollaboration = ({
     });
     const resetConnectionState = () => {
       unbindFollowMode.resetConnectionState();
+      // The clearing message is volatile: dropped mid-sentence it never
+      // arrives, and the same presence returns wearing what it used to say.
+      cursorChat.pruneTo([]);
       collaborators.reset();
       remoteSelection.reset();
       workshopTimer.reset();

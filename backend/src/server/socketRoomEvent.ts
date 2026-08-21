@@ -27,6 +27,15 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
  * The only registration path for ordinary drawing-room events. Rate limiting
  * happens before parsing so malformed traffic consumes the same budget, and
  * the feature handler cannot run until fresh room access has been checked.
+ *
+ * Handlers for one event on one socket run strictly in arrival order. The
+ * access check is a database round trip, so two messages sent a millisecond
+ * apart can finish theirs in either order -- and the consequences are not
+ * cosmetic: the "stop talking" that follows a chat message could be applied
+ * first, leaving a bubble on everyone's screen with no way to clear it, and an
+ * older selection could land after a newer one. Each registration therefore
+ * keeps its own tail and appends to it, which costs one promise per message and
+ * makes the order the sender's rather than the database's.
  */
 export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   socket,
@@ -40,10 +49,20 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   handle,
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
   const allow = sharedAllow ?? createRateLimiter(limit, windowMs);
-  socket.on(event, async (value: unknown) => {
+  let tail: Promise<void> = Promise.resolve();
+  socket.on(event, (value: unknown) => {
+    // Rate limiting stays synchronous and outside the queue: refusing traffic
+    // is the one thing that must not wait behind the traffic it is refusing.
     if (!allow()) return;
-    const payload = parse(value);
-    if (!payload || !(await requireAccess(socket, payload.drawingId, requireEdit))) return;
-    await handle(payload);
+    tail = tail.then(async () => {
+      const payload = parse(value);
+      if (!payload || !(await requireAccess(socket, payload.drawingId, requireEdit))) return;
+      await handle(payload);
+    });
+    // A thrown handler must not poison the tail for everything after it.
+    tail = tail.catch(() => {});
+    // Socket.IO ignores what a listener returns; tests await it, which is the
+    // only way they can observe work that is now deliberately deferred.
+    return tail;
   });
 };

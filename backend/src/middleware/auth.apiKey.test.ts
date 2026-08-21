@@ -277,17 +277,31 @@ describe("auth middleware API key authentication", () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts a write-scoped API key on the restore endpoint", async () => {
+  it("rejects a write-only API key on the restore endpoint", async () => {
+    // Restore is a way of reading a snapshot: it makes one the current drawing.
+    // History is deliberately not in DEFAULT_API_KEY_SCOPES -- the scope design
+    // says it is riskier than editing and must not arrive by accident -- so a
+    // key that may write must not reach history through the back door.
     const { req, res, next } = await authenticateApiKeyRequest([DRAWINGS_WRITE_SCOPE]);
 
-    expect(req.user).toMatchObject({ id: "user-1", authCredentialType: "apiKey" });
-    expect(req.authError).toBeUndefined();
-    expect(res.status).not.toHaveBeenCalled();
+    expect(req.user).toBeUndefined();
+    expect(req.authError).toEqual({ code: "INVALID_ACCESS_TOKEN" });
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts a standard read-and-write API key on the restore endpoint", async () => {
+  it("rejects a standard read-and-write API key on the restore endpoint", async () => {
     const { req, res, next } = await authenticateApiKeyRequest();
+
+    expect(req.user).toBeUndefined();
+    expect(req.authError).toEqual({ code: "INVALID_ACCESS_TOKEN" });
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a key holding both write and history on the restore endpoint", async () => {
+    const { req, res, next } = await authenticateApiKeyRequest([
+      DRAWINGS_WRITE_SCOPE,
+      DRAWINGS_HISTORY_SCOPE,
+    ]);
 
     expect(req.user).toMatchObject({ id: "user-1", authCredentialType: "apiKey" });
     expect(req.authError).toBeUndefined();

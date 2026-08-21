@@ -1,40 +1,31 @@
 import React from "react";
 import { Excalidraw, MainMenu } from "@excalidraw/excalidraw";
-import {
-  ArrowLeft,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  History,
-  Loader2,
-  Share2,
-} from "lucide-react";
-import clsx from "clsx";
+import { ArrowLeft, Download } from "lucide-react";
 import { Toaster } from "sonner";
 import { LanguageSelector } from "../../components/LanguageSelector";
-import type { UserIdentity } from "../../utils/identity";
 import { UIOptions } from "./shared";
 import { PdfWidget } from "./PdfWidget";
 import { getPdfWidgetAssetId, validateEmbeddableLink } from "./pdfWidgetElements";
+import { EditorTopLeft } from "./EditorTopLeft";
+import { EditorTopRight } from "./EditorTopRight";
+import { useExcalidrawRoot } from "./useExcalidrawRoot";
+import { useExcalidrawUiState } from "./useExcalidrawUiState";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
 
 type EditorViewProps = {
   id?: string;
   accessLevel: "none" | "view" | "edit" | "owner";
-  autoHideEnabled: boolean;
   canEdit: boolean;
   drawingName: string;
   editorContainerRef: React.RefObject<HTMLDivElement>;
   followers: Follower[];
   initialData: any;
-  isHeaderVisible: boolean;
   isRenaming: boolean;
   isSavingOnLeave: boolean;
   isSceneLoading: boolean;
   langCode: string;
   loadError: string | null;
-  me: UserIdentity;
   newName: string;
   peers: Peer[];
   theme: string;
@@ -54,50 +45,27 @@ type EditorViewProps = {
   onSetLangCode: (langCode: string) => void;
   onShareOpen: () => void;
   onHistoryOpen: () => void;
-  onToggleAutoHide: () => void;
 };
 
-const UserAvatar = ({
-  user,
-  label,
-  inactive = false,
-}: {
-  user: Pick<UserIdentity, "name" | "initials" | "color">;
-  label: string;
-  inactive?: boolean;
-}) => (
-  <div className="relative group">
-    <div
-      className={clsx(
-        "w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white shadow-sm transition-all duration-300",
-        inactive && "opacity-30 grayscale",
-      )}
-      style={{ backgroundColor: user.color }}
-    >
-      {user.initials}
-    </div>
-    <div className="absolute top-full mt-2 right-0 bg-gray-900 text-white text-xs py-1 px-2 rounded whitespace-nowrap z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-      {label}
-    </div>
-  </div>
-);
+const describeFollowers = (followers: Follower[]): string | null => {
+  if (followers.length === 0) return null;
+  if (followers.length === 1) return `${followers[0].name} is following you`;
+  return `${followers.length} people are following you`;
+};
 
 export const EditorView: React.FC<EditorViewProps> = ({
   id,
   accessLevel,
-  autoHideEnabled,
   canEdit,
   drawingName,
   editorContainerRef,
   followers,
   initialData,
-  isHeaderVisible,
   isRenaming,
   isSavingOnLeave,
   isSceneLoading,
   langCode,
   loadError,
-  me,
   newName,
   peers,
   theme,
@@ -117,125 +85,20 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onSetLangCode,
   onShareOpen,
   onHistoryOpen,
-  onToggleAutoHide,
-}) => (
-  <div className="h-screen flex flex-col bg-white dark:bg-neutral-950 overflow-hidden">
-    <header
-      className={clsx(
-        "h-16 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center px-4 justify-between z-10 fixed top-0 left-0 right-0 transition-transform duration-300",
-        isHeaderVisible ? "translate-y-0" : "-translate-y-full",
-      )}
-    >
-      <div className="flex items-center gap-4">
-        <button
-          onClick={onBackClick}
-          disabled={isSavingOnLeave}
-          className={`flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-full text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-wait transition-all duration-200 ${isSavingOnLeave ? "pr-4" : ""}`}
-        >
-          {isSavingOnLeave ? (
-            <>
-              <Loader2 size={20} className="animate-spin" />
-              <span className="text-sm font-medium">Saving changes...</span>
-            </>
-          ) : (
-            <ArrowLeft size={20} />
-          )}
-        </button>
-        {isRenaming ? (
-          <form onSubmit={onRenameSubmit}>
-            <input
-              autoFocus
-              type="text"
-              value={newName}
-              onChange={(e) => onNewNameChange(e.target.value)}
-              onBlur={onRenameBlur}
-              className="font-medium text-gray-900 dark:text-white bg-transparent px-2 py-1 border-2 border-indigo-500 rounded-md outline-none min-w-[200px]"
-              style={{ width: `${Math.max(200, newName.length * 9 + 20)}px` }}
-            />
-          </form>
-        ) : (
-          <h1
-            className="font-medium text-gray-900 dark:text-white px-2 py-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded cursor-text"
-            onDoubleClick={onRenameStart}
-          >
-            {drawingName}
-          </h1>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        {followers.length > 0 ? (
-          <span
-            className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-100 text-indigo-900 dark:bg-indigo-900/30 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800"
-            title={followers.map((follower) => follower.name).join(", ")}
-          >
-            {followers.length === 1
-              ? `${followers[0].name} is following you`
-              : `${followers.length} people are following you`}
-          </span>
-        ) : null}
-        {!canEdit ? (
-          <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
-            Read-only
-          </span>
-        ) : null}
-        {canEdit && id ? (
-          <button
-            onClick={onHistoryOpen}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
-            title="Version History"
-          >
-            <History size={20} />
-          </button>
-        ) : null}
-        {accessLevel === "owner" && id ? (
-          <button
-            onClick={onShareOpen}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
-            title="Share"
-          >
-            <Share2 size={20} />
-          </button>
-        ) : null}
-        <button
-          onClick={onToggleAutoHide}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
-          title={autoHideEnabled ? "Disable auto-hide" : "Enable auto-hide"}
-        >
-          {autoHideEnabled ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </button>
-        <div className="h-6 w-px bg-gray-300 dark:bg-gray-700" />
-        <button
-          onClick={onExportClick}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
-          title="Export drawing"
-        >
-          <Download size={20} />
-        </button>
-        <div className="h-6 w-px bg-gray-300 dark:bg-gray-700" />
-        <div className="flex items-center">
-          <UserAvatar user={me} label={`${me.name} (You)`} />
-          <div className="h-6 w-px bg-gray-300 dark:bg-gray-700 mx-2" />
-          <div className="flex items-center gap-2">
-            {peers.map((peer) => (
-              <UserAvatar
-                key={peer.presenceId}
-                user={peer}
-                label={peer.name}
-                inactive={!peer.isActive}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </header>
+}) => {
+  const excalidrawRoot = useExcalidrawRoot(editorContainerRef);
+  const { zenMode, mobile } = useExcalidrawUiState(editorContainerRef);
+
+  return (
+    // The canvas fills the window and never changes size again. The old header
+    // pushed it down by 4rem and animated the height back on every toggle, which
+    // re-rendered the whole scene, shifted what you were looking at, and made
+    // Excalidraw's own toolbar hop 64px. Chrome floats above it instead.
     <div
       ref={editorContainerRef}
-      className="flex-1 w-full relative transition-all duration-300"
+      className="absolute inset-0 w-full overflow-hidden bg-white dark:bg-neutral-950"
+      style={{ height: "100dvh" }}
       onDropCapture={onCanvasDropCapture}
-      style={{
-        height: isHeaderVisible ? "calc(100vh - 4rem)" : "100vh",
-        marginTop: isHeaderVisible ? "4rem" : "0",
-      }}
     >
       {loadError ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-white dark:bg-neutral-950 px-6">
@@ -277,10 +140,33 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 <PdfWidget assetId={assetId} drawingId={id} theme={appState.theme} />
               ) : null;
             }}
+            renderTopRightUI={(isMobile) => (
+              <EditorTopRight
+                isMobile={isMobile}
+                canEdit={canEdit}
+                followerNotice={describeFollowers(followers)}
+                showHistory={canEdit && !!id}
+                showShare={accessLevel === "owner" && !!id}
+                onHistoryOpen={onHistoryOpen}
+                onShareOpen={onShareOpen}
+              />
+            )}
           >
             <MainMenu>
+              {/*
+                The way back, in the one place that exists at every window size.
+                On the mobile layout the island stands down so it does not cover
+                Excalidraw's tool row, and this becomes the only route home.
+              */}
+              <MainMenu.Item onSelect={onBackClick} icon={<ArrowLeft size={16} />}>
+                Back to dashboard
+              </MainMenu.Item>
+              <MainMenu.Separator />
               <MainMenu.DefaultItems.ToggleTheme />
               <MainMenu.DefaultItems.SaveAsImage />
+              <MainMenu.Item onSelect={onExportClick} icon={<Download size={16} />}>
+                Export drawing
+              </MainMenu.Item>
               <MainMenu.DefaultItems.ClearCanvas />
               <MainMenu.DefaultItems.ChangeCanvasBackground />
               <MainMenu.DefaultItems.Help />
@@ -290,6 +176,21 @@ export const EditorView: React.FC<EditorViewProps> = ({
               </MainMenu.ItemCustom>
             </MainMenu>
           </Excalidraw>
+          <EditorTopLeft
+            container={excalidrawRoot}
+            zenMode={zenMode}
+            mobile={mobile}
+            drawingName={drawingName}
+            canEdit={canEdit}
+            isRenaming={isRenaming}
+            isSavingOnLeave={isSavingOnLeave}
+            newName={newName}
+            onBackClick={onBackClick}
+            onNewNameChange={onNewNameChange}
+            onRenameBlur={onRenameBlur}
+            onRenameStart={onRenameStart}
+            onRenameSubmit={onRenameSubmit}
+          />
           {stickyOverlay}
         </>
       ) : (
@@ -301,5 +202,5 @@ export const EditorView: React.FC<EditorViewProps> = ({
       )}
       <Toaster position="bottom-center" />
     </div>
-  </div>
-);
+  );
+};

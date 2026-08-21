@@ -216,11 +216,8 @@ test.describe("Drawing Version History", () => {
       timeout: 15000,
     });
 
-    // Trigger header visibility (may be auto-hidden)
-    await page.mouse.move(640, 10);
-    await page.waitForTimeout(500);
-
-    const historyButton = page.locator('button[title="Version History"]');
-    await expect(historyButton).toBeAttached();
+    // Nothing to coax out of hiding any more: the editor chrome stays put.
+    const historyButton = page.getByTestId("editor-history");
+    await expect(historyButton).toBeVisible();
   });
 });

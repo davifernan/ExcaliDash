@@ -18,11 +18,6 @@ import {
  * - Auto-save functionality
  */
 
-const revealEditorHeader = async (page: import("@playwright/test").Page) => {
-  await page.mouse.move(24, 2);
-  await page.waitForTimeout(150);
-};
-
 test.describe("Drawing Creation", () => {
   let createdDrawingIds: string[] = [];
 
@@ -97,15 +92,16 @@ test.describe("Drawing Creation", () => {
     await page.goto(`/editor/${drawing.id}`);
     await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
 
-    await revealEditorHeader(page);
-
     const nameElement = page.getByText(originalName);
     await expect(nameElement).toBeInViewport();
     await nameElement.dblclick();
 
     await page.waitForTimeout(300);
 
-    const nameInput = page.locator("input").filter({ hasText: "" }).first();
+    // Named rather than "the first input on the page": the board name now sits
+    // in an island rendered inside Excalidraw's own root, so document order puts
+    // Excalidraw's toolbar controls ahead of it.
+    const nameInput = page.getByLabel("Drawing name");
     await nameInput.clear();
     await nameInput.fill(newName);
     await nameInput.press("Enter");
@@ -123,9 +119,7 @@ test.describe("Drawing Creation", () => {
     await page.goto(`/editor/${drawing.id}`);
     await page.waitForSelector("[class*='excalidraw'], canvas", { timeout: 15000 });
 
-    await revealEditorHeader(page);
-
-    const backButton = page.locator("header button").first();
+    const backButton = page.getByTestId("editor-back");
     await expect(backButton).toBeInViewport();
     await backButton.click();
 

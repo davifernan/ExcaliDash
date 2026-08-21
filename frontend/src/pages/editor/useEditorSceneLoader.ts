@@ -3,7 +3,7 @@ import type { NavigateFunction } from "react-router-dom";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import * as api from "../../api";
-import { getPersistedAppState, hasRenderableElements } from "./shared";
+import { getPersistedAppState, hasRenderableElements, resolveObjectsSnapMode } from "./shared";
 
 type AccessLevel = "none" | "view" | "edit" | "owner";
 
@@ -48,6 +48,7 @@ const buildEmptyScene = () => ({
   appState: {
     viewBackgroundColor: "#ffffff",
     gridSize: null,
+    objectsSnapModeEnabled: resolveObjectsSnapMode(null),
     collaborators: new Map(),
   },
   files: {},
@@ -140,6 +141,7 @@ export const useEditorSceneLoader = ({
         const persistedAppState = getPersistedAppState(data.appState || {});
         const hydratedAppState = {
           ...persistedAppState,
+          objectsSnapModeEnabled: resolveObjectsSnapMode(persistedAppState),
           collaborators: new Map(),
         };
         refs.latestAppState.current = hydratedAppState;

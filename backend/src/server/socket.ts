@@ -45,7 +45,11 @@ import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
 import { ipKeyGenerator } from "express-rate-limit";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
-import { registerSelectionRoomEvent, SELECTION_LIMITS } from "./socketSelection";
+import {
+  registerSelectionRoomEvent,
+  SELECTION_LIMITS,
+  SELECTION_SNAPSHOT_EVENT,
+} from "./socketSelection";
 import { registerCursorChatRoomEvent, CURSOR_CHAT_LIMITS } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import { createSocketInviteHereManager } from "./socketInviteHere";
@@ -371,12 +375,14 @@ export const registerSocketHandlers = ({
           kind,
           isActive: true,
           selectedElementIds: {},
+          allSelected: false,
         };
         drawingBySocket.set(socket.id, drawingId);
         if (shareToken) shareTokenBySocket.set(socket.id, shareToken);
         else shareTokenBySocket.delete(socket.id);
         presences.join(drawingId, presence);
         emitPresence(drawingId);
+        socket.emit(SELECTION_SNAPSHOT_EVENT, presences.selectionSnapshot(drawingId));
         socket.emit("workshop-timer-update", workshopTimers.snapshot(drawingId));
         followManager.invalidateAccess(socket.id);
         ack?.({ ok: true, presence: toPublicPresence(presence) });

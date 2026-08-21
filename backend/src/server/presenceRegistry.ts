@@ -17,6 +17,7 @@ export type PresenceEntry = {
   kind: PresenceKind;
   isActive: boolean;
   selectedElementIds: Record<string, true>;
+  allSelected?: boolean;
 };
 
 /**
@@ -29,12 +30,26 @@ export type PresenceEntry = {
  * place that needs to match presence against a member list does it with a
  * scoped subject key instead (see authz/subjectKey).
  */
-export type PublicPresenceEntry = Omit<PresenceEntry, "accountId">;
+export type PublicPresenceEntry = Omit<
+  PresenceEntry,
+  "accountId" | "selectedElementIds" | "allSelected"
+>;
 
 export const toPublicPresence = ({
   accountId: _accountId,
+  selectedElementIds: _selectedElementIds,
+  allSelected: _allSelected,
   ...rest
 }: PresenceEntry): PublicPresenceEntry => rest;
+
+export type SelectionSnapshotEntry = { presenceId: string } & (
+  { selectedElementIds: string[] } | { allSelected: true }
+);
+
+export type SelectionSnapshot = {
+  drawingId: string;
+  selections: SelectionSnapshotEntry[];
+};
 
 export type PresenceSummaryMember = {
   accountId: string;
@@ -71,15 +86,26 @@ export class PresenceRegistry {
 
   setActive(drawingId: string, presenceId: string, isActive: boolean): boolean {
     const entry = this.byDrawing.get(drawingId)?.get(presenceId);
-    if (!entry || entry.isActive === isActive) return false;
+    if (!entry) return false;
+    const changed = entry.isActive !== isActive;
     entry.isActive = isActive;
-    return true;
+    if (!isActive) {
+      entry.selectedElementIds = {};
+      entry.allSelected = false;
+    }
+    return changed;
   }
 
-  setSelection(drawingId: string, presenceId: string, elementIds: string[]): boolean {
+  setSelection(
+    drawingId: string,
+    presenceId: string,
+    elementIds: string[],
+    allSelected = false,
+  ): boolean {
     const entry = this.byDrawing.get(drawingId)?.get(presenceId);
-    if (!entry) return false;
+    if (!entry || !entry.isActive) return false;
     entry.selectedElementIds = Object.fromEntries(elementIds.map((id) => [id, true]));
+    entry.allSelected = allSelected;
     return true;
   }
 
@@ -90,6 +116,24 @@ export class PresenceRegistry {
   /** The same list, with what the room has no business knowing removed. */
   listPublic(drawingId: string): PublicPresenceEntry[] {
     return this.list(drawingId).map(toPublicPresence);
+  }
+
+  selectionSnapshot(drawingId: string): SelectionSnapshot {
+    const selections: SelectionSnapshotEntry[] = [];
+    for (const entry of this.list(drawingId)) {
+      if (entry.allSelected) {
+        selections.push({ presenceId: entry.presenceId, allSelected: true });
+        continue;
+      }
+      const selectedElementIds = Object.keys(entry.selectedElementIds);
+      if (selectedElementIds.length > 0) {
+        selections.push({ presenceId: entry.presenceId, selectedElementIds });
+      }
+    }
+    return {
+      drawingId,
+      selections,
+    };
   }
 
   occupiedDrawingIds(): string[] {

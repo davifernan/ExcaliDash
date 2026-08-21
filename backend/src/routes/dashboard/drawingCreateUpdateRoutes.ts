@@ -37,6 +37,7 @@ export const registerDrawingCreateUpdateRoutes = (
     processFilesForS3,
     parseJsonField,
     getRequestPrincipal,
+    getShareToken,
     respondWithAuthErrorIfPresent,
   } = context;
   app.post(
@@ -137,6 +138,7 @@ export const registerDrawingCreateUpdateRoutes = (
         prisma,
         principal,
         drawingId: id,
+        shareToken: getShareToken(req),
       });
       if (!canEditDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;

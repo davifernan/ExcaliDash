@@ -156,7 +156,9 @@ export const useEditorSceneLoader = ({
         if (api.isAxiosError(err)) {
           const responseMessage =
             typeof err.response?.data?.message === "string" ? err.response.data.message : null;
-          if (responseMessage) {
+          if (err.response && location.pathname.startsWith("/shared/")) {
+            message = "This share link is no longer valid. Ask the owner for a new link.";
+          } else if (responseMessage) {
             message = responseMessage;
           } else if (err.response?.status === 403) {
             message = "You do not have access to this drawing";

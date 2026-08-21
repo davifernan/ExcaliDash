@@ -21,6 +21,7 @@ export const registerDrawingHistoryRoutes = (
     parseJsonField,
     invalidateDrawingsCache,
     getRequestPrincipal,
+    getShareToken,
     respondWithAuthErrorIfPresent,
     io,
   } = context;
@@ -39,6 +40,7 @@ export const registerDrawingHistoryRoutes = (
         prisma,
         principal,
         drawingId: id,
+        shareToken: getShareToken(req),
       });
       if (!canViewDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;
@@ -74,6 +76,7 @@ export const registerDrawingHistoryRoutes = (
         prisma,
         principal,
         drawingId: id,
+        shareToken: getShareToken(req),
       });
       if (!canViewDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;
@@ -105,6 +108,7 @@ export const registerDrawingHistoryRoutes = (
         prisma,
         principal,
         drawingId: id,
+        shareToken: getShareToken(req),
       });
       if (!canEditDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;

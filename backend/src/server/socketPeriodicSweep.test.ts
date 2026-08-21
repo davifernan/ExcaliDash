@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 import { registerSocketHandlers } from "./socket";
 
 type Emission = { scope: string; event: string; payload: any };
@@ -73,6 +74,7 @@ class FakeIo {
 describe("periodic socket access sweep", () => {
   it("does not overlap sweeps while evicting many passive viewers", async () => {
     const io = new FakeIo();
+    const shareToken = buildShareLinkToken();
     let linkActive = true;
     let blockSweeps = false;
     let blockedLookups = 0;
@@ -89,7 +91,9 @@ describe("periodic socket access sweep", () => {
               blockedLookups += 1;
               await sweepBarrier;
             }
-            return linkActive ? { permission: "view" } : null;
+            return linkActive
+              ? { permission: "view", tokenHash: hashShareLinkToken(shareToken) }
+              : null;
           }),
         },
       } as any,
@@ -101,7 +105,9 @@ describe("periodic socket access sweep", () => {
       Array.from({ length: 24 }, (_, index) => io.connect(`viewer-${index}`)),
     );
     await Promise.all(
-      viewers.map((viewer) => viewer.trigger("join-room", { drawingId: "drawing-1", user: {} })),
+      viewers.map((viewer) =>
+        viewer.trigger("join-room", { drawingId: "drawing-1", shareToken, user: {} }),
+      ),
     );
     expect(viewers.every((viewer) => viewer.rooms.has("drawing_drawing-1"))).toBe(true);
 

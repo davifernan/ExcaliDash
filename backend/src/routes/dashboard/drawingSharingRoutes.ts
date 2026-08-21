@@ -288,34 +288,34 @@ export const registerDrawingSharingRoutes = (
       // Passphrase support is currently disabled. We keep passphraseHash nullable for backwards compatibility.
       const passphraseHashValue: string | null = null;
 
-      // Enforce a single active "anyone with the link" policy per drawing. The public link is the drawing id,
-      // so multiple active link-share rows would be confusing and could unintentionally widen access.
-      await prisma.drawingLinkShare.updateMany({
-        where: { drawingId: id, revokedAt: null },
-        data: { revokedAt: new Date() },
+      // A new activation always revokes the previous secret. This makes a
+      // reissued link independent from every URL that was shared before it.
+      const token = buildShareLinkToken();
+      const tokenHash = hashShareLinkToken(token);
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.drawingLinkShare.updateMany({
+          where: { drawingId: id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        return tx.drawingLinkShare.create({
+          data: {
+            drawingId: id,
+            permission,
+            tokenHash,
+            passphraseHash: passphraseHashValue,
+            expiresAt,
+            createdByUserId: req.user.id,
+          },
+          select: {
+            id: true,
+            permission: true,
+            expiresAt: true,
+            revokedAt: true,
+            createdAt: true,
+          },
+        });
       });
-
-      // Token is generated only to satisfy the current schema's tokenHash requirement.
-      // Link access is based on drawing id + active policy (no secret token in the URL).
-      const tokenHash = hashShareLinkToken(buildShareLinkToken());
-
-      const created = await prisma.drawingLinkShare.create({
-        data: {
-          drawingId: id,
-          permission,
-          tokenHash,
-          passphraseHash: passphraseHashValue,
-          expiresAt,
-          createdByUserId: req.user.id,
-        },
-        select: {
-          id: true,
-          permission: true,
-          expiresAt: true,
-          revokedAt: true,
-          createdAt: true,
-        },
-      });
+      await collaborationAccess.recheckDrawingAccess(id);
 
       if (config.enableAuditLogging) {
         await logAuditEvent({
@@ -332,7 +332,7 @@ export const registerDrawingSharingRoutes = (
         });
       }
 
-      return res.json({ share: created });
+      return res.json({ share: created, token });
     }),
   );
 
@@ -373,6 +373,4 @@ export const registerDrawingSharingRoutes = (
       return res.json({ success: true });
     }),
   );
-
-  // Legacy share-token exchange endpoint removed: link access is based on drawing id + active policy.
 };

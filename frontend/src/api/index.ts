@@ -5,3 +5,4 @@ export * from "./collections";
 export * from "./storage";
 export * from "./auth";
 export * from "./assets";
+export * from "./shareToken";

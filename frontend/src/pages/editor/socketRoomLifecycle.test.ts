@@ -21,6 +21,7 @@ describe("socket room lifecycle", () => {
     const cleanup = bindSocketRoomLifecycle({
       socket,
       drawingId: "drawing-1",
+      shareToken: "a".repeat(32),
       user: { name: "User" } as any,
       resetConnectionState,
       onJoined,
@@ -34,6 +35,15 @@ describe("socket room lifecycle", () => {
     acknowledgements[1]({ ok: true, presence: { presenceId: "socket-1" } });
 
     expect(onJoined).toHaveBeenCalledWith({ presenceId: "socket-1" });
+    expect(socket.emit).toHaveBeenCalledWith(
+      "join-room",
+      {
+        drawingId: "drawing-1",
+        shareToken: "a".repeat(32),
+        user: { name: "User" },
+      },
+      expect.any(Function),
+    );
     expect(socket.emit).toHaveBeenCalledWith("follow-user", {
       drawingId: "drawing-1",
       targetPresenceId: "target-after-timeout",
@@ -63,6 +73,7 @@ describe("socket room lifecycle", () => {
     const cleanup = bindSocketRoomLifecycle({
       socket,
       drawingId: "drawing-1",
+      shareToken: null,
       user: {} as any,
       resetConnectionState: vi.fn(),
       onJoined,

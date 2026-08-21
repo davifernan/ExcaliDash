@@ -226,6 +226,7 @@ if (shouldEnforceHttps) {
 }
 app.use(
   helmet({
+    referrerPolicy: { policy: "no-referrer" },
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'none'"],
@@ -244,7 +245,13 @@ app.use(
   cors({
     origin: (origin, cb) => cb(null, isAllowedOrigin(origin ?? undefined)),
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "x-csrf-token", "x-imported-file"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-csrf-token",
+      "x-imported-file",
+      "x-share-token",
+    ],
     exposedHeaders: ["x-csrf-token", "x-request-id"],
   }),
 );
@@ -564,7 +571,7 @@ registerAssetRoutes({
   storageDir: config.assets.storageDir,
   maxUploadBytes: config.assets.maxUploadBytes,
   maxPerUserBytes: config.assets.maxPerUserBytes,
-  getPage: (asset, page) =>
+  getPage: (asset, page, signal) =>
     getAssetPage(
       {
         storageDir: config.assets.storageDir,
@@ -575,6 +582,7 @@ registerAssetRoutes({
       },
       asset,
       page,
+      signal,
     ),
   describeUpload: async (asset) => {
     const info = await inspectPdf(
@@ -582,17 +590,14 @@ registerAssetRoutes({
     );
     return { pageCount: info.pageCount };
   },
-  optimizeUpload: async (asset) => {
-    const result = await shrinkPdf(
-      resolveStoragePath(config.assets.storageDir, asset.blob.storageKey),
-      {
-        level: config.assets.pdfShrinkLevel,
-        minBytes: config.assets.pdfShrinkMinBytes,
-        concurrency: config.assets.pdfShrinkConcurrency,
-        maxWaiting: config.assets.pdfShrinkQueueLimit,
-      },
-    );
-    return { finalBytes: result.finalBytes, note: describeShrink(result) };
+  optimizeUpload: async (stored) => {
+    const result = await shrinkPdf(stored.path, {
+      level: config.assets.pdfShrinkLevel,
+      minBytes: config.assets.pdfShrinkMinBytes,
+      concurrency: config.assets.pdfShrinkConcurrency,
+      maxWaiting: config.assets.pdfShrinkQueueLimit,
+    });
+    return { note: describeShrink(result) };
   },
 });
 registerImportExportRoutes({

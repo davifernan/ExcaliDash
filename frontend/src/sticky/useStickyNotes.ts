@@ -40,16 +40,9 @@ type Options = {
   excalidrawAPI: { current: any };
   containerRef: React.RefObject<HTMLElement>;
   canEdit: boolean;
-  /** Told when a note was placed but typing did not start on its own. */
-  onTypingUnavailable?: () => void;
 };
 
-export function useStickyNotes({
-  excalidrawAPI,
-  containerRef,
-  canEdit,
-  onTypingUnavailable,
-}: Options) {
+export function useStickyNotes({ excalidrawAPI, containerRef, canEdit }: Options) {
   const [armed, setArmed] = useState(false);
   const [color, setColor] = useState<StickyColor>(DEFAULT_STICKY_COLOR);
 
@@ -117,17 +110,9 @@ export function useStickyNotes({
       api.setActiveTool?.({ type: "selection" });
 
       const { x, y } = pointerDownState.origin;
-      insertStickyNote(
-        api,
-        containerRef.current,
-        createStickyNote(x, y, color),
-        color,
-        ({ typing }) => {
-          if (!typing) onTypingUnavailable?.();
-        },
-      );
+      insertStickyNote(api, containerRef.current, createStickyNote(x, y, color), color);
     });
-  }, [armed, canEdit, color, containerRef, excalidrawAPI, onTypingUnavailable]);
+  }, [armed, canEdit, color, containerRef, excalidrawAPI]);
 
   // The tool answers to a key like every other tool does.
   useEffect(() => {

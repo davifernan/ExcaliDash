@@ -35,9 +35,9 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
   const [expiryOption, setExpiryOption] = useState("1d");
   const [customExpiry, setCustomExpiry] = useState("");
   const [isCopied, setIsCopied] = useState(false);
+  const [currentLinkToken, setCurrentLinkToken] = useState<string | null>(null);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const shareableEditorUrl = `${origin}/shared/${drawingId}`;
 
   const activeLink = useMemo(() => {
     const now = Date.now();
@@ -93,6 +93,7 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
     setExpiryOption("1d");
     setCustomExpiry("");
     setIsCopied(false);
+    setCurrentLinkToken(null);
     void refresh();
   }, [isOpen, refresh]);
 
@@ -206,9 +207,6 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
     setIsLoading(true);
     setError(null);
     try {
-      if (activeLink) {
-        await api.revokeLinkShare(drawingId, activeLink.id);
-      }
       const perm = newPermission ?? linkPermission;
       setLinkPermission(perm);
       let expiresAt =
@@ -217,9 +215,10 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
         expiresAt = calculateExpiresAt(DEFAULT_EDIT_EXPIRY_OPTION);
         setExpiryOption(DEFAULT_EDIT_EXPIRY_OPTION);
       }
-      await api.createLinkShare(drawingId, { permission: perm, expiresAt });
+      const created = await api.createLinkShare(drawingId, { permission: perm, expiresAt });
+      setCurrentLinkToken(created.token);
       await refresh();
-      void handleCopy(shareableEditorUrl);
+      await handleCopy(api.buildShareLinkUrl(origin, drawingId, created.token));
     } catch (err: unknown) {
       let message = "Failed to update link";
       if (api.isAxiosError(err)) {
@@ -239,6 +238,7 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
     setError(null);
     try {
       await api.revokeLinkShare(drawingId, activeLink.id);
+      setCurrentLinkToken(null);
       await refresh();
     } catch {
       setError("Failed to revoke link");
@@ -248,7 +248,10 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
   };
 
   if (!isOpen) return null;
-  const currentLinkUrl = activeLink ? shareableEditorUrl : "";
+  const currentLinkUrl =
+    activeLink && currentLinkToken
+      ? api.buildShareLinkUrl(origin, drawingId, currentLinkToken)
+      : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -307,7 +310,9 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
         {/* Footer */}
         <div className="px-6 py-4 flex items-center justify-between border-t-2 border-black dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50 rounded-b-[14px]">
           <button
-            onClick={() => handleCopy(currentLinkUrl)}
+            onClick={() =>
+              currentLinkUrl ? void handleCopy(currentLinkUrl) : void handleUpdateLink()
+            }
             disabled={!activeLink}
             className={clsx(
               "flex items-center gap-2 px-4 py-2 rounded-xl border-2 font-bold text-xs transition-all active:translate-x-[1px] active:translate-y-[1px]",
@@ -322,7 +327,13 @@ export const ShareModal: React.FC<Props> = ({ drawingId, drawingName, isOpen, on
             ) : (
               <LinkIcon size={14} strokeWidth={2.5} />
             )}
-            {isCopied ? "Copied" : "Copy Link"}
+            {isCopied
+              ? "Copied"
+              : currentLinkUrl
+                ? "Copy Link"
+                : activeLink
+                  ? "Replace & Copy Link"
+                  : "Copy Link"}
           </button>
 
           <button

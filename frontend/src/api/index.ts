@@ -6,3 +6,4 @@ export * from "./presence";
 export * from "./storage";
 export * from "./auth";
 export * from "./assets";
+export * from "./shareToken";

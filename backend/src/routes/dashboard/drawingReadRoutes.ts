@@ -10,6 +10,7 @@ export const registerDrawingReadRoutes = (app: express.Express, context: Drawing
     asyncHandler,
     parseJsonField,
     getRequestPrincipal,
+    getShareToken,
     respondWithAuthErrorIfPresent,
   } = context;
   app.get(
@@ -23,9 +24,17 @@ export const registerDrawingReadRoutes = (app: express.Express, context: Drawing
         prisma,
         principal,
         drawingId: id,
+        shareToken: getShareToken(req),
       });
       if (!canViewDrawing(access)) {
         if (respondWithAuthErrorIfPresent(req, res)) return;
+        if (!principal) {
+          return res.status(403).json({
+            error: "Invalid share link",
+            code: "SHARE_LINK_INVALID",
+            message: "This share link is no longer valid. Ask the owner for a new link.",
+          });
+        }
         return res.status(404).json({
           error: "Drawing not found",
           message: "Drawing does not exist",

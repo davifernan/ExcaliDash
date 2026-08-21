@@ -5,6 +5,7 @@ import {
   canEditDrawing,
   canViewDrawing,
   getDrawingAccess,
+  parseShareLinkToken,
   type DrawingPrincipal,
 } from "../authz/sharing";
 import { createSocketAuthenticator } from "./socketAuth";
@@ -62,6 +63,7 @@ export const registerSocketHandlers = ({
   const connectedSockets = new Map<string, Socket>();
   const credentialChecks = new Map<string, Promise<boolean>>();
   const drawingBySocket = new Map<string, string>();
+  const shareTokenBySocket = new Map<string, string>();
   let followManager: ReturnType<typeof createSocketFollowManager>;
   const activeAccounts = new ActiveAccountCache(async (userId) => {
     const account = await prisma.user.findUnique({
@@ -84,6 +86,7 @@ export const registerSocketHandlers = ({
 
   const removeFromDrawing = async (socket: Socket, reason: string, leaveSocketRoom = true) => {
     const drawingId = drawingBySocket.get(socket.id);
+    shareTokenBySocket.delete(socket.id);
     if (!drawingId) return;
     followManager.clearSocket(socket.id, reason);
     drawingBySocket.delete(socket.id);
@@ -92,12 +95,13 @@ export const registerSocketHandlers = ({
     emitPresence(drawingId);
   };
 
-  const getAccess = (socketId: string, drawingId: string) =>
+  const getAccess = (socketId: string, drawingId: string, shareToken?: string | null) =>
     getDrawingAccess({
       prisma,
       principal: principals.get(socketId) || null,
       drawingId,
       isUserActive: (userId) => activeAccounts.get(userId),
+      shareToken: shareToken === undefined ? shareTokenBySocket.get(socketId) : shareToken,
     });
 
   const apiKeyHasScope = (socketId: string, scope: string) => {
@@ -193,6 +197,7 @@ export const registerSocketHandlers = ({
       }
       const payload = data as Record<string, unknown>;
       const drawingId = parseDrawingId(payload.drawingId);
+      const shareToken = parseShareLinkToken(payload.shareToken);
       if (!drawingId) {
         rejectJoin("invalid-request", "Invalid drawing id");
         return;
@@ -217,7 +222,7 @@ export const registerSocketHandlers = ({
           });
           return;
         }
-        const access = await getAccess(socket.id, drawingId);
+        const access = await getAccess(socket.id, drawingId, shareToken);
         if (!isCurrentJoin()) return;
         if (!canSocketView(socket.id, access)) {
           socket.emit("error", { message: "You do not have access to this drawing" });
@@ -282,6 +287,8 @@ export const registerSocketHandlers = ({
           isActive: true,
         };
         drawingBySocket.set(socket.id, drawingId);
+        if (shareToken) shareTokenBySocket.set(socket.id, shareToken);
+        else shareTokenBySocket.delete(socket.id);
         presences.join(drawingId, presence);
         emitPresence(drawingId);
         followManager.invalidateAccess(socket.id);
@@ -358,6 +365,7 @@ export const registerSocketHandlers = ({
       joinRevision += 1;
       connectedSockets.delete(socket.id);
       credentialChecks.delete(socket.id);
+      shareTokenBySocket.delete(socket.id);
       await removeFromDrawing(socket, "disconnected", false);
       principals.delete(socket.id);
     });

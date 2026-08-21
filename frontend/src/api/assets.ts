@@ -1,4 +1,5 @@
 import { API_URL, api } from "./client";
+import { addShareTokenToUrl } from "./shareToken";
 
 export type PdfAsset = {
   id: string;
@@ -49,7 +50,7 @@ export const getAssetUsage = async (): Promise<AssetUsage> => {
 const absoluteApiUrl = (path: string) => `${API_URL.replace(/\/$/, "")}${path}`;
 
 export const getPdfPageUrl = (drawingId: string, assetId: string, page: number) =>
-  absoluteApiUrl(`${assetPath(drawingId, assetId)}/pages/${page}`);
+  addShareTokenToUrl(absoluteApiUrl(`${assetPath(drawingId, assetId)}/pages/${page}`));
 
 export const getPdfOriginalUrl = (drawingId: string, assetId: string) =>
-  absoluteApiUrl(`${assetPath(drawingId, assetId)}/original`);
+  addShareTokenToUrl(absoluteApiUrl(`${assetPath(drawingId, assetId)}/original`));

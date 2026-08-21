@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
+import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 import { registerSocketHandlers } from "./socket";
 
 type Emission = {
@@ -135,12 +136,13 @@ describe("socket collaboration security and follow state", () => {
     });
   });
 
-  const join = async (socket: FakeSocket, drawingId = "drawing-1") => {
+  const join = async (socket: FakeSocket, drawingId = "drawing-1", shareToken?: string) => {
     let ack: any;
     await socket.trigger(
       "join-room",
       {
         drawingId,
+        shareToken,
         user: {
           id: "spoofed-account",
           socketId: "spoofed-socket",
@@ -347,5 +349,49 @@ describe("socket collaboration security and follow state", () => {
     expect(lastEmission("presence-update", room("drawing-2"))?.payload).toEqual([
       expect.objectContaining({ presenceId: "socket-target" }),
     ]);
+  });
+});
+
+describe("socket share-link secrets", () => {
+  const join = async (socket: FakeSocket, shareToken?: string) => {
+    let ack: any;
+    await socket.trigger(
+      "join-room",
+      { drawingId: "drawing-1", shareToken, user: { name: "Link Guest" } },
+      (payload: any) => {
+        ack = payload;
+      },
+    );
+    return ack;
+  };
+
+  it("rejects missing, wrong, and rotated tokens while accepting only the current token", async () => {
+    const io = new FakeIo();
+    const firstToken = buildShareLinkToken();
+    const secondToken = buildShareLinkToken();
+    let currentHash = hashShareLinkToken(firstToken);
+    const prisma = {
+      drawingLinkShare: {
+        findFirst: async () => ({ permission: "view", tokenHash: currentHash }),
+      },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+
+    expect((await join(await io.connect("missing")))?.error?.code).toBe("access-denied");
+    expect((await join(await io.connect("wrong"), "x".repeat(32)))?.error?.code).toBe(
+      "access-denied",
+    );
+    expect((await join(await io.connect("first"), firstToken))?.ok).toBe(true);
+
+    currentHash = hashShareLinkToken(secondToken);
+    expect((await join(await io.connect("rotated"), firstToken))?.error?.code).toBe(
+      "access-denied",
+    );
+    expect((await join(await io.connect("current"), secondToken))?.ok).toBe(true);
   });
 });

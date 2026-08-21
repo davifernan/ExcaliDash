@@ -14,6 +14,7 @@ const JOIN_RETRY_DELAY_MS = 250;
 export const bindSocketRoomLifecycle = ({
   socket,
   drawingId,
+  shareToken,
   user,
   resetConnectionState,
   onJoined,
@@ -21,6 +22,7 @@ export const bindSocketRoomLifecycle = ({
 }: {
   socket: Socket;
   drawingId: string;
+  shareToken: string | null;
   user: UserIdentity;
   resetConnectionState: () => void;
   onJoined: (presence: JoinedPresence) => void;
@@ -77,7 +79,7 @@ export const bindSocketRoomLifecycle = ({
       joiningSocketId = null;
       scheduleRetry(socketId);
     }, JOIN_ACK_TIMEOUT_MS);
-    socket.emit("join-room", { drawingId, user }, (payload: any) => {
+    socket.emit("join-room", { drawingId, shareToken, user }, (payload: any) => {
       if (settled || socket.id !== socketId) return;
       settled = true;
       clearTimer(ackTimer);

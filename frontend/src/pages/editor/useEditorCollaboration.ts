@@ -11,6 +11,7 @@ import { getShareLinkToken } from "../../api";
 import { bindSocketCollaborators } from "./socketCollaborators";
 import type { Peer } from "./socketCollaborators";
 import { bindRemoteSelection } from "./remoteSelection";
+import { bindInviteHere, type InviteHereStatus, type ViewportInvitation } from "./inviteHere";
 export type { Peer } from "./socketCollaborators";
 
 type UseEditorCollaborationInput = {
@@ -55,7 +56,10 @@ export const useEditorCollaboration = ({
   // and showing them a different one than everyone else sees is a small lie.
   const [selfIdentity, setSelfIdentity] = useState<UserIdentity | null>(null);
   const [followers, setFollowers] = useState<Follower[]>([]);
+  const [viewportInvitation, setViewportInvitation] = useState<ViewportInvitation | null>(null);
+  const [inviteHereStatus, setInviteHereStatus] = useState<InviteHereStatus | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const inviteHereRef = useRef<ReturnType<typeof bindInviteHere> | null>(null);
   const lastCursorEmit = useRef<number>(0);
   const selectionPublisherRef = useRef<((appState: any) => void) | null>(null);
   const isSyncing = useRef(false);
@@ -91,6 +95,14 @@ export const useEditorCollaboration = ({
       onPeersChange: setPeers,
     });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
+    const inviteHereController = bindInviteHere({
+      socket,
+      drawingId,
+      api: excalidrawAPI.current,
+      onInvitationChange: setViewportInvitation,
+      onStatusChange: setInviteHereStatus,
+    });
+    inviteHereRef.current = inviteHereController;
     selectionPublisherRef.current = remoteSelection.publish;
     socket.on("error", (payload: any) => {
       const message = typeof payload?.message === "string" ? payload.message : null;
@@ -113,6 +125,7 @@ export const useEditorCollaboration = ({
       unbindFollowMode.resetConnectionState();
       collaborators.reset();
       remoteSelection.reset();
+      inviteHereController.reset();
       setFollowers([]);
       pendingRemoteElementsRef.current.clear();
       pendingRemoteFilesRef.current = {};
@@ -271,6 +284,8 @@ export const useEditorCollaboration = ({
       unbindFollowMode();
       collaborators.dispose();
       remoteSelection.dispose();
+      inviteHereController.dispose();
+      if (inviteHereRef.current === inviteHereController) inviteHereRef.current = null;
       if (selectionPublisherRef.current === remoteSelection.publish) {
         selectionPublisherRef.current = null;
       }
@@ -316,6 +331,13 @@ export const useEditorCollaboration = ({
   const onSelectionChange = useCallback((appState: any) => {
     selectionPublisherRef.current?.(appState);
   }, []);
+  const inviteHere = {
+    invitation: viewportInvitation,
+    status: inviteHereStatus,
+    invite: () => inviteHereRef.current?.invite(),
+    accept: () => inviteHereRef.current?.accept(),
+    decline: () => inviteHereRef.current?.decline(),
+  };
 
   return {
     peers,
@@ -325,5 +347,6 @@ export const useEditorCollaboration = ({
     isSyncing,
     onPointerUpdate,
     onSelectionChange,
+    inviteHere,
   };
 };

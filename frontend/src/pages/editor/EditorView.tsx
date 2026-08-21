@@ -18,6 +18,7 @@ import { PdfWidget } from "./PdfWidget";
 import { getPdfWidgetAssetId, validateEmbeddableLink } from "./pdfWidgetElements";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
+import { EditorTopRight, type InviteHereUiState } from "./EditorTopRight";
 
 type EditorViewProps = {
   id?: string;
@@ -28,6 +29,7 @@ type EditorViewProps = {
   editorContainerRef: React.RefObject<HTMLDivElement>;
   followers: Follower[];
   initialData: any;
+  inviteHere: InviteHereUiState;
   isHeaderVisible: boolean;
   isRenaming: boolean;
   isSavingOnLeave: boolean;
@@ -91,6 +93,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   editorContainerRef,
   followers,
   initialData,
+  inviteHere,
   isHeaderVisible,
   isRenaming,
   isSavingOnLeave,
@@ -263,6 +266,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
             onPointerUpdate={onPointerUpdate}
             onLibraryChange={onLibraryChange}
             excalidrawAPI={onSetExcalidrawAPI}
+            renderTopRightUI={(isMobile) => (
+              <EditorTopRight canInvite={canEdit} isMobile={isMobile} inviteHere={inviteHere} />
+            )}
             UIOptions={UIOptions}
             viewModeEnabled={!canEdit}
             validateEmbeddable={validateEmbeddableLink}

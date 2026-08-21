@@ -107,6 +107,7 @@ export const Editor: React.FC = () => {
     isSyncing,
     onPointerUpdate,
     onSelectionChange,
+    inviteHere,
   } = useEditorCollaboration({
     drawingId: id,
     me,
@@ -352,6 +353,7 @@ export const Editor: React.FC = () => {
         editorContainerRef={editorContainerRef}
         followers={followers}
         initialData={initialData}
+        inviteHere={inviteHere}
         isHeaderVisible={isHeaderVisible}
         isRenaming={isRenaming}
         isSavingOnLeave={isSavingOnLeave}

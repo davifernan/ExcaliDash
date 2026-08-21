@@ -58,6 +58,26 @@ describe("preview image admission", () => {
 });
 
 describe.skipIf(!haveImageMagick)("preview images through real ImageMagick", () => {
+  // ImageMagick refuses at the limit rather than above it, so list-length 2
+  // admits exactly one image. Both of these are turned away by the decoder
+  // before any frame is counted; the frame count in parseImageIdentity is the
+  // second line of defence, not the first.
+  it.each([[2], [3]])("turns away a real animated image of %i frames", async (frames) => {
+    // The limit had to be raised from 1, because 1 rejected every single-image
+    // file as well. This proves the raise did not let animations through.
+    const dir = await mkdtemp(join(tmpdir(), "anim-"));
+    try {
+      const gif = join(dir, "anim.gif");
+      const colours = ["xc:red", "xc:blue", "xc:green"].slice(0, frames);
+      await run("convert", ["-delay", "10", "-size", "32x32", ...colours, gif]);
+      await expect(sanitizePreviewImage(await readFile(gif), limits)).rejects.toThrow(
+        /decoded safely/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("re-encodes to WebP and strips source metadata", async () => {
     const dir = await mkdtemp(join(tmpdir(), "link-image-test-"));
     try {

@@ -32,6 +32,9 @@ export type PreviewFetchResult = {
   headers: IncomingHttpHeaders;
 };
 
+/** Longest marker searched for, so a split across chunk boundaries is still seen. */
+const MARKER_OVERLAP = 10;
+
 export class PreviewFetchError extends Error {
   constructor(
     public readonly code: string,
@@ -124,6 +127,46 @@ export async function resolvePublicAddresses(
   return found;
 }
 
+/**
+ * The request options that pin a fetch to an address that has been checked.
+ *
+ * Everything here except how the socket is made is the same whether or not a
+ * connect override is supplied — deliberately, because the test suite can only
+ * observe the override branch while production always takes the other one. It
+ * lives in its own function so both can be read and compared directly.
+ *
+ * `hostname` is the checked address, never the name: that is what stops a
+ * second DNS answer from redirecting the connection somewhere else. `Host` and
+ * `servername` keep the original name so virtual hosts and TLS still work.
+ *
+ * `agent: false` builds a throwaway Agent, and an Agent connects for itself,
+ * which means it silently ignores createConnection. Without an override that
+ * is what we want, since it pools nothing; with one, the override has to be
+ * what actually dials.
+ */
+export function pinnedRequestOptions(
+  url: URL,
+  target: ResolvedAddress,
+  connect?: (options: TcpNetConnectOpts) => Duplex,
+) {
+  return {
+    protocol: url.protocol,
+    hostname: target.address,
+    family: target.family,
+    port: url.port || undefined,
+    path: `${url.pathname}${url.search}`,
+    method: "GET" as const,
+    ...(connect ? { createConnection: connect } : { agent: false as const }),
+    servername: url.hostname.replace(/^\[|\]$/g, ""),
+    headers: {
+      Host: url.host,
+      Accept: "text/html, image/avif, image/webp, image/png, image/jpeg;q=0.9, */*;q=0.1",
+      "Accept-Encoding": "br, gzip, deflate",
+      "User-Agent": "ExcaliDash-LinkPreview/1.0",
+    },
+  };
+}
+
 function openPinnedRequest(
   url: URL,
   target: ResolvedAddress,
@@ -133,28 +176,7 @@ function openPinnedRequest(
 ): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     const transport = url.protocol === "https:" ? https : http;
-    const request = transport.request({
-      protocol: url.protocol,
-      hostname: target.address,
-      family: target.family,
-      port: url.port || undefined,
-      path: `${url.pathname}${url.search}`,
-      method: "GET",
-      // `agent: false` makes Node build a throwaway Agent, and an Agent does
-      // its own connecting — which means it silently ignores createConnection.
-      // Without a connect override that is what we want (no pooled sockets);
-      // with one, the override has to be the thing that actually dials, or the
-      // test that proves we connect to the checked address proves nothing.
-      ...(connect ? { createConnection: connect } : { agent: false as const }),
-      signal,
-      servername: url.hostname.replace(/^\[|\]$/g, ""),
-      headers: {
-        Host: url.host,
-        Accept: "text/html, image/avif, image/webp, image/png, image/jpeg;q=0.9, */*;q=0.1",
-        "Accept-Encoding": "br, gzip, deflate",
-        "User-Agent": "ExcaliDash-LinkPreview/1.0",
-      },
-    });
+    const request = transport.request({ ...pinnedRequestOptions(url, target, connect), signal });
     const connectTimer = setTimeout(
       () => request.destroy(timeoutError("connection")),
       connectTimeoutMs,
@@ -243,6 +265,8 @@ async function readBounded(
     throw error;
   }
   const chunks: Buffer[] = [];
+  let scanned = "";
+  const bodyPattern = /<(?:body|frameset)\b/g;
   let decodedBytes = 0;
   try {
     for await (const value of stream) {
@@ -256,11 +280,20 @@ async function readBounded(
       }
       chunks.push(chunk);
       if (stopAfterHead) {
-        const body = Buffer.concat(chunks);
-        const lower = body.toString("latin1").toLowerCase();
-        const headEnd = lower.indexOf("</head");
-        const bodyStart = lower.search(/<(?:body|frameset)\b/);
+        // Only the newly arrived text is decoded and searched. Rebuilding the
+        // whole buffer per chunk made the work quadratic in the number of
+        // chunks: a server that dribbles out half a megabyte one byte at a time
+        // would have this copying gigabytes. latin1 is one byte per character,
+        // so appending chunk by chunk is exact regardless of where they split.
+        const seenBefore = scanned.length;
+        scanned += chunk.toString("latin1").toLowerCase();
+        // Back up far enough that a marker split across two chunks is still found.
+        const from = Math.max(0, seenBefore - MARKER_OVERLAP);
+        const headEnd = scanned.indexOf("</head", from);
+        bodyPattern.lastIndex = from;
+        const bodyStart = bodyPattern.exec(scanned)?.index ?? -1;
         if (headEnd >= 0 || bodyStart >= 0) {
+          const body = Buffer.concat(chunks);
           if (bodyStart >= 0 && (headEnd < 0 || bodyStart < headEnd)) {
             return body.subarray(0, bodyStart);
           }

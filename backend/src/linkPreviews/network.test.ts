@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   fetchPreviewResource,
   isPublicAddress,
+  pinnedRequestOptions,
   PreviewFetchError,
   resolvePublicAddresses,
   type PreviewNetworkLimits,
@@ -65,6 +66,55 @@ const connectTestServer = (port: number) => (options: any) => {
   return netConnect({ host: "127.0.0.1", port });
 };
 
+describe("what a pinned request is actually addressed to", () => {
+  const target = { address: "93.184.216.34", family: 4 as const };
+
+  // Production never passes a connect override, so every socket test runs down
+  // the other branch. Without this, `hostname: connect ? target.address :
+  // url.hostname` would leave the whole suite green while production went back
+  // to dialling the name — and dialling the name is what a second DNS answer
+  // needs to reach somewhere private.
+  it.each([
+    ["as production calls it", undefined],
+    ["as the tests call it", () => ({}) as any],
+  ])("uses the checked address and keeps the name only in the headers, %s", (_name, connect) => {
+    const options = pinnedRequestOptions(
+      new URL("https://rebind.example/page?x=1"),
+      target,
+      connect,
+    );
+    expect(options.hostname).toBe("93.184.216.34");
+    expect(options.headers.Host).toBe("rebind.example");
+    expect(options.servername).toBe("rebind.example");
+    expect(options.path).toBe("/page?x=1");
+  });
+
+  it("differs between the two branches only in how the socket is made", () => {
+    const production: any = pinnedRequestOptions(new URL("http://a.example/"), target);
+    const underTest: any = pinnedRequestOptions(
+      new URL("http://a.example/"),
+      target,
+      () => ({}) as any,
+    );
+    expect(production.agent).toBe(false);
+    expect(production.createConnection).toBeUndefined();
+    expect(underTest.agent).toBeUndefined();
+    expect(typeof underTest.createConnection).toBe("function");
+
+    const strip = ({ agent: _a, createConnection: _c, ...rest }: any) => rest;
+    expect(strip(production)).toEqual(strip(underTest));
+  });
+
+  it("strips the brackets from a literal IPv6 host for SNI", () => {
+    const options = pinnedRequestOptions(new URL("https://[2606:2800:220:1::1]/"), {
+      address: "2606:2800:220:1::1",
+      family: 6,
+    });
+    expect(options.servername).toBe("2606:2800:220:1::1");
+    expect(options.headers.Host).toBe("[2606:2800:220:1::1]");
+  });
+});
+
 describe("SSRF address policy", () => {
   it.each([
     "127.0.0.1",
@@ -77,6 +127,24 @@ describe("SSRF address policy", () => {
     "fe80::1",
     "fc00::1234",
     "fd12:3456::1",
+    // Ranges the policy blocks that nothing was watching. Each of these came
+    // back reachable when its entry was removed, and every existing test
+    // stayed green.
+    "0.0.0.1",
+    "100.64.0.1",
+    "198.18.0.1",
+    "192.0.0.1",
+    "192.0.2.1",
+    "198.51.100.1",
+    "203.0.113.1",
+    "224.0.0.1",
+    "240.0.0.1",
+    "2002:7f00:1::",
+    "2001:db8::1",
+    "2001:2::1",
+    "2001:10::1",
+    "2001::1",
+    "ff02::1",
   ])("rejects local address %s", (address) => {
     expect(isPublicAddress(address)).toBe(false);
   });
@@ -347,6 +415,33 @@ describe("bounded pinned fetching", () => {
         ).rejects.toMatchObject({ code: "TIMEOUT" });
       },
     );
+  });
+
+  it("refuses a redirect onto a port the first request was not allowed to use", async () => {
+    // The port check has to sit inside the redirect loop. Checked once before
+    // it, the opening address passes and the destination is never looked at,
+    // which turns the preview service back into a port scanner.
+    let requests = 0;
+    await withHttpServer(
+      (_request, response) => {
+        requests += 1;
+        response.statusCode = 302;
+        response.setHeader("Location", "http://93.184.216.34:22/secret");
+        response.end();
+      },
+      async (port) => {
+        await expect(
+          fetchPreviewResource(
+            `http://public.test:${port}/start`,
+            "html",
+            { ...limits, allowedPorts: [port] },
+            { lookup: publicLookup, connect: connectTestServer(port) },
+          ),
+        ).rejects.toMatchObject({ code: "PORT_BLOCKED" });
+      },
+    );
+    // The first hop happened; the second was refused before anything was dialled.
+    expect(requests).toBe(1);
   });
 
   it("refuses arbitrary public ports before DNS or connection", async () => {

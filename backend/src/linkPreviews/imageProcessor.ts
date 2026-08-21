@@ -47,8 +47,8 @@ export function imageMagickResourceArgs(limits: ImageLimits): string[] {
     // ImageMagick refuses at the limit rather than above it, so 1 rejects even
     // a single-image file: every preview image failed to re-encode, and the
     // catch below reported it as an unsafe image. 2 permits exactly one image,
-    // which is all a preview ever needs. Animated files are turned away before
-    // this by the frame count identify reports.
+    // which is all a preview ever needs — an animation is refused here, before
+    // a frame is decoded, and the frame count below never has to see it.
     "list-length",
     "2",
     "-limit",
@@ -124,12 +124,18 @@ export async function sanitizePreviewImage(bytes: Buffer, limits: ImageLimits): 
   const resourceArgs = imageMagickResourceArgs(limits);
   try {
     await writeFile(input, bytes, { mode: 0o600 });
+    // One deadline for the whole job, not one per program. Handing the same
+    // limit to identify and then again to convert makes a ten-second setting
+    // mean twenty seconds of work.
+    const deadline = Date.now() + limits.timeoutMs;
+    const remaining = () => Math.max(1, deadline - Date.now());
+
     let identity: string;
     try {
       ({ stdout: identity } = await run(
         "identify",
         [...resourceArgs, "-ping", "-format", "%m %w %h\n", input],
-        { timeout: limits.timeoutMs, maxBuffer: 64 * 1024 },
+        { timeout: remaining(), maxBuffer: 64 * 1024 },
       ));
     } catch {
       throw new PreviewImageError("The image could not be decoded safely.");
@@ -150,7 +156,7 @@ export async function sanitizePreviewImage(bytes: Buffer, limits: ImageLimits): 
           "82",
           output,
         ],
-        { timeout: limits.timeoutMs, maxBuffer: 64 * 1024 },
+        { timeout: remaining(), maxBuffer: 64 * 1024 },
       );
     } catch {
       throw new PreviewImageError("The image could not be re-encoded safely.");

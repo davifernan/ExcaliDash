@@ -115,10 +115,34 @@ describe("link preview caching and admission", () => {
     // so it should have to be made here as well.
     expect(observed.every(({ delay }) => delay >= 1_500)).toBe(true);
     expect(FAILURE_FLOOR_MS).toBeGreaterThanOrEqual(1_500);
-    expect(observed[0].delay).toBe(observed[1].delay);
+    // Alike, not identical: both waits are computed from the clock, so they
+    // differ by a millisecond now and then. Demanding equality made this test
+    // fail roughly one run in three.
+    expect(Math.abs(observed[0].delay - observed[1].delay)).toBeLessThanOrEqual(50);
     expect(warnings.join("\n")).toContain("SSRF_BLOCKED");
     expect(warnings.join("\n")).toContain("NETWORK_ERROR");
   });
+
+  it("really waits, rather than reporting a wait it never took", async () => {
+    // Every other test here hands in a delay function that resolves at once and
+    // then inspects the number it was given. Replacing the production wait with
+    // `() => Promise.resolve()` leaves all of those green while the service
+    // answers instantly and the timing difference is back.
+    const getPreview = createLinkPreviewService({
+      prisma: fakePreviewPrisma(),
+      storageDir: "/unused",
+      config,
+      fetchResource: vi.fn().mockRejectedValue(new PreviewFetchError("SSRF_BLOCKED", "private")),
+      logger: { warn: () => {} },
+    });
+
+    const startedAt = Date.now();
+    const result = await getPreview("user-slow", "https://slow.example.test");
+    const elapsed = Date.now() - startedAt;
+
+    expect(result.failureCode).toBe("UNAVAILABLE");
+    expect(elapsed).toBeGreaterThanOrEqual(1_500);
+  }, 10_000);
 
   it("coalesces concurrent requests for the same address", async () => {
     const prisma = fakePreviewPrisma();

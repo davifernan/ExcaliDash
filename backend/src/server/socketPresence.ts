@@ -117,6 +117,7 @@ const GUEST_NAMES = [
   "Hook",
   "Vortex",
   "Swindle",
+  "Hans-Friedrich",
 ] as const;
 
 export const deriveGuestName = (seed: string): string =>

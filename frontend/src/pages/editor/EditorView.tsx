@@ -265,6 +265,11 @@ export const EditorView: React.FC<EditorViewProps> = ({
             excalidrawAPI={onSetExcalidrawAPI}
             UIOptions={UIOptions}
             viewModeEnabled={!canEdit}
+            // Excalidraw hides its own laser pointer until it believes a session
+            // is live. The pointer payload already carries `tool: "laser"` end to
+            // end, so the only thing missing was this admission that someone else
+            // is here. Alone on a board a laser points at nobody, hence peers.
+            isCollaborating={peers.length > 0}
             validateEmbeddable={validateEmbeddableLink}
             renderEmbeddable={(element, appState) => {
               const assetId = getPdfWidgetAssetId(element);

@@ -17,11 +17,14 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import {
   AssetTooLargeError,
+  inspectStoredFile,
   originalKey,
   removeStored,
+  resolveStoragePath,
   shouldCompress,
   storeStream,
 } from "./assetStorage";
+import type { StoredFile } from "./assetStorage";
 
 export type AssetKind = "PDF" | "MARKDOWN" | "TEXT";
 
@@ -96,6 +99,13 @@ export type CreateAssetInput = {
   originalName: string;
   mimeType: string;
   source: Readable;
+  /**
+   * Optionally rebuild the provisional bytes before content-addressed
+   * deduplication. Metadata is always re-derived by this service afterwards.
+   */
+  prepareStored?: (
+    stored: Readonly<StoredFile & { path: string }>,
+  ) => Promise<{ note: string | null }>;
 };
 
 /**
@@ -122,13 +132,29 @@ async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
   // provisional id. If those exact bytes turn out to be on disk already, the
   // provisional copy is thrown away and the existing one reused.
   const provisionalId = randomUUID();
-  const stored = await storeStream(
+  let stored = await storeStream(
     deps.storageDir,
     originalKey(provisionalId),
     input.source,
     Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
     { compress: shouldCompress(input.mimeType) },
   );
+
+  let preparation: { note: string | null } | undefined;
+  if (input.prepareStored) {
+    try {
+      preparation = await input.prepareStored({
+        ...stored,
+        path: resolveStoragePath(deps.storageDir, stored.storageKey),
+      });
+      // Preparation is allowed to replace the file. Never trust its reported
+      // size or the pre-preparation hash for content-addressed deduplication.
+      stored = await inspectStoredFile(deps.storageDir, stored);
+    } catch (error) {
+      await removeStored(deps.storageDir, stored.storageKey);
+      throw error;
+    }
+  }
 
   let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
   if (blob) {
@@ -184,7 +210,13 @@ async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
     },
   });
 
-  return { asset, blob, sizeBytes: stored.sizeBytes, storedBytes: stored.storedBytes };
+  return {
+    asset,
+    blob,
+    sizeBytes: stored.sizeBytes,
+    storedBytes: stored.storedBytes,
+    note: preparation?.note ?? null,
+  };
 }
 
 /**

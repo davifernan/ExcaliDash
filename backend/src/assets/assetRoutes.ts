@@ -19,6 +19,7 @@ import {
   shareLinkTokenFromRequest,
 } from "../authz/sharing";
 import { resolveStoragePath } from "./assetStorage";
+import type { StoredFile } from "./assetStorage";
 import { AssetTooLargeError, QuotaExceededError, createAsset, usedBytesFor } from "./assetService";
 import { PdfRejectedError } from "./pdfRenderer";
 import { QueueAbortedError, QueueCapacityError } from "./pageCache";
@@ -50,7 +51,9 @@ export type AssetRouteDeps = {
    * Rebuilds the stored file smaller where that helps, and reports what
    * changed so the stored size stays honest.
    */
-  optimizeUpload?: (asset: any) => Promise<{ finalBytes: number; note: string | null }>;
+  optimizeUpload?: (
+    stored: Readonly<StoredFile & { path: string }>,
+  ) => Promise<{ note: string | null }>;
 };
 
 const principalOf = (req: Request) =>
@@ -168,25 +171,12 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
             originalName: name,
             mimeType: "application/pdf",
             source: req,
+            prepareStored: deps.optimizeUpload,
           },
         );
 
         let pageCount: number | null = null;
-        let note: string | null = null;
         try {
-          if (deps.optimizeUpload) {
-            const optimized = await deps.optimizeUpload({ ...created.asset, blob: created.blob });
-            note = optimized.note;
-            if (optimized.finalBytes !== created.blob.storedBytes) {
-              // The bytes on disk changed, so what the quota counts has to
-              // change with them.
-              await deps.prisma.storedBlob.update({
-                where: { id: created.blob.id },
-                data: { sizeBytes: optimized.finalBytes, storedBytes: optimized.finalBytes },
-              });
-            }
-          }
-
           // The created row does not carry its blob, and describeUpload needs
           // to find the bytes on disk.
           ({ pageCount } = await deps.describeUpload({ ...created.asset, blob: created.blob }));
@@ -216,7 +206,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
           name: created.asset.originalName,
           sizeBytes: created.sizeBytes,
           pageCount,
-          note,
+          note: created.note,
         });
       } catch (err) {
         if (err instanceof AssetTooLargeError) {

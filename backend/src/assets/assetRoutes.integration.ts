@@ -7,7 +7,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -15,6 +16,8 @@ import type { PrismaClient } from "../generated/client";
 import { getTestPrisma, setupTestDb, cleanupTestDb, createTestUser } from "../__tests__/testUtils";
 import { createAsset } from "./assetService";
 import { contentDisposition, registerAssetRoutes } from "./assetRoutes";
+import type { AssetRouteDeps } from "./assetRoutes";
+import { resolveStoragePath } from "./assetStorage";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 
 describe("document routes", () => {
@@ -27,6 +30,7 @@ describe("document routes", () => {
   let drawingId: string;
   let assetId: string;
   let actAs: string | null;
+  let optimizeUpload: AssetRouteDeps["optimizeUpload"];
 
   const asyncHandler = (fn: any) => (req: any, res: any, next: any) =>
     Promise.resolve(fn(req, res, next)).catch(next);
@@ -61,6 +65,7 @@ describe("document routes", () => {
       data: { name: "Board", elements: "[]", appState: "{}", userId: owner.id },
     });
     drawingId = drawing.id;
+    optimizeUpload = undefined;
 
     const created = await createAsset(
       { prisma, storageDir, maxUploadBytes: 1_000_000, maxPerUserBytes: 10_000_000 },
@@ -110,6 +115,7 @@ describe("document routes", () => {
         }
         return { pageCount: 7 };
       },
+      optimizeUpload: async (stored) => (optimizeUpload ? optimizeUpload(stored) : { note: null }),
     });
   });
 
@@ -254,6 +260,29 @@ describe("document routes", () => {
       const res = await upload(Buffer.from("%PDF-1.4 more")).expect(201);
       expect(res.body.pageCount).toBe(7);
       expect(res.body.name).toBe("neu.pdf");
+    });
+
+    it("stores the optimized hash and bytes returned by the upload pipeline", async () => {
+      const original = Buffer.from("%PDF-1.4 original payload with removable bytes");
+      const optimized = Buffer.from("%PDF-1.4 optimized");
+      optimizeUpload = async ({ path }) => {
+        await writeFile(path, optimized);
+        return { note: "smaller" };
+      };
+
+      const res = await upload(original).expect(201);
+      const asset = await prisma.asset.findUnique({
+        where: { id: res.body.id },
+        include: { blob: true },
+      });
+
+      expect(res.body.sizeBytes).toBe(optimized.length);
+      expect(res.body.note).toBe("smaller");
+      expect(asset?.blob.sha256).toBe(createHash("sha256").update(optimized).digest("hex"));
+      expect(asset?.blob.sizeBytes).toBe(optimized.length);
+      expect(await readFile(resolveStoragePath(storageDir, asset!.blob.storageKey))).toEqual(
+        optimized,
+      );
     });
 
     it("refuses anything that is not a PDF", async () => {

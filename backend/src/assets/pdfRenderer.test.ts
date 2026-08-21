@@ -9,6 +9,7 @@ import {
   PdfRejectedError,
   inspectPdf,
   parsePdfInfo,
+  parsePdfPageBox,
   renderPage,
   withWhiteBackground,
 } from "./pdfRenderer";
@@ -33,6 +34,9 @@ const havePoppler = await run("pdfinfo", ["-v"])
   .then(() => true)
   .catch(() => false);
 const haveWeasy = await run("weasyprint", ["--version"])
+  .then(() => true)
+  .catch(() => false);
+const haveGhostscript = await run("gs", ["--version"])
   .then(() => true)
   .catch(() => false);
 
@@ -62,6 +66,21 @@ describe("reading pdfinfo output", () => {
     const info = parsePdfInfo("Pages:          1\n");
     expect(info.pageCount).toBe(1);
     expect(info.maxPageWidth).toBe(0);
+  });
+});
+
+describe("reading a specific page box", () => {
+  it("uses the requested MediaBox rather than the first page size", () => {
+    expect(
+      parsePdfPageBox(
+        "Pages: 2\nPage    2 size: 20000 x 18000 pts\nPage    2 MediaBox: -10 20 19990 18020\n",
+        2,
+      ),
+    ).toEqual({ width: 20_000, height: 18_000 });
+  });
+
+  it("refuses output without a trustworthy MediaBox", () => {
+    expect(() => parsePdfPageBox("Page    2 size: unknown\n", 2)).toThrow(PdfRejectedError);
   });
 });
 
@@ -182,6 +201,38 @@ describe.skipIf(!havePoppler || !haveWeasy)("against real documents", () => {
       await renderPage(pdf, 99).catch(() => {});
       const after = (await readdir(tmpdir())).filter((n) => n.startsWith("pdfpage-")).length;
       expect(after).toBe(before);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(!havePoppler || !haveGhostscript)("against differently sized PDF pages", () => {
+  it("rejects an oversized later page before invoking a page renderer", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pdf-varied-"));
+    try {
+      const postscript = join(dir, "varied.ps");
+      const pdf = join(dir, "varied.pdf");
+      await writeFile(
+        postscript,
+        "%!PS\n<< /PageSize [612 792] >> setpagedevice\nshowpage\n" +
+          "<< /PageSize [1200 1200] >> setpagedevice\nshowpage\n",
+      );
+      await run("gs", [
+        "-q",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-sDEVICE=pdfwrite",
+        `-sOutputFile=${pdf}`,
+        postscript,
+      ]);
+
+      await expect(
+        inspectPdf(pdf, { ...DEFAULT_LIMITS, maxPagePoints: 1_000 }),
+      ).resolves.toMatchObject({ pageCount: 2 });
+      await expect(renderPage(pdf, 2, { ...DEFAULT_LIMITS, maxPagePoints: 1_000 })).rejects.toThrow(
+        /Page 2 is far larger/,
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

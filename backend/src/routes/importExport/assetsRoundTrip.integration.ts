@@ -2,10 +2,13 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PassThrough, Readable } from "node:stream";
+import express from "express";
 import JSZip from "jszip";
+import request from "supertest";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PrismaClient } from "../../generated/client";
 import { createAsset } from "../../assets/assetService";
+import { registerAssetRoutes } from "../../assets/assetRoutes";
 import { resolveStoragePath } from "../../assets/assetStorage";
 import { createSqliteBackup } from "../../backups/scheduler";
 import { createTestUser, getTestPrisma, setupTestDb } from "../../__tests__/testUtils";
@@ -123,24 +126,50 @@ describe("document backup and export round trip", () => {
     return Buffer.concat(chunks);
   };
 
-  it("restores a board, its original, and current plus snapshot asset links", async () => {
+  it("imports its own export after upload optimization changes the PDF hash", async () => {
     const user = await createTestUser(prisma, "roundtrip@example.com");
     const drawing = await prisma.drawing.create({
       data: { name: "PDF board", elements: "[]", appState: "{}", userId: user.id },
     });
-    const pdf = Buffer.from("%PDF-1.4\nExcaliDash integration document\n%%EOF\n");
-    const created = await createAsset(
-      { prisma, storageDir: assetStorageDir, maxUploadBytes: MIB, maxPerUserBytes: 5 * MIB },
-      {
-        ownerUserId: user.id,
-        uploadedByUserId: user.id,
-        drawingId: drawing.id,
-        kind: "PDF",
-        originalName: "proof.pdf",
-        mimeType: "application/pdf",
-        source: Readable.from([pdf]),
+    const uploadedPdf = Buffer.from(`%PDF-1.4\n${"redundant upload bytes\n".repeat(20)}%%EOF\n`);
+    const optimizedPdf = Buffer.from("%PDF-1.4\noptimized integration document\n%%EOF\n");
+    const uploadApp = express();
+    const asyncHandler = (handler: any) => (req: any, res: any, next: any) =>
+      Promise.resolve(handler(req, res, next)).catch(next);
+    const auth = (req: any, _res: any, next: any) => {
+      req.user = { id: user.id };
+      next();
+    };
+    registerAssetRoutes({
+      app: uploadApp,
+      prisma,
+      requireAuth: auth,
+      optionalAuth: auth,
+      asyncHandler,
+      storageDir: assetStorageDir,
+      maxUploadBytes: MIB,
+      maxPerUserBytes: 5 * MIB,
+      getPage: async () => {
+        throw new Error("not used");
       },
-    );
+      describeUpload: async () => ({ pageCount: 1 }),
+      optimizeUpload: async ({ path }) => {
+        await fs.writeFile(path, optimizedPdf);
+        return { note: "optimized" };
+      },
+    });
+    const uploadResponse = await request(uploadApp)
+      .post(`/drawings/${drawing.id}/assets?name=proof.pdf`)
+      .set("Content-Type", "application/pdf")
+      .send(uploadedPdf)
+      .expect(201);
+    expect(uploadResponse.body.sizeBytes).toBeLessThan(uploadedPdf.length);
+    const uploadedAsset = await prisma.asset.findUnique({
+      where: { id: uploadResponse.body.id },
+      include: { blob: true },
+    });
+    expect(uploadedAsset).toBeTruthy();
+    const created = { asset: uploadedAsset!, blob: uploadedAsset!.blob };
     const elements = [
       {
         id: "pdf-widget",
@@ -176,7 +205,9 @@ describe("document backup and export round trip", () => {
     );
     expect(manifest.formatVersion).toBe(2);
     expect(manifest.blobs[0].sha256).toBe(created.blob.sha256);
-    expect(await parsedArchive.file(manifest.blobs[0].filePath)!.async("nodebuffer")).toEqual(pdf);
+    expect(await parsedArchive.file(manifest.blobs[0].filePath)!.async("nodebuffer")).toEqual(
+      optimizedPdf,
+    );
 
     await prisma.drawing.delete({ where: { id: drawing.id } });
     await prisma.asset.delete({ where: { id: created.asset.id } });
@@ -211,7 +242,7 @@ describe("document backup and export round trip", () => {
     const restoredBytes = await fs.readFile(
       resolveStoragePath(assetStorageDir, restoredAsset!.blob.storageKey),
     );
-    expect(restoredBytes).toEqual(pdf);
+    expect(restoredBytes).toEqual(optimizedPdf);
   });
 
   it("scheduled backup stores SQLite and originals but excludes the render cache", async () => {

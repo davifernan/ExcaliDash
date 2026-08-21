@@ -182,6 +182,34 @@ describe("rendering a page once", () => {
     await Promise.all([first, replacement]);
     expect(render).not.toHaveBeenCalledWith(expect.anything(), 11);
   });
+
+  it("passes cancellation into an active renderer when its last reader disconnects", async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const render = vi.fn(
+      async (_path: string, _page: number, _limits: unknown, signal?: AbortSignal) => {
+        entered();
+        if (!signal) throw new Error("renderer did not receive its abort signal");
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new QueueAbortedError()), { once: true });
+        });
+        throw new Error("unreachable");
+      },
+    );
+    const controller = new AbortController();
+    const rendering = getPage(
+      deps({ render }),
+      { id: "abort-rendering", blob: { storageKey: "originals/rendering" } },
+      13,
+      controller.signal,
+    );
+
+    await started;
+    controller.abort();
+
+    await expect(rendering).rejects.toBeInstanceOf(QueueAbortedError);
+    expect(render.mock.calls[0][3]?.aborted).toBe(true);
+  });
 });
 
 describe("not filling the disk", () => {

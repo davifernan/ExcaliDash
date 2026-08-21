@@ -344,9 +344,15 @@ export const registerSocketHandlers = ({
       ) {
         return;
       }
-      if (presences.setActive(drawingId, socket.id, payload.isActive)) {
-        emitPresence(drawingId);
-      }
+      presences.setActive(drawingId, socket.id, payload.isActive);
+      // Emitted on every ping, including the ones that change nothing.
+      // Suppressing the redundant ones looks free and is not: each presence
+      // update is a scene update on the receiving side, and the sticky note
+      // upkeep rides on those change events to settle its font size. Without
+      // them a note that outgrew its paper stays outgrown for a second or two
+      // instead of a frame. That dependency deserves fixing in the note code
+      // rather than working around here -- until it is, the noise stays.
+      emitPresence(drawingId);
     });
 
     socket.on("leave-room", async (data: unknown) => {

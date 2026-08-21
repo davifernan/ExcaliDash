@@ -14,6 +14,8 @@ type CoreRoomEventDeps = {
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
   setActive: (drawingId: string, presenceId: string, isActive: boolean) => boolean;
   emitPresence: (drawingId: string) => void;
+  /** Shared, keyed budget for activity pings; see registerAuthorizedRoomEvent. */
+  allowActivity: () => boolean;
 };
 
 type ActivityPayload = RoomEventPayload & { isActive: boolean };
@@ -35,6 +37,7 @@ export const registerCoreRoomEvents = ({
   requireAccess,
   setActive,
   emitPresence,
+  allowActivity,
 }: CoreRoomEventDeps): void => {
   registerAuthorizedRoomEvent({
     socket,
@@ -79,6 +82,7 @@ export const registerCoreRoomEvents = ({
     event: "user-activity",
     limit: 20,
     windowMs: 10_000,
+    allow: allowActivity,
     parse: parseActivityPayload,
     requireAccess,
     handle: (payload) => {

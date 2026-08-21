@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import jwt from "jsonwebtoken";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 import { registerSocketHandlers } from "./socket";
@@ -289,5 +290,120 @@ describe("socket share-link secrets", () => {
       "access-denied",
     );
     expect((await join(await io.connect("current"), secondToken))?.ok).toBe(true);
+  });
+});
+
+describe("who the server decides someone is", () => {
+  const joinAs = async (socket: FakeSocket, shareToken?: string) => {
+    let ack: any;
+    await socket.trigger(
+      "join-room",
+      { drawingId: "drawing-1", shareToken, user: { name: "Local User", color: "#123456" } },
+      (payload: any) => {
+        ack = payload;
+      },
+    );
+    return ack;
+  };
+
+  it("presents a signed-in account with link-only access as a guest", async () => {
+    // Holding an account is not the same as belonging to this board. Someone
+    // who only got here through a link is a visitor, and showing their real
+    // name to the room would say otherwise.
+    const io = new FakeIo();
+    const token = buildShareLinkToken();
+    const prisma = {
+      drawing: {
+        findUnique: async () => ({ userId: "owner-account-id", collectionId: null }),
+        findMany: async () => [{ id: "drawing-1", userId: "owner-account-id", collectionId: null }],
+      },
+      drawingLinkShare: {
+        findFirst: async () => ({ permission: "view", tokenHash: hashShareLinkToken(token) }),
+      },
+      user: {
+        findUnique: async () => ({ id: "link-account-id", isActive: true, name: "Account Name" }),
+      },
+      collection: { findFirst: async () => null, findMany: async () => [] },
+      collectionShare: { findFirst: async () => null, findMany: async () => [] },
+      drawingPermission: { findUnique: async () => null, findMany: async () => [] },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+    const accountToken = jwt.sign(
+      { userId: "link-account-id", email: "link@example.test", type: "access" },
+      "test-secret",
+    );
+    const socket = await io.connect("socket-link-account", { token: accountToken });
+
+    const ack = await joinAs(socket, token);
+
+    expect(ack).toMatchObject({ ok: true, presence: { kind: "guest" } });
+    expect(ack.presence.name).not.toBe("Account Name");
+  });
+
+  it("shares one activity budget across one account's simultaneous sockets", async () => {
+    // A per-connection budget resets on reconnect, and reconnecting is free.
+    const io = new FakeIo();
+    const prisma = {
+      drawing: {
+        findUnique: vi.fn().mockResolvedValue({ userId: "account-1", collectionId: null }),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: "drawing-1", userId: "account-1", collectionId: null }]),
+      },
+      drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "account-1",
+          isActive: true,
+          name: "Account One",
+        }),
+      },
+      collection: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      collectionShare: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      drawingPermission: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+    const token = jwt.sign(
+      { userId: "account-1", email: "one@example.test", type: "access" },
+      "test-secret",
+    );
+    const first = await io.connect("socket-first", { token });
+    const second = await io.connect("socket-second", { token });
+    for (const socket of [first, second]) {
+      await socket.trigger("join-room", { drawingId: "drawing-1", user: {} });
+    }
+    io.emissions.length = 0;
+
+    // The state has to actually flip each time. A ping that repeats what the
+    // room already knows costs budget and emits nothing, so a test that sends
+    // "still active" eleven times measures nothing at all. Joining already left
+    // both sockets active, so the first flip has to be to inactive.
+    for (let index = 0; index < 11; index += 1) {
+      const isActive = index % 2 !== 0;
+      await first.trigger("user-activity", { drawingId: "drawing-1", isActive });
+      await second.trigger("user-activity", { drawingId: "drawing-1", isActive });
+    }
+
+    // Twenty-two pings, one budget of twenty between the two connections.
+    expect(io.emissions.filter((item) => item.event === "presence-update")).toHaveLength(20);
   });
 });

@@ -4,9 +4,12 @@ export type Emission = {
   event: string;
   payload: any;
   volatile: boolean;
+  excluded?: string[];
 };
 
 class FakeOperator {
+  private excluded: string[] = [];
+
   constructor(
     private emissions: Emission[],
     private senderId: string,
@@ -18,6 +21,12 @@ class FakeOperator {
     return new FakeOperator(this.emissions, this.senderId, this.scope, true);
   }
 
+  /** Socket.IO's own exclusion; recorded so a test can assert who was left out. */
+  except(ids: string[]) {
+    this.excluded = ids;
+    return this;
+  }
+
   emit(event: string, payload: any) {
     this.emissions.push({
       senderId: this.senderId,
@@ -25,12 +34,23 @@ class FakeOperator {
       event,
       payload,
       volatile: this.isVolatile,
+      // Only when there is something to say: an always-present field would
+      // break every existing deep-equality assertion over an emission.
+      ...(this.excluded.length ? { excluded: this.excluded } : {}),
     });
   }
 }
 
 export class FakeSocket {
-  readonly handshake = { auth: {}, headers: {} };
+  readonly handshake: {
+    auth: Record<string, unknown>;
+    headers: Record<string, unknown>;
+    address: string;
+  } = {
+    auth: {},
+    headers: {},
+    address: "127.0.0.1",
+  };
   readonly rooms: Set<string>;
   private handlers = new Map<string, (...args: any[]) => any>();
 
@@ -87,8 +107,15 @@ export class FakeIo {
     return new FakeOperator(this.emissions, "io", scope);
   }
 
-  async connect(id: string) {
+  /**
+   * `auth` is what a real client passes in the handshake. Without it a test
+   * cannot sign in, and a socket that cannot sign in silently becomes an
+   * anonymous one -- which looks like a feature bug rather than a missing
+   * argument.
+   */
+  async connect(id: string, auth: Record<string, unknown> = {}) {
     const socket = new FakeSocket(id, this.emissions);
+    Object.assign(socket.handshake.auth, auth);
     await new Promise<void>((resolve, reject) => {
       this.middleware?.(socket, (error?: Error) => (error ? reject(error) : resolve()));
     });

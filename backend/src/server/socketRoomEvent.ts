@@ -11,6 +11,15 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
   parse: (value: unknown) => Payload | null;
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
   requireEdit?: boolean;
+  /**
+   * A budget that outlives this socket.
+   *
+   * The default limiter is per-connection, which is fine for anything a client
+   * only gains by doing quickly. It is not fine where reconnecting would reset
+   * the budget: there the caller passes a shared limiter keyed by account or
+   * address, so dropping and redialling buys nothing.
+   */
+  allow?: () => boolean;
   handle: (payload: Payload) => void | Promise<void>;
 };
 
@@ -27,9 +36,10 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   parse,
   requireAccess,
   requireEdit = false,
+  allow: sharedAllow,
   handle,
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
-  const allow = createRateLimiter(limit, windowMs);
+  const allow = sharedAllow ?? createRateLimiter(limit, windowMs);
   socket.on(event, async (value: unknown) => {
     if (!allow()) return;
     const payload = parse(value);

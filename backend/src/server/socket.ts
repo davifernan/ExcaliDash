@@ -35,8 +35,14 @@ import {
   type PresenceEntry,
   type PresenceKind,
 } from "./presenceRegistry";
-import { createRateLimiter, parseDrawingId, SOCKET_QUEUE_LIMITS } from "./socketProtocol";
+import {
+  createKeyedRateLimiter,
+  createRateLimiter,
+  parseDrawingId,
+  SOCKET_QUEUE_LIMITS,
+} from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
+import { getDrawingMembership } from "../authz/membership";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent } from "./socketSelection";
 import { registerCursorChatRoomEvent } from "./socketCursorChat";
@@ -67,6 +73,9 @@ export const registerSocketHandlers = ({
   const connectedSockets = new Map<string, Socket>();
   const credentialChecks = new Map<string, Promise<boolean>>();
   const drawingBySocket = new Map<string, string>();
+  // Keyed by who, not by which connection: a per-socket budget for activity
+  // pings resets on reconnect, and reconnecting is free.
+  const allowActivity = createKeyedRateLimiter(20, 10_000);
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
   let followManager: ReturnType<typeof createSocketFollowManager>;
@@ -82,7 +91,20 @@ export const registerSocketHandlers = ({
   io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
   const emitPresence = (drawingId: string) => {
-    io.to(roomName(drawingId)).emit("presence-update", presences.listPublic(drawingId));
+    const apiKeySocketIds = Array.from(drawingBySocket.entries())
+      .filter(
+        ([socketId, currentDrawingId]) =>
+          currentDrawingId === drawingId && Boolean(principals.get(socketId)?.apiKey),
+      )
+      .map(([socketId]) => socketId);
+    // Every Socket.IO connection already owns a private room named after its
+    // socket id. Excluding those rooms preserves the one collaboration-room
+    // lifecycle used by drawing updates and avoids a second presence-only room
+    // that every join, leave, board switch, revoke, and disconnect must maintain.
+    const recipients = apiKeySocketIds.length
+      ? io.to(roomName(drawingId)).except(apiKeySocketIds)
+      : io.to(roomName(drawingId));
+    recipients.emit("presence-update", presences.listPublic(drawingId));
   };
 
   const getPresence = (socketId: string): PresenceEntry | null => {
@@ -197,6 +219,14 @@ export const registerSocketHandlers = ({
       setActive: (drawingId, presenceId, active) =>
         presences.setActive(drawingId, presenceId, active),
       emitPresence,
+      allowActivity: () => {
+        const principal = principals.get(socket.id);
+        const actor =
+          principal && !principal.allowInactive
+            ? `account:${principal.userId}`
+            : `address:${socket.handshake.address || "unknown"}`;
+        return allowActivity(actor);
+      },
     });
     registerSelectionRoomEvent({ socket, presences, requireAccess });
     registerCursorChatRoomEvent({ socket, requireAccess });
@@ -278,9 +308,17 @@ export const registerSocketHandlers = ({
         let name = toPresenceName(clientUser.name);
         let color = derivePresenceColor(socket.id);
         let kind: PresenceKind = "guest";
-        if (isAccount && principal) {
-          // An account has a name the server can check. A share-link visitor
-          // does not, so the server names them rather than repeat their claim.
+        const membershipLevel =
+          isAccount && principal
+            ? access === "owner"
+              ? "owner"
+              : (await getDrawingMembership({ prisma, userId: principal.userId, drawingId }))?.level
+            : null;
+        if (!isCurrentJoin()) return;
+        if (membershipLevel && principal) {
+          // A standing membership has a name the server can check. An account
+          // arriving only through a link is still a guest, so the server gives
+          // it a per-connection guest identity instead of exposing its account.
           const account = await prisma.user.findUnique({
             where: { id: principal.userId },
             select: { name: true },
@@ -288,7 +326,7 @@ export const registerSocketHandlers = ({
           if (!isCurrentJoin()) return;
           if (account) name = toPresenceName(account.name);
           color = derivePresenceColor(principal.userId);
-          kind = access === "owner" ? "owner" : "member";
+          kind = membershipLevel === "owner" ? "owner" : "member";
         } else if (isSharedBootstrapIdentity) {
           color = toPresenceColor(clientUser.color);
         } else {

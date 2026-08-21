@@ -14,6 +14,9 @@ class FakeOperator {
   get volatile() {
     return this;
   }
+  except() {
+    return this;
+  }
   emit(event: string, payload: any) {
     this.events.push({ scope: this.scope, event, payload });
   }

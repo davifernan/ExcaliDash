@@ -47,7 +47,15 @@ export const bindSocketCollaborators = ({
     if (sceneUpdate) api.updateScene(sceneUpdate);
   };
 
+  /**
+   * Runs only while there is something to draw.
+   *
+   * It used to schedule the next frame unconditionally, so an idle editor kept
+   * a sixty-times-a-second loop alive doing nothing at all. A cursor arriving
+   * starts it; an empty buffer lets it stop.
+   */
   const renderCursors = () => {
+    animationFrameId = 0;
     if (cursorBuffer.size > 0) {
       const collaborators = new Map<string, any>(api.getAppState().collaborators || []);
       cursorBuffer.forEach((data, presenceId) => {
@@ -59,8 +67,13 @@ export const bindSocketCollaborators = ({
       });
       cursorBuffer.clear();
       updateCollaborators(collaborators);
+      // One more frame, in case cursors arrived while this one was drawing.
+      animationFrameId = requestAnimationFrame(renderCursors);
     }
-    animationFrameId = requestAnimationFrame(renderCursors);
+  };
+
+  const wake = () => {
+    if (animationFrameId === 0) animationFrameId = requestAnimationFrame(renderCursors);
   };
 
   const onPresence = (users: Peer[]) => {
@@ -105,11 +118,11 @@ export const bindSocketCollaborators = ({
       color: { background: data.color, stroke: data.color },
       id: data.presenceId,
     });
+    wake();
   };
 
   socket.on("presence-update", onPresence);
   socket.on("cursor-move", onCursor);
-  renderCursors();
 
   const reset = () => {
     selfPresenceId = null;

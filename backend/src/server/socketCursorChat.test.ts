@@ -100,4 +100,36 @@ describe("cursor chat over the socket", () => {
     }
     expect(emitted.length).toBe(CURSOR_CHAT_LIMITS.eventsPerSecond);
   });
+  it("relays in the order sent even when the access checks finish backwards", async () => {
+    // The access check is a database round trip. Two messages a millisecond
+    // apart can finish theirs in either order, and the consequence is not
+    // cosmetic: if the clearing null overtakes the last words, a bubble stays
+    // on everyone's screen with nothing left to remove it.
+    const handlers = new Map<string, (value: unknown) => Promise<void> | void>();
+    const emitted: any[] = [];
+    const to = () => ({ emit: (_event: string, payload: any) => emitted.push(payload) });
+    const socket = {
+      id: "socket-1",
+      on: (event: string, handler: any) => handlers.set(event, handler),
+      volatile: { to },
+      to,
+    } as any;
+
+    let call = 0;
+    const requireAccess = vi.fn(async () => {
+      call += 1;
+      // The first check is the slow one.
+      const delay = call === 1 ? 20 : 0;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return true;
+    });
+    registerCursorChatRoomEvent({ socket, requireAccess });
+    const send = handlers.get(CURSOR_CHAT_EVENT)!;
+
+    const first = send({ drawingId, text: "the whole sentence" });
+    const second = send({ drawingId, text: null });
+    await Promise.all([first, second]);
+
+    expect(emitted.map((payload) => payload.text)).toEqual(["the whole sentence", null]);
+  });
 });

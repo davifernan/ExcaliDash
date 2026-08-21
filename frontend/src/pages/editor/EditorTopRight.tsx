@@ -26,6 +26,8 @@
  */
 import React from "react";
 import { LocateFixed, Share2 } from "lucide-react";
+import type { WorkshopTimerController } from "./workshopTimer";
+import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
 import type { InviteHereUiState } from "./InviteHereOverlay";
 
 type EditorTopRightProps = {
@@ -34,6 +36,7 @@ type EditorTopRightProps = {
   followerNotice: string | null;
   showInvite: boolean;
   inviteHere: InviteHereUiState;
+  timer: WorkshopTimerController;
   showShare: boolean;
   onShareOpen: () => void;
 };
@@ -65,18 +68,23 @@ const iconButton: React.CSSProperties = {
 
 export const EditorTopRight: React.FC<EditorTopRightProps> = ({
   isMobile,
+  canEdit,
   followerNotice,
   showInvite,
   inviteHere,
+  timer,
   showShare,
   onShareOpen,
 }) => {
-  // On a phone the top row is already crowded by Excalidraw's own controls, and
-  // these three all have a home in the main menu. Better nothing than a squeeze.
-  if (isMobile) return null;
-
   return (
     <div style={island} data-testid="editor-top-right">
+      {/*
+        On the mobile layout Excalidraw does not render the Footer at all, so
+        the timer would simply not exist. It comes along here instead -- which
+        is also the only place sharing and inviting can live on a phone, since
+        the left island stands down there to keep off the tool row.
+      */}
+      {isMobile ? <WorkshopTimerWidget timer={timer} canEdit={canEdit} /> : null}
       {followerNotice ? (
         <span
           style={{
@@ -88,8 +96,14 @@ export const EditorTopRight: React.FC<EditorTopRightProps> = ({
             background: "var(--color-primary-light, #e3e2fe)",
             color: "var(--color-primary-darker, #4a47b1)",
             whiteSpace: "nowrap",
+            // A display name may be long; this column is narrow, and the
+            // avatars are what lose when it overflows.
+            maxWidth: "9rem",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
           data-testid="editor-follower-notice"
+          title={followerNotice}
         >
           {followerNotice}
         </span>

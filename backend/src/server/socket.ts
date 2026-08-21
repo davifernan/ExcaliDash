@@ -43,6 +43,7 @@ import {
 } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
+import { ipKeyGenerator } from "express-rate-limit";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent } from "./socketSelection";
 import { registerCursorChatRoomEvent } from "./socketCursorChat";
@@ -224,7 +225,9 @@ export const registerSocketHandlers = ({
         const actor =
           principal && !principal.allowInactive
             ? `account:${principal.userId}`
-            : `address:${socket.handshake.address || "unknown"}`;
+            : // Normalised the same way the HTTP limiter does it. A raw address
+              // hands anyone with an IPv6 range a fresh budget per connection.
+              `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`;
         return allowActivity(actor);
       },
     });

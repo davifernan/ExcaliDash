@@ -38,7 +38,12 @@ export function useExcalidrawUiState(
     if (!container) return;
 
     const read = () => {
-      const zenMode = !!container.querySelector(".App-toolbar.zen-mode");
+      // Two signals, because the first one is missing in view mode: there is
+      // no tool row there, but Alt+Z still works and the exit-zen button is
+      // what appears instead.
+      const zenMode = !!container.querySelector(
+        ".App-toolbar.zen-mode, .disable-zen-mode--visible",
+      );
       const mobile = !!container.querySelector(".excalidraw--mobile");
       setState((current) =>
         current.zenMode === zenMode && current.mobile === mobile ? current : { zenMode, mobile },

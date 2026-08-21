@@ -8,25 +8,33 @@ import {
 } from "./cursorChat";
 
 describe("which keystrokes open cursor chat", () => {
-  it("takes a bare slash", () => {
-    expect(shouldOpenCursorChat({ key: "/" })).toBe(true);
+  it("takes a bare Enter on an idle canvas", () => {
+    expect(shouldOpenCursorChat({ key: "Enter" })).toBe(true);
   });
 
-  it("leaves the slash alone while somebody is writing", () => {
-    // Without this you cannot type a slash into a sticky note, which is a worse
-    // bug than not having cursor chat at all.
-    expect(shouldOpenCursorChat({ key: "/", target: { tagName: "TEXTAREA" } })).toBe(false);
-    expect(shouldOpenCursorChat({ key: "/", target: { tagName: "input" } })).toBe(false);
-    expect(shouldOpenCursorChat({ key: "/", target: { isContentEditable: true } })).toBe(false);
+  it("gives Enter back to Excalidraw whenever something is selected", () => {
+    // With a selection Enter opens that element's text editor -- which is also
+    // how a freshly placed sticky note gets its label. Taking it would break
+    // creating notes outright.
+    expect(shouldOpenCursorChat({ key: "Enter" }, { hasSelection: true })).toBe(false);
   });
 
-  it("ignores modified slashes, which belong to the browser", () => {
-    expect(shouldOpenCursorChat({ key: "/", ctrlKey: true })).toBe(false);
-    expect(shouldOpenCursorChat({ key: "/", metaKey: true })).toBe(false);
+  it("leaves Enter alone while somebody is writing", () => {
+    expect(shouldOpenCursorChat({ key: "Enter", target: { tagName: "TEXTAREA" } })).toBe(false);
+    expect(shouldOpenCursorChat({ key: "Enter", target: { tagName: "input" } })).toBe(false);
+    expect(shouldOpenCursorChat({ key: "Enter", target: { isContentEditable: true } })).toBe(false);
   });
 
-  it("ignores every other key", () => {
+  it("ignores modified Enters, which belong to whoever claimed them", () => {
+    // Ctrl+Enter already places a note below the selected one.
+    expect(shouldOpenCursorChat({ key: "Enter", ctrlKey: true })).toBe(false);
+    expect(shouldOpenCursorChat({ key: "Enter", metaKey: true })).toBe(false);
+    expect(shouldOpenCursorChat({ key: "Enter", shiftKey: true })).toBe(false);
+  });
+
+  it("ignores every other key, the old slash included", () => {
     expect(shouldOpenCursorChat({ key: "n" })).toBe(false);
+    expect(shouldOpenCursorChat({ key: "/" })).toBe(false);
   });
 });
 
@@ -157,5 +165,32 @@ describe("the cursor chat controller", () => {
     });
     handlers.get(CURSOR_CHAT_EVENT)!({ text: "who said that" });
     expect(chat.remote.size).toBe(0);
+  });
+  it("forgets people the room no longer lists", () => {
+    // A visitor who speaks and then leaves would otherwise sit in this map for
+    // the life of the editor, and somebody reconnecting in a loop could grow it
+    // without limit on every other screen.
+    const { socket, handlers } = makeSocket();
+    const onRemoteChange = vi.fn();
+    const chat = bindCursorChat({
+      socket,
+      drawingId: "board",
+      onRemoteChange,
+      onDraftChange: () => {},
+    });
+    handlers.get(CURSOR_CHAT_EVENT)!({ presenceId: "stays", text: "here" });
+    handlers.get(CURSOR_CHAT_EVENT)!({ presenceId: "leaves", text: "bye" });
+    onRemoteChange.mockClear();
+
+    chat.pruneTo(["stays"]);
+
+    expect(chat.remote.get("stays")).toBe("here");
+    expect(chat.remote.has("leaves")).toBe(false);
+    expect(onRemoteChange).toHaveBeenCalledTimes(1);
+
+    // Nothing to do means nothing announced, or every presence ping would
+    // repaint the names.
+    chat.pruneTo(["stays"]);
+    expect(onRemoteChange).toHaveBeenCalledTimes(1);
   });
 });

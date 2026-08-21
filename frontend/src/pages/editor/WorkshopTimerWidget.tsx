@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { BellRing, Clock3, Pause, Play, Plus, Square } from "lucide-react";
 import type { WorkshopTimerController } from "./workshopTimer";
 import { getWorkshopTimerRemainingMs } from "./workshopTimer";
@@ -40,6 +40,9 @@ export const WorkshopTimerWidget = ({
   canEdit: boolean;
   timer: WorkshopTimerController;
 }) => {
+  // Two editors on one page would otherwise share one id, and the second
+  // widget's label would focus the first widget's input.
+  const inputId = useId();
   const [expanded, setExpanded] = useState(false);
   const [minutes, setMinutes] = useState("10");
   const remainingMs = useRemainingMs(timer);
@@ -75,9 +78,9 @@ export const WorkshopTimerWidget = ({
           {canEdit ? (
             <>
               <div className="workshop-timer__start-row">
-                <label htmlFor="workshop-timer-minutes">Minutes</label>
+                <label htmlFor={inputId}>Minutes</label>
                 <input
-                  id="workshop-timer-minutes"
+                  id={inputId}
                   type="number"
                   min="1"
                   max="1440"

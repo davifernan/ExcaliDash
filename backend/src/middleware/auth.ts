@@ -145,9 +145,13 @@ const getRequiredApiKeyScopes = (req: Request): string[] => {
   const segments = normalizeRequestPath(req).split("/").filter(Boolean);
   if (segments[0] === "drawings" && segments.length >= 3) {
     if (segments[2] === "history") {
+      // Restoring is both: it writes the drawing, and it reads a snapshot to do
+      // it. Asking only for write would let a key without history access read
+      // historical content the long way round -- restore a known snapshot id,
+      // then read the drawing it just became.
       return req.method === "GET" || req.method === "HEAD"
         ? [DRAWINGS_HISTORY_SCOPE]
-        : [DRAWINGS_WRITE_SCOPE];
+        : [DRAWINGS_WRITE_SCOPE, DRAWINGS_HISTORY_SCOPE];
     }
     const scope = DRAWING_SUB_RESOURCE_SCOPES[segments[2]];
     return scope ? [scope] : [];

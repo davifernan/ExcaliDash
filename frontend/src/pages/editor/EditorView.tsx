@@ -161,6 +161,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 followerNotice={describeFollowers(followers)}
                 showInvite={canEdit && peers.length > 0}
                 inviteHere={inviteHere}
+                timer={workshopTimer}
                 showShare={accessLevel === "owner" && !!id}
                 onShareOpen={onShareOpen}
               />
@@ -174,9 +175,11 @@ export const EditorView: React.FC<EditorViewProps> = ({
               moment it drops below 76px. A countdown is ambient anyway -- you
               glance at it, you do not hunt for it.
             */}
-            <Footer>
-              <WorkshopTimerWidget timer={workshopTimer} canEdit={canEdit} />
-            </Footer>
+            {mobile ? null : (
+              <Footer>
+                <WorkshopTimerWidget timer={workshopTimer} canEdit={canEdit} />
+              </Footer>
+            )}
             <MainMenu>
               {/*
                 The way back, in the one place that exists at every window size.

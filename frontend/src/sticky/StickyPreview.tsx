@@ -26,11 +26,7 @@ type Props = {
   color: StickyColor;
 };
 
-export const StickyPreview: React.FC<Props> = ({
-  excalidrawAPI,
-  containerRef,
-  color,
-}) => {
+export const StickyPreview: React.FC<Props> = ({ excalidrawAPI, containerRef, color }) => {
   const ghost = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

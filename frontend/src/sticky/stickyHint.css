@@ -1,0 +1,11 @@
+/*
+ * Excalidraw shows a hint whenever a shape that can hold text is selected:
+ * "Press Enter to add text. Hold Ctrl and Arrow key to create a flowchart".
+ * For its own shapes that is useful. For a sticky note it is wrong twice over —
+ * typing already started by itself, and Ctrl with an arrow is not how a note
+ * makes the next one. So it is hidden while a note is the thing selected, and
+ * only then.
+ */
+[data-sticky-selection="true"] .HintViewer {
+  display: none;
+}

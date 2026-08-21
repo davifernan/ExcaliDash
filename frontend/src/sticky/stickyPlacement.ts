@@ -4,10 +4,12 @@
  * Opening the label editor is the one step with no public API. Excalidraw
  * starts it from a real Enter key on a selected container and exposes no way to
  * ask for it directly, so the note is added, selected, and then sent an Enter.
- * Whether that took is read back out of the app state rather than assumed — on
- * a phone the keyboard may refuse to rise without a genuine tap, and a future
- * version may bind the key elsewhere. Either way the note exists and is
- * selected, and the caller can say which key to press.
+ *
+ * Whether that worked is deliberately not reported back. It used to be, and the
+ * answer was read one frame too early — the editor opens through React state,
+ * so a check made straight after the key nearly always said no even when it had
+ * just said yes. If it ever genuinely does not open, the note is still there and
+ * still selected, and Enter or a double-click does what it does on any shape.
  */
 import { STICKY_BASE_FONT_SIZE, type StickyColor } from "./stickyNote";
 
@@ -25,8 +27,6 @@ function pressEnter(container: HTMLElement | null): void {
     }),
   );
 }
-
-export type InsertResult = { typing: boolean };
 
 /**
  * The frame a note is being dropped into, if any.
@@ -73,7 +73,6 @@ export function insertStickyNote(
   containerEl: HTMLElement | null,
   note: any,
   color: StickyColor,
-  onDone?: (result: InsertResult) => void,
 ): void {
   if (!api) return;
 
@@ -96,7 +95,5 @@ export function insertStickyNote(
   // committed, or Excalidraw finds nothing selected to type into.
   requestAnimationFrame(() => {
     pressEnter(containerEl);
-    const typing = api.getAppState?.()?.editingTextElement?.containerId === placed.id;
-    onDone?.({ typing });
   });
 }

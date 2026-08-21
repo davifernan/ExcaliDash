@@ -26,6 +26,18 @@ export class BoundedTaskQueue {
   private active = 0;
   private readonly waiting: Array<WaitingJob<unknown>> = [];
 
+  /**
+   * How much work is in hand right now.
+   *
+   * Admission is decided inside `run`, so nothing outside needs this to make a
+   * decision -- but plenty of things need to observe it. A queue that is
+   * permanently full is the difference between "slow" and "broken", and
+   * something has to be able to say which one is happening.
+   */
+  get depth(): { running: number; waiting: number } {
+    return { running: this.active, waiting: this.waiting.length };
+  }
+
   run<T>(
     options: { concurrency: number; maxWaiting: number; signal?: AbortSignal },
     work: () => Promise<T>,

@@ -596,6 +596,12 @@ registerAssetRoutes({
       minBytes: config.assets.pdfShrinkMinBytes,
       concurrency: config.assets.pdfShrinkConcurrency,
       maxWaiting: config.assets.pdfShrinkQueueLimit,
+      onFailure: (error) => {
+        console.warn(
+          "[assets] PDF rebuild skipped:",
+          error instanceof Error ? error.message : error,
+        );
+      },
     });
     return { note: describeShrink(result) };
   },

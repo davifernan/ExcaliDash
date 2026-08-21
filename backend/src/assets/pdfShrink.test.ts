@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { execFile } from "node:child_process";
 import { copyFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { describeShrink, shouldTryShrink, shrinkPdf } from "./pdfShrink";
 
@@ -180,6 +180,72 @@ describe.skipIf(!haveGs || !haveWeasy)("against a real document", () => {
       // Whatever happened, the file must still be a PDF poppler can read.
       const { stdout } = await run("pdfinfo", [path]);
       expect(stdout).toMatch(/Pages:\s+\d+/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("where the rebuild is staged", () => {
+  // The rename at the end of a rebuild has to stay on one filesystem. In every
+  // container deployment the asset storage is a mounted volume while the
+  // system temp directory is not, so staging there made every rename fail with
+  // EXDEV — and the catch turned that into "this document cannot be rebuilt".
+  // Nothing failed, nothing was logged, and no PDF was ever optimised in
+  // production. This test pins the staging location to the target's own
+  // directory, which is the only thing guaranteed to be the same filesystem.
+  it("stages the rebuilt file beside the file it will replace", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "shrink-where-"));
+    const target = join(dir, "doc.pdf");
+    await writeFile(target, Buffer.alloc(10_000, 1));
+    let outputPath = "";
+
+    try {
+      const result = await shrinkPdf(
+        target,
+        opts({
+          runCommand: async (_file: string, args: string[]) => {
+            outputPath = args.find((a) => a.startsWith("-sOutputFile="))!.slice("-sOutputFile=".length);
+            await writeFile(outputPath, Buffer.alloc(1_000, 2));
+            return {};
+          },
+          onFailure: (error: unknown) => {
+            throw error;
+          },
+        }),
+      );
+
+      expect(result.applied).toBe(true);
+      // .../doc.pdf and .../.pdfshrink-xxxx/out.pdf share a parent.
+      expect(dirname(dirname(outputPath))).toBe(dirname(target));
+      expect((await stat(target)).size).toBe(1_000);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a rebuild it could not finish instead of swallowing it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "shrink-fail-"));
+    const target = join(dir, "doc.pdf");
+    await writeFile(target, Buffer.alloc(10_000, 1));
+    const seen: unknown[] = [];
+
+    try {
+      const result = await shrinkPdf(
+        target,
+        opts({
+          runCommand: async () => {
+            throw new Error("gs went missing");
+          },
+          onFailure: (error: unknown) => seen.push(error),
+        }),
+      );
+
+      expect(result.applied).toBe(false);
+      expect(result.reason).toBe("failed");
+      expect((seen[0] as Error).message).toBe("gs went missing");
+      // The document itself is untouched and still perfectly usable.
+      expect((await stat(target)).size).toBe(10_000);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

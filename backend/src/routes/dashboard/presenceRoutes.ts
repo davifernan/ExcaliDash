@@ -1,5 +1,5 @@
 import express from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { getDrawingRosters } from "../../authz/roster";
 import { subjectKey } from "../../authz/subjectKey";
 import type { DashboardRouteDeps } from "./types";
@@ -46,7 +46,11 @@ export const registerPresenceRoutes = (app: express.Express, deps: DashboardRout
     max: 60,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.user?.id || req.ip || "anonymous",
+    // An account is the thing to limit; the address is only the fallback for
+    // the moment before one is known. It goes through the library's helper
+    // because a raw IPv6 address is one host out of a block the same person can
+    // pick another from at will.
+    keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip || "") || "anonymous",
   });
 
   app.get(

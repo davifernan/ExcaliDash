@@ -132,7 +132,10 @@ describe("dashboard presence", () => {
 
   it("counts a signed-in visitor who is only here through a link as a guest", async () => {
     const presences = new PresenceRegistry();
-    presences.join("drawing-1", entry({ presenceId: "s2", accountId: "acct-link", kind: "member" }));
+    presences.join(
+      "drawing-1",
+      entry({ presenceId: "s2", accountId: "acct-link", kind: "member" }),
+    );
     presences.join("drawing-1", entry({ presenceId: "s3", accountId: null, kind: "guest" }));
     const { app } = buildApp(presences);
 
@@ -168,7 +171,11 @@ describe("dashboard presence", () => {
   it("is not an agent endpoint", async () => {
     const { app } = buildApp(new PresenceRegistry());
 
-    const res = await invoke(app, { ids: "drawing-1" }, { id: "acct-max", authCredentialType: "apiKey" });
+    const res = await invoke(
+      app,
+      { ids: "drawing-1" },
+      { id: "acct-max", authCredentialType: "apiKey" },
+    );
 
     expect(res.statusCode).toBe(403);
   });

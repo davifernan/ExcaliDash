@@ -19,6 +19,23 @@ export type PresenceEntry = {
   selectedElementIds: Record<string, true>;
 };
 
+/**
+ * What a presence looks like to the people sharing the board.
+ *
+ * The account id stays behind: everyone in the room gets this, and a share link
+ * puts anonymous visitors in the room too. An account id is a handle to a real
+ * row, so handing it out lets a visitor recognise the same person on any other
+ * board they are ever given a link to. Nothing on the client reads it — the one
+ * place that needs to match presence against a member list does it with a
+ * scoped subject key instead (see authz/subjectKey).
+ */
+export type PublicPresenceEntry = Omit<PresenceEntry, "accountId">;
+
+export const toPublicPresence = ({
+  accountId: _accountId,
+  ...rest
+}: PresenceEntry): PublicPresenceEntry => rest;
+
 export type PresenceSummaryMember = {
   accountId: string;
   name: string;
@@ -68,6 +85,11 @@ export class PresenceRegistry {
 
   list(drawingId: string): PresenceEntry[] {
     return Array.from(this.byDrawing.get(drawingId)?.values() || []);
+  }
+
+  /** The same list, with what the room has no business knowing removed. */
+  listPublic(drawingId: string): PublicPresenceEntry[] {
+    return this.list(drawingId).map(toPublicPresence);
   }
 
   occupiedDrawingIds(): string[] {

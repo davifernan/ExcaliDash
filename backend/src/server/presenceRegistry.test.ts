@@ -67,3 +67,32 @@ describe("presence registry", () => {
     expect(registry.setActive("d1", "missing", false)).toBe(false);
   });
 });
+
+describe("what leaves the server", () => {
+  // A share link puts anonymous visitors into the same room as the owner, and
+  // the room broadcast used to carry the owner's account id with it. That is a
+  // handle to a real row: once a visitor has it, they recognise the same person
+  // on every other board they are ever given a link to. subjectKey exists
+  // precisely so account ids stay server-side, and this is the projection that
+  // holds the socket side to it.
+  it("keeps the account id out of the public projection", () => {
+    const registry = new PresenceRegistry();
+    registry.join("d1", {
+      presenceId: "socket-owner",
+      accountId: "owner-account-id",
+      name: "Owner",
+      initials: "OW",
+      color: "#10b981",
+      kind: "owner",
+      isActive: true,
+    });
+
+    const [entry] = registry.listPublic("d1");
+    expect(entry).not.toHaveProperty("accountId");
+    expect(JSON.stringify(entry)).not.toContain("owner-account-id");
+    // Everything the other people in the room actually need is still there.
+    expect(entry).toMatchObject({ presenceId: "socket-owner", name: "Owner", kind: "owner" });
+    // The server keeps it for itself: the member summary still groups by account.
+    expect(registry.summarise("d1").members[0].accountId).toBe("owner-account-id");
+  });
+});

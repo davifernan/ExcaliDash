@@ -60,10 +60,12 @@ describe("socket collaboration security and follow state", () => {
     const oldAck = await join(oldTab);
     const newAck = await join(newTab);
 
-    expect(oldAck.presence).toMatchObject({
-      presenceId: "socket-old",
-      accountId: BOOTSTRAP_USER_ID,
-    });
+    expect(oldAck.presence).toMatchObject({ presenceId: "socket-old" });
+    // The account id stays on the server. Everyone in the room receives this,
+    // and a share link puts anonymous visitors in the room too -- an account id
+    // would let one of them recognise the same person on any other board they
+    // are ever handed a link to.
+    expect(oldAck.presence).not.toHaveProperty("accountId");
     expect(newAck.presence.presenceId).toBe("socket-new");
     expect(lastEmission("presence-update", room("drawing-1"))?.payload).toHaveLength(2);
 

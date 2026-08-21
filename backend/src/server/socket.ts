@@ -29,7 +29,12 @@ import {
   toPresenceInitials,
   toPresenceName,
 } from "./socketPresence";
-import { PresenceRegistry, type PresenceEntry, type PresenceKind } from "./presenceRegistry";
+import {
+  PresenceRegistry,
+  toPublicPresence,
+  type PresenceEntry,
+  type PresenceKind,
+} from "./presenceRegistry";
 import { createRateLimiter, parseDrawingId, SOCKET_QUEUE_LIMITS } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
@@ -76,7 +81,7 @@ export const registerSocketHandlers = ({
   io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
   const emitPresence = (drawingId: string) => {
-    io.to(roomName(drawingId)).emit("presence-update", presences.list(drawingId));
+    io.to(roomName(drawingId)).emit("presence-update", presences.listPublic(drawingId));
   };
 
   const getPresence = (socketId: string): PresenceEntry | null => {
@@ -309,7 +314,7 @@ export const registerSocketHandlers = ({
         emitPresence(drawingId);
         socket.emit("workshop-timer-update", workshopTimers.snapshot(drawingId));
         followManager.invalidateAccess(socket.id);
-        ack?.({ ok: true, presence });
+        ack?.({ ok: true, presence: toPublicPresence(presence) });
       };
       const result = joinQueue.then(run, run);
       joinQueue = result.then(

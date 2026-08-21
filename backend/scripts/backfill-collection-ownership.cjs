@@ -21,6 +21,43 @@ const isTrashCollection = (collectionId) =>
   typeof collectionId === "string" &&
   (collectionId === "trash" || collectionId.startsWith("trash:"));
 
+
+/**
+ * Which assets may follow their boards to a new owner.
+ *
+ * Kept free of Prisma so the decision can be tested without a database: a
+ * backfill that quietly does the wrong thing is worse than one that refuses,
+ * and the only way to know which it does is to be able to run it.
+ *
+ * - `rewrite`  every board using it is part of this run, and they all land on
+ *              the same owner.
+ * - `shared`   some other board still uses it. Left alone.
+ * - `ambiguous` the moving boards land on different owners. No correct answer.
+ */
+const planAssetOwnership = ({ links, outsideLinks, futureOwnerOf }) => {
+  const movingIds = new Set(links.map((link) => link.drawingId));
+  const ownersPerAsset = new Map();
+  for (const link of links) {
+    const owners = ownersPerAsset.get(link.assetId) || new Set();
+    owners.add(futureOwnerOf.get(link.drawingId));
+    ownersPerAsset.set(link.assetId, owners);
+  }
+
+  const usedElsewhere = new Set(
+    outsideLinks.filter((link) => !movingIds.has(link.drawingId)).map((link) => link.assetId),
+  );
+
+  const rewrite = new Set();
+  const shared = [];
+  const ambiguous = [];
+  for (const [assetId, owners] of ownersPerAsset) {
+    if (owners.size > 1) ambiguous.push(assetId);
+    else if (usedElsewhere.has(assetId)) shared.push(assetId);
+    else rewrite.add(assetId);
+  }
+  return { rewrite, shared, ambiguous };
+};
+
 const main = async () => {
   const drawings = await prisma.drawing.findMany({
     where: { collectionId: { not: null } },
@@ -98,20 +135,30 @@ const main = async () => {
     where: { drawingId: { in: moving.map((drawing) => drawing.id) } },
     select: { drawingId: true, assetId: true },
   });
+  // Every board that points at those assets, not only the ones being moved. An
+  // asset is owned once, so rewriting its owner reaches every board that uses
+  // it — including boards this run was never asked to touch. Their owner would
+  // lose the document without appearing anywhere in the report.
+  const outsideLinks = await prisma.drawingAsset.findMany({
+    where: { assetId: { in: Array.from(new Set(links.map((link) => link.assetId))) } },
+    select: { drawingId: true, assetId: true },
+  });
   const futureOwnerOf = new Map(moving.map((drawing) => [drawing.id, drawing.collection.userId]));
-  const ownersPerAsset = new Map();
-  for (const link of links) {
-    const owners = ownersPerAsset.get(link.assetId) || new Set();
-    owners.add(futureOwnerOf.get(link.drawingId));
-    ownersPerAsset.set(link.assetId, owners);
-  }
-  const ambiguous = Array.from(ownersPerAsset.entries()).filter(([, owners]) => owners.size > 1);
-  if (ambiguous.length > 0) {
+  const plan = planAssetOwnership({ links, outsideLinks, futureOwnerOf });
+
+  if (plan.ambiguous.length > 0) {
     console.error(
-      `\nRefusing to continue: ${ambiguous.length} asset(s) are used by boards moving to different owners.`,
+      `\nRefusing to continue: ${plan.ambiguous.length} asset(s) are used by boards moving to different owners.`,
     );
     process.exitCode = 1;
     return;
+  }
+  if (plan.shared.length > 0) {
+    console.log(
+      `\n${plan.shared.length} document(s) stay with their current owner: a board outside this run\n` +
+        `still uses them. The boards move; the documents are left alone rather than taken from\n` +
+        `someone who was not part of this.`,
+    );
   }
 
   if (!APPLY) {
@@ -134,7 +181,7 @@ const main = async () => {
         where: { drawingId: drawing.id, granteeUserId: drawing.collection.userId },
       });
       const assetIds = links
-        .filter((link) => link.drawingId === drawing.id)
+        .filter((link) => link.drawingId === drawing.id && plan.rewrite.has(link.assetId))
         .map((link) => link.assetId);
       if (assetIds.length > 0) {
         await tx.asset.updateMany({
@@ -147,9 +194,17 @@ const main = async () => {
   console.log(`\nApplied to ${moving.length} board(s).`);
 };
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+module.exports = { planAssetOwnership };
+
+if (require.main === module) {
+  run();
+}
+
+function run() {
+  main()
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(() => prisma.$disconnect());
+}

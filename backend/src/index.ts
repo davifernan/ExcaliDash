@@ -225,6 +225,7 @@ if (shouldEnforceHttps) {
 }
 app.use(
   helmet({
+    referrerPolicy: { policy: "no-referrer" },
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'none'"],
@@ -243,7 +244,13 @@ app.use(
   cors({
     origin: (origin, cb) => cb(null, isAllowedOrigin(origin ?? undefined)),
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "x-csrf-token", "x-imported-file"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-csrf-token",
+      "x-imported-file",
+      "x-share-token",
+    ],
     exposedHeaders: ["x-csrf-token", "x-request-id"],
   }),
 );

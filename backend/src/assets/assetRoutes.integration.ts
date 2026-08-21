@@ -15,6 +15,7 @@ import type { PrismaClient } from "../generated/client";
 import { getTestPrisma, setupTestDb, cleanupTestDb, createTestUser } from "../__tests__/testUtils";
 import { createAsset } from "./assetService";
 import { contentDisposition, registerAssetRoutes } from "./assetRoutes";
+import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 
 describe("document routes", () => {
   let prisma: PrismaClient;
@@ -142,6 +143,27 @@ describe("document routes", () => {
       });
       actAs = viewer.id;
       await request(app).get(url()).expect(200);
+    });
+
+    it("requires the valid link token and then serves the document to a link guest", async () => {
+      const token = buildShareLinkToken();
+      await prisma.drawingLinkShare.create({
+        data: {
+          drawingId,
+          permission: "view",
+          tokenHash: hashShareLinkToken(token),
+          createdByUserId: owner.id,
+        },
+      });
+      actAs = null;
+
+      await request(app).get(url()).expect(404);
+      await request(app)
+        .get(url())
+        .query({ shareToken: "x".repeat(32) })
+        .expect(404);
+      const response = await request(app).get(url()).query({ shareToken: token }).expect(200);
+      expect(response.body.name).toBe("Quartalsbericht Q3.pdf");
     });
   });
 

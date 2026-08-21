@@ -12,7 +12,12 @@
  */
 import type { Express, Request, Response } from "express";
 import { createReadStream } from "node:fs";
-import { canEditDrawing, canViewDrawing, getDrawingAccess } from "../authz/sharing";
+import {
+  canEditDrawing,
+  canViewDrawing,
+  getDrawingAccess,
+  shareLinkTokenFromRequest,
+} from "../authz/sharing";
 import { resolveStoragePath } from "./assetStorage";
 import { AssetTooLargeError, QuotaExceededError, createAsset, usedBytesFor } from "./assetService";
 import { PdfRejectedError } from "./pdfRenderer";
@@ -65,6 +70,7 @@ async function authorizedAsset(deps: AssetRouteDeps, req: Request) {
     prisma: deps.prisma,
     principal: principalOf(req),
     drawingId,
+    shareToken: shareLinkTokenFromRequest(req),
   });
   if (!canViewDrawing(access)) return null;
 
@@ -117,6 +123,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         prisma: deps.prisma,
         principal: principalOf(req),
         drawingId,
+        shareToken: shareLinkTokenFromRequest(req),
       });
       if (!drawing || !canViewDrawing(access)) {
         return res.status(404).json({ error: "Drawing not found" });

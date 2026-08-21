@@ -20,6 +20,12 @@ http {
     gzip_vary on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 
+    # Never write query strings to access logs. Share secrets normally arrive
+    # in headers, but direct document URLs use a query parameter because image
+    # elements cannot set request headers.
+    log_format excalidash '$remote_addr - [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent';
+    access_log /var/log/nginx/access.log excalidash;
+
     # Set maximum request body size to 50MB to handle large drawings with embedded images
     client_max_body_size 50M;
 
@@ -31,7 +37,7 @@ http {
 
         add_header X-Frame-Options "DENY" always;
         add_header X-Content-Type-Options "nosniff" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Referrer-Policy "no-referrer" always;
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
         add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:;" always;
 
@@ -87,6 +93,7 @@ http {
         # index.html is the primary way users end up stuck on an old UI after upgrades.
         location = /index.html {
             add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
+            add_header Referrer-Policy "no-referrer" always;
             expires -1;
             try_files /index.html =404;
         }

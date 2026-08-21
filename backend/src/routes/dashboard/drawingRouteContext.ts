@@ -10,10 +10,11 @@ import {
   isS3Enabled,
   listS3Objects,
 } from "../../s3";
-import { type DrawingPrincipal } from "../../authz/sharing";
+import { shareLinkTokenFromRequest, type DrawingPrincipal } from "../../authz/sharing";
 
 export type DrawingRouteContext = DashboardRouteDeps & {
   getRequestPrincipal: (req: express.Request) => Promise<DrawingPrincipal | null>;
+  getShareToken: (req: express.Request) => string | null;
   resolveDefaultTtlMs: (permission: "view" | "edit") => number;
   resolveMaxTtlMs: () => number;
   respondWithAuthErrorIfPresent: (req: express.Request, res: express.Response) => boolean;
@@ -37,6 +38,8 @@ export const createDrawingRouteContext = (deps: DashboardRouteDeps): DrawingRout
     if (req.user?.id) return { kind: "user", userId: req.user.id };
     return null;
   };
+
+  const getShareToken = (req: express.Request): string | null => shareLinkTokenFromRequest(req);
 
   const resolveDefaultTtlMs = (permission: "view" | "edit"): number => {
     const raw =
@@ -127,6 +130,7 @@ export const createDrawingRouteContext = (deps: DashboardRouteDeps): DrawingRout
   return {
     ...deps,
     getRequestPrincipal,
+    getShareToken,
     resolveDefaultTtlMs,
     resolveMaxTtlMs,
     respondWithAuthErrorIfPresent,

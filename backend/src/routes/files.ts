@@ -7,7 +7,7 @@
 import express from "express";
 import { PrismaClient } from "../generated/client";
 import { isS3Enabled, generatePresignedDownloadUrl } from "../s3";
-import { canViewDrawing, getDrawingAccess } from "../authz/sharing";
+import { canViewDrawing, getDrawingAccess, shareLinkTokenFromRequest } from "../authz/sharing";
 
 const DOWNLOAD_EXPIRES_IN = 3600; // 1 hour   – cached by browser
 
@@ -69,6 +69,7 @@ export const registerFileRoutes = (app: express.Express, deps: FileRouteDeps): v
             ? { kind: "user", userId: req.user.id, allowInactive: true }
             : (req.principal ?? (req.user?.id ? { kind: "user", userId: req.user.id } : null)),
         drawingId,
+        shareToken: shareLinkTokenFromRequest(req),
       });
       if (!canViewDrawing(access)) {
         return res.status(404).json({ error: "File not found" });

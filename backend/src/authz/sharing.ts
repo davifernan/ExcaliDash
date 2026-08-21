@@ -28,6 +28,26 @@ export const buildShareLinkToken = (): string => crypto.randomBytes(24).toString
 
 export const hashShareLinkToken = (token: string): string => hashTokenForStorage(token);
 
+export const parseShareLinkToken = (input: unknown): string | null => {
+  if (typeof input !== "string") return null;
+  const token = input.trim();
+  return /^[A-Za-z0-9_-]{32}$/.test(token) ? token : null;
+};
+
+export const shareLinkTokenFromRequest = (req: {
+  headers: Record<string, unknown>;
+  query: Record<string, unknown>;
+}): string | null =>
+  parseShareLinkToken(req.headers["x-share-token"]) ?? parseShareLinkToken(req.query.shareToken);
+
+export const shareLinkTokenMatches = (providedToken: string, storedHash: string): boolean => {
+  const actual = Buffer.from(hashShareLinkToken(providedToken), "hex");
+  const storedHashIsValid = /^[0-9a-f]{64}$/i.test(storedHash);
+  const expected = Buffer.from(storedHashIsValid ? storedHash : "0".repeat(64), "hex");
+  const matches = crypto.timingSafeEqual(actual, expected);
+  return storedHashIsValid && matches;
+};
+
 const normalizePassphraseForHash = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -120,6 +140,7 @@ export const getDrawingAccess = async (params: {
   prisma: PrismaClient;
   principal: DrawingPrincipal | null;
   drawingId: string;
+  shareToken?: string | null;
   now?: Date;
 }): Promise<DrawingAccess> => {
   const nowMs = (params.now ?? new Date()).getTime();
@@ -190,13 +211,17 @@ export const getDrawingAccess = async (params: {
     }
   }
 
-  // Google Docs-style link policy: applies regardless of whether the visitor is signed in.
-  // If a drawing has an active link-share policy, possession of the drawing id URL grants the policy access.
-  const linkPolicy = await getActiveLinkShareAccess({
-    prisma: params.prisma,
-    drawingId: params.drawingId,
-    nowMs,
-  });
+  // Link access is additive to account access, but only possession of the
+  // current secret activates it. The drawing id is an object identifier, not
+  // an authorization credential.
+  const linkPolicy = params.shareToken
+    ? await getActiveLinkShareAccess({
+        prisma: params.prisma,
+        drawingId: params.drawingId,
+        shareToken: params.shareToken,
+        nowMs,
+      })
+    : null;
   const linkAccess: DrawingAccess = linkPolicy ?? "none";
 
   return maxAccess(baseAccess, linkAccess);
@@ -214,6 +239,7 @@ export const isOwnerAccess = (access: DrawingAccess): boolean => access === "own
 const getActiveLinkShareAccess = async (params: {
   prisma: PrismaClient;
   drawingId: string;
+  shareToken: string;
   nowMs: number;
 }): Promise<DrawingPermission | null> => {
   const linkShare = await params.prisma.drawingLinkShare.findFirst({
@@ -223,8 +249,9 @@ const getActiveLinkShareAccess = async (params: {
       OR: [{ expiresAt: null }, { expiresAt: { gt: new Date(params.nowMs) } }],
     },
     orderBy: { createdAt: "desc" },
-    select: { permission: true },
+    select: { permission: true, tokenHash: true },
   });
+  if (!linkShare || !shareLinkTokenMatches(params.shareToken, linkShare.tokenHash)) return null;
   return normalizeDrawingPermission(linkShare?.permission);
 };
 

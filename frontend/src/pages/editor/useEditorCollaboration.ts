@@ -7,6 +7,7 @@ import { buildRemoteSceneUpdate, heldElementIds } from "./shared";
 import { bindFollowMode, getFollowInterruptionMessage, type Follower } from "./followMode";
 import { bindCanvasWheelZoom } from "./wheelZoom";
 import { bindSocketRoomLifecycle } from "./socketRoomLifecycle";
+import { getShareLinkToken } from "../../api";
 
 export interface Peer {
   presenceId: string;
@@ -68,6 +69,7 @@ export const useEditorCollaboration = ({
   const pendingRemoteElementOrderRef = useRef<string[] | null>(null);
   const remoteFlushScheduledRef = useRef(false);
   const remoteFlushRafIdRef = useRef<number | null>(null);
+  const shareToken = getShareLinkToken();
   useEffect(() => {
     if (!drawingId || !isReady) return;
     const socket = io(getSocketUrl(), {
@@ -193,6 +195,7 @@ export const useEditorCollaboration = ({
     const unbindSocketRoomLifecycle = bindSocketRoomLifecycle({
       socket,
       drawingId,
+      shareToken,
       user: me,
       resetConnectionState,
       onJoined: (serverUser) => {
@@ -359,6 +362,7 @@ export const useEditorCollaboration = ({
     computeElementOrderSig,
     recordElementVersion,
     onAccessDenied,
+    shareToken,
   ]);
   const onPointerUpdate = useCallback(
     (payload: any) => {

@@ -53,6 +53,7 @@ import {
 import { registerCursorChatRoomEvent, CURSOR_CHAT_LIMITS } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import { createSocketInviteHereManager } from "./socketInviteHere";
+import { createRoomEventFeedback, type RoomEventAck } from "./socketRoomEvent";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -234,6 +235,7 @@ export const registerSocketHandlers = ({
         : `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`;
     };
     const allowJoin = createRateLimiter(10, 60_000);
+    const leaveRoomFeedback = createRoomEventFeedback(socket, "leave-room", 60_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
     followManager.registerHandlers(socket, allowFollow, allowViewport);
@@ -399,16 +401,24 @@ export const registerSocketHandlers = ({
       return result;
     });
 
-    socket.on("leave-room", async (data: unknown) => {
+    socket.on("leave-room", async (data: unknown, ack?: RoomEventAck) => {
       joinRevision += 1;
-      if (!allowJoin()) return;
+      if (!allowJoin()) {
+        leaveRoomFeedback.rateLimited();
+        return;
+      }
       const drawingId =
         data && typeof data === "object"
           ? parseDrawingId((data as Record<string, unknown>).drawingId)
           : null;
+      if (!drawingId) {
+        leaveRoomFeedback.invalid(ack);
+        return;
+      }
       if (drawingId && drawingBySocket.get(socket.id) === drawingId) {
         await removeFromDrawing(socket, "left-room");
       }
+      leaveRoomFeedback.succeeded(ack);
     });
 
     socket.on("disconnect", async () => {

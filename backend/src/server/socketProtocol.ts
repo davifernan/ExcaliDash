@@ -4,7 +4,7 @@ export const SOCKET_LIMITS = {
   viewportSpan: 100_000_000,
   elementsPerUpdate: 10_000,
   filesPerUpdate: 1_000,
-  elementOrderLength: 20_000,
+  elementOrderBytes: 8 * 1024 * 1024,
 } as const;
 
 export const SOCKET_QUEUE_LIMITS = { joins: 8 } as const;
@@ -24,6 +24,7 @@ export type ElementUpdatePayload = {
   elements: unknown[];
   files?: Record<string, unknown>;
   elementOrder?: string[];
+  elementOrderOmittedBytes?: number;
 };
 
 export const parseDrawingId = (value: unknown): string | null => {
@@ -96,18 +97,34 @@ export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload 
   }
 
   let elementOrder: string[] | undefined;
+  let elementOrderOmittedBytes: number | undefined;
   if (value.elementOrder !== undefined) {
     if (
       !Array.isArray(value.elementOrder) ||
-      value.elementOrder.length > SOCKET_LIMITS.elementOrderLength ||
       !value.elementOrder.every((id) => typeof id === "string" && id.length > 0 && id.length <= 200)
     ) {
       return null;
     }
-    elementOrder = value.elementOrder;
+    const byteLength = value.elementOrder.reduce(
+      (total, id, index) => total + Buffer.byteLength(JSON.stringify(id)) + (index > 0 ? 1 : 0),
+      2,
+    );
+    if (byteLength > SOCKET_LIMITS.elementOrderBytes) {
+      elementOrderOmittedBytes = byteLength;
+    } else {
+      elementOrder = value.elementOrder;
+    }
+  } else if (value.elementOrderOmittedBytes !== undefined) {
+    if (
+      !Number.isSafeInteger(value.elementOrderOmittedBytes) ||
+      (value.elementOrderOmittedBytes as number) <= SOCKET_LIMITS.elementOrderBytes
+    ) {
+      return null;
+    }
+    elementOrderOmittedBytes = value.elementOrderOmittedBytes as number;
   }
 
-  return { drawingId, elements: value.elements, files, elementOrder };
+  return { drawingId, elements: value.elements, files, elementOrder, elementOrderOmittedBytes };
 };
 
 export const createRateLimiter = (limit: number, windowMs: number) => {

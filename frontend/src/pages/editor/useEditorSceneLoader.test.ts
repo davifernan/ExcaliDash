@@ -36,7 +36,7 @@ const buildRefs = () => ({
   hasHydratedInitialScene: ref(false),
 });
 
-const loadScene = async (id: string | undefined) => {
+const loadScene = async (id: string | undefined, refs = buildRefs()) => {
   const setInitialData = vi.fn();
   renderHook(() =>
     useEditorSceneLoader({
@@ -44,7 +44,7 @@ const loadScene = async (id: string | undefined) => {
       user: null,
       location: { pathname: `/editor/${id ?? ""}`, search: "", hash: "" },
       navigate: vi.fn() as any,
-      refs: buildRefs(),
+      refs,
       setAccessLevel: vi.fn(),
       setDrawingName: vi.fn(),
       setInitialData,
@@ -55,7 +55,7 @@ const loadScene = async (id: string | undefined) => {
     }),
   );
   await waitFor(() => expect(setInitialData).toHaveBeenCalledWith(expect.objectContaining({})));
-  return setInitialData.mock.calls.at(-1)?.[0]?.appState;
+  return { appState: setInitialData.mock.calls.at(-1)?.[0]?.appState, refs };
 };
 
 const storedDrawing = (appState: Record<string, any>) => ({
@@ -73,23 +73,33 @@ describe("the appState a board opens with", () => {
   });
 
   it("switches object snapping on for a scratch board", async () => {
-    expect((await loadScene(undefined)).objectsSnapModeEnabled).toBe(true);
+    expect((await loadScene(undefined)).appState.objectsSnapModeEnabled).toBe(true);
   });
 
   it("switches object snapping on for a board that predates the setting", async () => {
     vi.mocked(api.getDrawing).mockResolvedValue(storedDrawing({ viewBackgroundColor: "#fff" }));
-    expect((await loadScene("abc")).objectsSnapModeEnabled).toBe(true);
+    expect((await loadScene("abc")).appState.objectsSnapModeEnabled).toBe(true);
   });
 
   it("leaves the grid alone on a board that draws on it", async () => {
     vi.mocked(api.getDrawing).mockResolvedValue(storedDrawing({ gridModeEnabled: true }));
-    const appState = await loadScene("abc");
+    const { appState } = await loadScene("abc");
     expect(appState.objectsSnapModeEnabled).toBe(false);
     expect(appState.gridModeEnabled).toBe(true);
   });
 
   it("honours a board where snapping was switched off on purpose", async () => {
     vi.mocked(api.getDrawing).mockResolvedValue(storedDrawing({ objectsSnapModeEnabled: false }));
-    expect((await loadScene("abc")).objectsSnapModeEnabled).toBe(false);
+    expect((await loadScene("abc")).appState.objectsSnapModeEnabled).toBe(false);
+  });
+
+  it("initializes the ordering signature from the loaded scene", async () => {
+    vi.mocked(api.getDrawing).mockResolvedValue({
+      ...storedDrawing({}),
+      elements: [{ id: "first" }, { id: "second" }],
+    });
+    const { refs } = await loadScene("abc");
+
+    expect(refs.lastSyncedElementOrderSig.current).not.toBe("");
   });
 });

@@ -4,6 +4,7 @@ import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import * as api from "../../api";
 import { getPersistedAppState, hasRenderableElements, resolveObjectsSnapMode } from "./shared";
+import { computeElementOrderSig } from "./useEditorElementTracking";
 
 type AccessLevel = "none" | "view" | "edit" | "owner";
 
@@ -137,6 +138,7 @@ export const useEditorSceneLoader = ({
         refs.lastPersistedFiles.current = files;
         refs.currentDrawingVersion.current = typeof data.version === "number" ? data.version : null;
         refs.lastPersistedElements.current = elements;
+        refs.lastSyncedElementOrderSig.current = computeElementOrderSig(elements);
         elements.forEach((element: any) => recordElementVersion(element));
         const persistedAppState = getPersistedAppState(data.appState || {});
         const hydratedAppState = {

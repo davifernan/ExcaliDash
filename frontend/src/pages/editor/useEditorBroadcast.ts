@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
+import { toast } from "sonner";
 import { getFilesDelta } from "./shared";
+
+const ELEMENT_ORDER_BYTE_LIMIT = 8 * 1024 * 1024;
+const ELEMENT_UPDATE_ACK_TIMEOUT_MS = 3_000;
+
+const elementOrderByteLength = (ids: readonly string[]) => {
+  const encoder = new TextEncoder();
+  return ids.reduce(
+    (total, id, index) => total + encoder.encode(JSON.stringify(id)).byteLength + (index ? 1 : 0),
+    2,
+  );
+};
 
 type UseEditorBroadcastParams = {
   drawingId: string | undefined;
@@ -57,13 +69,9 @@ export const useEditorBroadcast = ({
       const normalizedElements = normalizeImageElementStatus(elements, nextFiles);
       const nextOrderSig = computeElementOrderSig(normalizedElements);
       const shouldSyncOrder = nextOrderSig !== lastSyncedElementOrderSigRef.current;
-      if (shouldSyncOrder) {
-        lastSyncedElementOrderSigRef.current = nextOrderSig;
-      }
       normalizedElements.forEach((el) => {
         if (hasElementChanged(el)) {
           changes.push(el);
-          recordElementVersion(el);
         }
       });
       const filesDelta = getFilesDelta(lastSyncedFilesRef.current, nextFiles);
@@ -71,20 +79,52 @@ export const useEditorBroadcast = ({
       if (Object.keys(nextFiles || {}).length > 0) {
         latestFilesRef.current = nextFiles;
       }
-      if (shouldSyncFiles) {
-        lastSyncedFilesRef.current = nextFiles;
-      }
       if (changes.length > 0 || shouldSyncFiles || shouldSyncOrder) {
         setHasSceneChangesSinceLoad();
         lastLocalChangeAtRef.current = new Date().getTime();
-        socketRef.current.emit("element-update", {
+        const elementOrder = shouldSyncOrder
+          ? normalizedElements
+              .filter((el: any) => !el?.isDeleted)
+              .map((el: any) => el?.id)
+              .filter((id): id is string => Boolean(id))
+          : undefined;
+        const orderBytes = elementOrder ? elementOrderByteLength(elementOrder) : 0;
+        const payload = {
           drawingId,
           elements: changes.length > 0 ? changes : [],
           files: shouldSyncFiles ? filesDelta : undefined,
-          elementOrder: shouldSyncOrder
-            ? normalizedElements.map((el: any) => el?.id).filter(Boolean)
-            : undefined,
-        });
+          elementOrder:
+            elementOrder && orderBytes <= ELEMENT_ORDER_BYTE_LIMIT ? elementOrder : undefined,
+          elementOrderOmittedBytes:
+            elementOrder && orderBytes > ELEMENT_ORDER_BYTE_LIMIT ? orderBytes : undefined,
+        };
+        const acknowledge = (response: any) => {
+          if (!response?.ok) {
+            const message = response?.error?.message;
+            if (typeof message === "string") toast.error(message);
+            return;
+          }
+          changes.forEach((element) => recordElementVersion(element));
+          if (shouldSyncOrder) lastSyncedElementOrderSigRef.current = nextOrderSig;
+          if (shouldSyncFiles) {
+            lastSyncedFilesRef.current = {
+              ...lastSyncedFilesRef.current,
+              ...filesDelta,
+            };
+          }
+          const warning = response?.warning?.message;
+          if (typeof warning === "string") toast.error(warning);
+        };
+        const socket = socketRef.current;
+        if (typeof socket.timeout === "function") {
+          socket
+            .timeout(ELEMENT_UPDATE_ACK_TIMEOUT_MS)
+            .emit("element-update", payload, (error: unknown, response: unknown) => {
+              if (!error) acknowledge(response);
+            });
+        } else {
+          socket.emit("element-update", payload, acknowledge);
+        }
         const appState = latestAppStateRef.current;
         if (appState) {
           debouncedSave(drawingId, normalizedElements, appState, nextFiles);

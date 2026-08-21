@@ -119,6 +119,83 @@ describe("socket collaboration security and follow state", () => {
     });
   });
 
+  it("relays element content and ordering beyond the former 20,000-id ceiling", async () => {
+    const sender = await io.connect("socket-sender");
+    const receiver = await io.connect("socket-receiver");
+    await join(sender);
+    await join(receiver);
+    io.emissions.length = 0;
+    const elementOrder = Array.from({ length: 20_001 }, (_, index) => `element-${index}`);
+    const ack = vi.fn();
+
+    await sender.trigger(
+      "element-update",
+      {
+        drawingId: "drawing-1",
+        elements: [{ id: "changed-element" }],
+        elementOrder,
+      },
+      ack,
+    );
+
+    const update = lastEmission("element-update", room("drawing-1"));
+    expect(update?.payload.elements).toEqual([{ id: "changed-element" }]);
+    expect(update?.payload.elementOrder).toBe(elementOrder);
+    expect(ack).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("relays element content and warns the sender when ordering exceeds its byte budget", async () => {
+    const sender = await io.connect("socket-sender");
+    const receiver = await io.connect("socket-receiver");
+    await join(sender);
+    await join(receiver);
+    io.emissions.length = 0;
+    const elementOrder = Array.from(
+      { length: 42_000 },
+      (_, index) => `${index.toString().padStart(6, "0")}-${"x".repeat(193)}`,
+    );
+    const ack = vi.fn();
+
+    await sender.trigger(
+      "element-update",
+      {
+        drawingId: "drawing-1",
+        elements: [{ id: "important-change" }],
+        elementOrder,
+      },
+      ack,
+    );
+
+    expect(lastEmission("element-update", room("drawing-1"))?.payload).toEqual({
+      elements: [{ id: "important-change" }],
+      files: undefined,
+      elementOrder: undefined,
+    });
+    expect(ack).toHaveBeenCalledWith({
+      ok: true,
+      warning: {
+        code: "payload-too-large",
+        message: expect.stringMatching(/^Element ordering was omitted because it uses \d+ bytes$/),
+      },
+    });
+  });
+
+  it("reports an invalid leave-room payload to its sender", async () => {
+    const socket = await io.connect("socket-a");
+    await join(socket);
+    const ack = vi.fn();
+
+    await socket.trigger("leave-room", { drawingId: 42 }, ack);
+
+    expect(ack).toHaveBeenCalledWith({
+      ok: false,
+      error: {
+        code: "invalid-request",
+        message: "Invalid leave-room payload",
+      },
+    });
+  });
+
   it("routes finite viewport bounds only to a registered follower", async () => {
     const target = await io.connect("socket-target");
     const follower = await io.connect("socket-follower");
@@ -160,7 +237,15 @@ describe("socket collaboration security and follow state", () => {
       drawingId: "drawing-1",
       sceneBounds: [0, 0, Number.POSITIVE_INFINITY, 100],
     });
-    expect(io.emissions).toHaveLength(1);
+    expect(io.emissions).toHaveLength(2);
+    expect(io.emissions.at(-1)).toMatchObject({
+      scope: "socket-target",
+      event: "room-event-error",
+      payload: {
+        event: "viewport-bounds",
+        error: { code: "invalid-request" },
+      },
+    });
   });
 
   it("rejects self-follow and cleans both edge directions on disconnect", async () => {

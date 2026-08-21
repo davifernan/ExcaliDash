@@ -22,6 +22,7 @@ import {
   removeStored,
   resolveStoragePath,
   shouldCompress,
+  storedFileExists,
   storeStream,
 } from "./assetStorage";
 import type { StoredFile } from "./assetStorage";
@@ -96,7 +97,25 @@ export async function storeBlob(
   }
 
   let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
-  if (blob) {
+  // Matching bytes are only worth reusing if the bytes are still there. A row
+  // whose file has gone — a partial restore, a file removed by hand — would
+  // otherwise swallow every later upload of the same content: each one appears
+  // to succeed and none of them can ever be read. The upload just made is a
+  // perfectly good replacement, so adopt it instead of throwing it away.
+  if (blob && !(await storedFileExists(deps.storageDir, blob.storageKey))) {
+    blob = await deps.prisma.storedBlob.update({
+      where: { id: blob.id },
+      data: {
+        storageKey: stored.storageKey,
+        sizeBytes: stored.sizeBytes,
+        storedBytes: stored.storedBytes,
+        contentEncoding: stored.contentEncoding,
+        deleteAfter: null,
+        state: "READY",
+        ...(input.purpose === "LINK_PREVIEW" ? { purpose: "LINK_PREVIEW" } : {}),
+      },
+    });
+  } else if (blob) {
     await removeStored(deps.storageDir, stored.storageKey);
     if (blob.deleteAfter || (input.purpose === "LINK_PREVIEW" && blob.purpose !== "LINK_PREVIEW")) {
       blob = await deps.prisma.storedBlob.update({

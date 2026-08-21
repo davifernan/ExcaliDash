@@ -227,3 +227,13 @@ export async function inspectStoredFile(root: string, stored: StoredFile): Promi
 export async function removeStored(root: string, storageKey: string): Promise<void> {
   await rm(resolveStoragePath(root, storageKey), { force: true });
 }
+
+/** Whether the bytes a stored-blob row points at are actually on disk. */
+export async function storedFileExists(root: string, storageKey: string): Promise<boolean> {
+  try {
+    await stat(resolveStoragePath(root, storageKey));
+    return true;
+  } catch {
+    return false;
+  }
+}

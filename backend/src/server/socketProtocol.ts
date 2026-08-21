@@ -9,7 +9,12 @@ export const SOCKET_LIMITS = {
   fileBytes: 10 * 1024 * 1024 + 4 * 1024,
   fileDataUrlLength: 10 * 1024 * 1024,
   elementUpdateBytes: 15 * 1024 * 1024,
-  anonymousElementUpdateBytes: 11 * 1024 * 1024,
+  // The largest legitimate event measured is a single maximum embedded image at
+  // 10.49 MB. 11 MiB left barely half a megabyte over that -- close enough that
+  // an ordinary board would start losing live updates as it grew, and a guest
+  // editing through a share link is a real collaborator, not a suspect. 13 MiB
+  // keeps them below an account's ceiling with room to move.
+  anonymousElementUpdateBytes: 13 * 1024 * 1024,
 } as const;
 
 export type ElementUpdateTrafficLimits = {

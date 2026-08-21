@@ -70,6 +70,10 @@ export const registerCoreRoomEvents = ({
     windowMs: 1_000,
     parse: parseElementUpdatePayload,
     allowPayload: (payload) => allowElementUpdate(payload.serializedBytes),
+    // Only the sender hears this. The change is still saved over HTTP, so
+    // nothing is lost -- but without a word the sender keeps drawing and
+    // nobody else sees any of it, which is the worse failure.
+    onRefused: () => socket.emit("element-update-refused"),
     requireAccess,
     requireEdit: true,
     handle: (payload) => {

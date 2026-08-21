@@ -22,6 +22,16 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
   allow?: () => boolean;
   /** Payload-aware budget, evaluated after validation but before access I/O. */
   allowPayload?: (payload: Payload) => boolean;
+  /**
+   * Told when a payload is refused on its own merits -- malformed, too large,
+   * over budget. Deliberately not called for a failed access check: that answer
+   * belongs to the authorisation path, and saying more would describe the board
+   * to somebody who is not allowed to see it.
+   *
+   * Without this a refusal is silent, and the sender goes on drawing while
+   * nobody else sees any of it.
+   */
+  onRefused?: () => void;
   handle: (payload: Payload) => void | Promise<void>;
 };
 
@@ -49,6 +59,7 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   requireEdit = false,
   allow: sharedAllow,
   allowPayload,
+  onRefused,
   handle,
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
   const allow = sharedAllow ?? createRateLimiter(limit, windowMs);
@@ -59,13 +70,11 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
     if (!allow()) return;
     tail = tail.then(async () => {
       const payload = parse(value);
-      if (
-        !payload ||
-        (allowPayload && !allowPayload(payload)) ||
-        !(await requireAccess(socket, payload.drawingId, requireEdit))
-      ) {
+      if (!payload || (allowPayload && !allowPayload(payload))) {
+        onRefused?.();
         return;
       }
+      if (!(await requireAccess(socket, payload.drawingId, requireEdit))) return;
       await handle(payload);
     });
     // A thrown handler must not poison the tail for everything after it.

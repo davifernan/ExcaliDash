@@ -192,4 +192,42 @@ describe("element-update transport limits", () => {
     await secondAccount.trigger("element-update", payload);
     expect(accountIo.emissions.filter((item) => item.event === "element-update")).toHaveLength(1);
   });
+  it("tells the sender when a change was refused, and tells only them", async () => {
+    // The change is still saved over HTTP, so nothing is lost. What is lost is
+    // the live sharing -- and without a word the sender keeps drawing while
+    // nobody else sees any of it.
+    const payload = { drawingId: "drawing-1", elements: [fullRectangle(0)] };
+    const io = new FakeIo();
+    registerSocketHandlers({
+      io: io as any,
+      prisma: {
+        drawing: { findUnique: vi.fn().mockResolvedValue({ userId: BOOTSTRAP_USER_ID }) },
+        drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      } as any,
+      authModeService: { getAuthEnabled: async () => false } as any,
+      jwtSecret: "test-secret",
+      elementUpdateTrafficLimits: {
+        // No budget at all, so the very first change is refused.
+        accountBytesPerWindow: 0,
+        anonymousBytesPerWindow: 0,
+        windowMs: 1_000,
+      },
+    });
+    const sender = await io.connect("sender");
+    const bystander = await io.connect("bystander");
+    await Promise.all([
+      sender.trigger("join-room", { drawingId: "drawing-1", user: {} }),
+      bystander.trigger("join-room", { drawingId: "drawing-1", user: {} }),
+    ]);
+    io.emissions.length = 0;
+
+    await sender.trigger("element-update", payload);
+
+    const refusals = io.emissions.filter((item) => item.event === "element-update-refused");
+    expect(refusals).toHaveLength(1);
+    // Straight to that one socket, not into the room.
+    expect(refusals[0].scope).toBe("sender");
+    // Refused means refused: nobody else saw the change either.
+    expect(io.emissions.filter((item) => item.event === "element-update")).toHaveLength(0);
+  });
 });

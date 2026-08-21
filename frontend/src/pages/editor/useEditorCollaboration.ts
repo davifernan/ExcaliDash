@@ -10,6 +10,7 @@ import { getShareLinkToken } from "../../api";
 import { bindSocketCollaborators } from "./socketCollaborators";
 import type { Peer } from "./socketCollaborators";
 import { bindRemoteSelection } from "./remoteSelection";
+import { bindElementUpdateRefusals } from "./elementUpdateRefusal";
 import { startCursorChat, type CursorChatController } from "./cursorChat";
 import {
   bindSocketWorkshopTimer,
@@ -118,6 +119,7 @@ export const useEditorCollaboration = ({
       },
       decorateName: chat.decorateName,
     });
+    const refusals = bindElementUpdateRefusals({ socket, notify: toast.warning });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
     const workshopTimer = bindSocketWorkshopTimer({
       socket,
@@ -157,6 +159,7 @@ export const useEditorCollaboration = ({
       // arrives, and the same presence returns wearing what it used to say.
       cursorChat.pruneTo([]);
       collaborators.reset();
+      refusals.reset();
       remoteSelection.reset();
       workshopTimer.reset();
       inviteHereController.reset();
@@ -228,6 +231,7 @@ export const useEditorCollaboration = ({
       cursorChatRef.current = null;
       setCursorChatDraft(null);
       collaborators.dispose();
+      refusals.dispose();
       remoteSelection.dispose();
       workshopTimer.dispose();
       inviteHereController.dispose();

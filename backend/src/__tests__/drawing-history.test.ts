@@ -39,6 +39,33 @@ const buildLargeScene = (marker: string): string =>
     })),
   );
 
+const invokeHistoryRoute = async (
+  app: express.Express,
+  method: "get" | "post",
+  path: string,
+  params: Record<string, string>,
+) => {
+  const layer = (app as any).router.stack.find(
+    (candidate: any) => candidate.route?.path === path && candidate.route.methods[method],
+  );
+  const req: any = { method: method.toUpperCase(), params, query: {}, headers: {} };
+  const res: any = {
+    statusCode: 200,
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload: unknown) {
+      this.payload = payload;
+      return this;
+    },
+  };
+  for (const handler of layer.route.stack) {
+    await handler.handle(req, res, () => undefined);
+  }
+  return res;
+};
+
 describe("Drawing Version History", () => {
   let app: express.Express;
   let prisma: any;
@@ -123,6 +150,49 @@ describe("Drawing Version History", () => {
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBe("Snapshot not found");
+    });
+  });
+
+  describe("history authorization", () => {
+    it("hides both history endpoints from a view-only user", async () => {
+      ({ app, prisma } = buildApp({ userId: "viewer-1" }));
+      prisma.drawing.findUnique.mockResolvedValue(mockDrawing);
+      prisma.drawingPermission.findUnique.mockResolvedValue({ permission: "view" });
+      prisma.drawingSnapshot.findFirst.mockResolvedValue(mockSnapshot);
+
+      const list = await invokeHistoryRoute(app, "get", "/drawings/:id/history", {
+        id: MOCK_DRAWING_ID,
+      });
+      const snapshot = await invokeHistoryRoute(app, "get", "/drawings/:id/history/:snapshotId", {
+        id: MOCK_DRAWING_ID,
+        snapshotId: MOCK_SNAPSHOT_ID,
+      });
+
+      expect(list.statusCode).toBe(404);
+      expect(snapshot.statusCode).toBe(404);
+      expect(prisma.drawingSnapshot.findMany).not.toHaveBeenCalled();
+      expect(prisma.drawingSnapshot.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("lets an editor list history and fetch a snapshot", async () => {
+      ({ app, prisma } = buildApp({ userId: "editor-1" }));
+      prisma.drawing.findUnique.mockResolvedValue(mockDrawing);
+      prisma.drawingPermission.findUnique.mockResolvedValue({ permission: "edit" });
+      prisma.drawingSnapshot.findMany.mockResolvedValue([]);
+      prisma.drawingSnapshot.count.mockResolvedValue(0);
+      prisma.drawingSnapshot.findFirst.mockResolvedValue(mockSnapshot);
+
+      const list = await invokeHistoryRoute(app, "get", "/drawings/:id/history", {
+        id: MOCK_DRAWING_ID,
+      });
+      const snapshot = await invokeHistoryRoute(app, "get", "/drawings/:id/history/:snapshotId", {
+        id: MOCK_DRAWING_ID,
+        snapshotId: MOCK_SNAPSHOT_ID,
+      });
+
+      expect(list.statusCode).toBe(200);
+      expect(snapshot.statusCode).toBe(200);
+      expect(snapshot.payload.id).toBe(MOCK_SNAPSHOT_ID);
     });
   });
 

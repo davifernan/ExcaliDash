@@ -76,11 +76,13 @@ async function authorizedAsset(deps: AssetRouteDeps, req: Request) {
   });
   if (!canViewDrawing(access)) return null;
 
-  // Belonging to the board is what makes this document reachable — either
-  // because it is on the board now, or because a kept version still needs it.
+  // ACTIVE is the persisted invariant that the live board references this
+  // document. Viewers may only follow that live reference; editors can also
+  // reach pending uploads and documents retained solely for version history.
   const link = await deps.prisma.drawingAsset.findUnique({
     where: { drawingId_assetId: { drawingId, assetId } },
   });
+  if (link?.state !== "ACTIVE" && !canEditDrawing(access)) return null;
   if (!link) {
     const viaSnapshot = await deps.prisma.drawingSnapshotAsset.findFirst({
       where: { assetId, snapshot: { drawingId } },

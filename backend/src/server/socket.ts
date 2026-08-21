@@ -92,13 +92,30 @@ export const registerSocketHandlers = ({
   const allowActivity = createKeyedRateLimiter(20, 10_000);
   const allowSelection = createKeyedRateLimiter(SELECTION_LIMITS.eventsPerSecond, 1_000);
   const allowCursorChat = createKeyedRateLimiter(CURSOR_CHAT_LIMITS.eventsPerSecond, 1_000);
-  const allowAccountElementBytes = createKeyedByteLimiter(
+  // The old two 10k-key maps allowed 20k live buckets total. Actor+board keys
+  // multiply faster, so four 5k-key maps retain that same 20k worst case; each
+  // map purges expired windows and refuses new keys rather than evicting a live
+  // bucket that an attacker could then recreate with a reset budget.
+  const elementBudgetMaxKeys = 5_000;
+  const allowAccountBoardElementBytes = createKeyedByteLimiter(
     elementUpdateTrafficLimits.accountBytesPerWindow,
     elementUpdateTrafficLimits.windowMs,
+    elementBudgetMaxKeys,
   );
-  const allowAnonymousElementBytes = createKeyedByteLimiter(
+  const allowAnonymousBoardElementBytes = createKeyedByteLimiter(
     elementUpdateTrafficLimits.anonymousBytesPerWindow,
     elementUpdateTrafficLimits.windowMs,
+    elementBudgetMaxKeys,
+  );
+  const allowAccountActorElementBytes = createKeyedByteLimiter(
+    elementUpdateTrafficLimits.accountActorBytesPerWindow,
+    elementUpdateTrafficLimits.windowMs,
+    elementBudgetMaxKeys,
+  );
+  const allowAnonymousActorElementBytes = createKeyedByteLimiter(
+    elementUpdateTrafficLimits.anonymousActorBytesPerWindow,
+    elementUpdateTrafficLimits.windowMs,
+    elementBudgetMaxKeys,
   );
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
@@ -256,15 +273,22 @@ export const registerSocketHandlers = ({
       allowActivity: () => {
         return allowActivity(actor().key);
       },
-      allowElementUpdate: (serializedBytes) => {
+      allowElementUpdate: (drawingId, serializedBytes) => {
         const currentActor = actor();
+        const boardKey = JSON.stringify([currentActor.key, drawingId]);
         if (currentActor.isAccount) {
-          return allowAccountElementBytes(currentActor.key, serializedBytes);
+          return (
+            allowAccountBoardElementBytes(boardKey, serializedBytes) &&
+            allowAccountActorElementBytes(currentActor.key, serializedBytes)
+          );
         }
         // Link guests and auth-disabled visitors are address-keyed and capped
         // below signed-in accounts. IPv6 is normalised by ipKeyGenerator.
         if (serializedBytes > SOCKET_LIMITS.anonymousElementUpdateBytes) return false;
-        return allowAnonymousElementBytes(currentActor.key, serializedBytes);
+        return (
+          allowAnonymousBoardElementBytes(boardKey, serializedBytes) &&
+          allowAnonymousActorElementBytes(currentActor.key, serializedBytes)
+        );
       },
     });
     registerSelectionRoomEvent({

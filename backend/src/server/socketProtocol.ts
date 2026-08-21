@@ -20,6 +20,8 @@ export const SOCKET_LIMITS = {
 export type ElementUpdateTrafficLimits = {
   accountBytesPerWindow: number;
   anonymousBytesPerWindow: number;
+  accountActorBytesPerWindow: number;
+  anonymousActorBytesPerWindow: number;
   windowMs: number;
 };
 
@@ -30,6 +32,11 @@ export const ELEMENT_UPDATE_TRAFFIC_LIMITS: ElementUpdateTrafficLimits = {
   // A link guest can still send one maximum 10 MiB embedded image, but does
   // not receive an account's sustained relay allowance.
   anonymousBytesPerWindow: 12 * 1024 * 1024,
+  // Separate board budgets keep ordinary tabs independent. Four such budgets
+  // fit under the actor ceiling, but opening more boards cannot multiply an
+  // account's or address's aggregate relay throughput without bound.
+  accountActorBytesPerWindow: 120 * 1024 * 1024,
+  anonymousActorBytesPerWindow: 48 * 1024 * 1024,
   windowMs: 1_000,
 };
 

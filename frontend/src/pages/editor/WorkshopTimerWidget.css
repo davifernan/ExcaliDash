@@ -1,0 +1,128 @@
+.workshop-timer {
+  position: relative;
+  min-width: 112px;
+  color: var(--text-primary-color);
+  font-family: Assistant, system-ui, sans-serif;
+}
+
+.workshop-timer__summary,
+.workshop-timer__panel {
+  border: 1px solid var(--button-hover-border, transparent);
+  border-radius: var(--border-radius-lg);
+  background: var(--island-bg-color);
+  box-shadow: var(--shadow-island);
+}
+
+.workshop-timer__summary {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 11px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.workshop-timer__summary:hover {
+  background: var(--button-hover-bg);
+}
+
+.workshop-timer__time {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.workshop-timer__badge {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.65;
+  text-transform: uppercase;
+}
+
+.workshop-timer__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 270px;
+  padding: 10px;
+}
+
+.workshop-timer__start-row {
+  display: grid;
+  grid-template-columns: auto minmax(58px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.workshop-timer input,
+.workshop-timer__panel button {
+  min-height: 32px;
+  border: 1px solid var(--button-hover-border, currentColor);
+  border-radius: var(--border-radius-md);
+  background: var(--input-bg-color, var(--island-bg-color));
+  color: inherit;
+  font: inherit;
+}
+
+.workshop-timer input {
+  min-width: 0;
+  padding: 4px 7px;
+}
+
+.workshop-timer__panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.workshop-timer__panel button:hover {
+  background: var(--button-hover-bg);
+  color: var(--button-hover-color, inherit);
+}
+
+.workshop-timer__controls {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 9px;
+  font-size: 12px;
+}
+
+.workshop-timer__readonly {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.7;
+}
+
+.workshop-timer--finished .workshop-timer__summary {
+  color: var(--color-danger-text, var(--color-danger));
+  animation: workshop-timer-signal 0.9s ease-in-out 3;
+}
+
+.workshop-timer--mobile .workshop-timer__badge {
+  display: none;
+}
+
+@keyframes workshop-timer-signal {
+  50% {
+    box-shadow:
+      var(--shadow-island),
+      0 0 0 3px var(--color-danger-background);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workshop-timer--finished .workshop-timer__summary {
+    animation: none;
+  }
+}

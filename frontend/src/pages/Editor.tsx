@@ -93,21 +93,28 @@ export const Editor: React.FC = () => {
       replace: true,
     });
   }, [id, location.hash, location.pathname, location.search, navigate]);
-  const { peers, followers, socketRef, isSyncing, onPointerUpdate, onSelectionChange } =
-    useEditorCollaboration({
-      drawingId: id,
-      me,
-      isReady,
-      excalidrawAPI,
-      editorContainerRef,
-      lastSyncedFilesRef,
-      lastSyncedElementOrderSigRef,
-      latestElementsRef,
-      latestFilesRef,
-      computeElementOrderSig,
-      recordElementVersion,
-      onAccessDenied: handleSocketAccessDenied,
-    });
+  const {
+    peers,
+    followers,
+    workshopTimer,
+    socketRef,
+    isSyncing,
+    onPointerUpdate,
+    onSelectionChange,
+  } = useEditorCollaboration({
+    drawingId: id,
+    me,
+    isReady,
+    excalidrawAPI,
+    editorContainerRef,
+    lastSyncedFilesRef,
+    lastSyncedElementOrderSigRef,
+    latestElementsRef,
+    latestFilesRef,
+    computeElementOrderSig,
+    recordElementVersion,
+    onAccessDenied: handleSocketAccessDenied,
+  });
   const emitFilesDeltaIfNeeded = useCallback(
     (nextFiles: Record<string, any>) => {
       if (!socketRef.current || !id) return false;
@@ -342,6 +349,7 @@ export const Editor: React.FC = () => {
         newName={newName}
         peers={peers}
         theme={theme}
+        workshopTimer={workshopTimer}
         onBackClick={handleBackClick}
         onCanvasChange={handleChangeWithSelection}
         stickyOverlay={stickyOverlay}

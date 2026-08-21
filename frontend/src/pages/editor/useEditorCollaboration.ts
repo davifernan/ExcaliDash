@@ -11,6 +11,12 @@ import { getShareLinkToken } from "../../api";
 import { bindSocketCollaborators } from "./socketCollaborators";
 import type { Peer } from "./socketCollaborators";
 import { bindRemoteSelection } from "./remoteSelection";
+import {
+  bindSocketWorkshopTimer,
+  createIdleWorkshopTimerSnapshot,
+  WORKSHOP_TIMER_COMMAND_EVENT,
+  type WorkshopTimerAction,
+} from "./workshopTimer";
 export type { Peer } from "./socketCollaborators";
 
 type UseEditorCollaborationInput = {
@@ -55,6 +61,9 @@ export const useEditorCollaboration = ({
   // and showing them a different one than everyone else sees is a small lie.
   const [selfIdentity, setSelfIdentity] = useState<UserIdentity | null>(null);
   const [followers, setFollowers] = useState<Follower[]>([]);
+  const [workshopTimerSnapshot, setWorkshopTimerSnapshot] = useState(() =>
+    createIdleWorkshopTimerSnapshot(drawingId || ""),
+  );
   const socketRef = useRef<Socket | null>(null);
   const lastCursorEmit = useRef<number>(0);
   const selectionPublisherRef = useRef<((appState: any) => void) | null>(null);
@@ -91,6 +100,11 @@ export const useEditorCollaboration = ({
       onPeersChange: setPeers,
     });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
+    const workshopTimer = bindSocketWorkshopTimer({
+      socket,
+      drawingId,
+      onChange: setWorkshopTimerSnapshot,
+    });
     selectionPublisherRef.current = remoteSelection.publish;
     socket.on("error", (payload: any) => {
       const message = typeof payload?.message === "string" ? payload.message : null;
@@ -113,6 +127,7 @@ export const useEditorCollaboration = ({
       unbindFollowMode.resetConnectionState();
       collaborators.reset();
       remoteSelection.reset();
+      workshopTimer.reset();
       setFollowers([]);
       pendingRemoteElementsRef.current.clear();
       pendingRemoteFilesRef.current = {};
@@ -271,6 +286,7 @@ export const useEditorCollaboration = ({
       unbindFollowMode();
       collaborators.dispose();
       remoteSelection.dispose();
+      workshopTimer.dispose();
       if (selectionPublisherRef.current === remoteSelection.publish) {
         selectionPublisherRef.current = null;
       }
@@ -316,11 +332,19 @@ export const useEditorCollaboration = ({
   const onSelectionChange = useCallback((appState: any) => {
     selectionPublisherRef.current?.(appState);
   }, []);
+  const sendWorkshopTimerCommand = useCallback(
+    (action: WorkshopTimerAction, durationMs?: number) => {
+      if (!drawingId || !socketRef.current) return;
+      socketRef.current.emit(WORKSHOP_TIMER_COMMAND_EVENT, { drawingId, action, durationMs });
+    },
+    [drawingId],
+  );
 
   return {
     peers,
     selfIdentity,
     followers,
+    workshopTimer: { snapshot: workshopTimerSnapshot, sendCommand: sendWorkshopTimerCommand },
     socketRef,
     isSyncing,
     onPointerUpdate,

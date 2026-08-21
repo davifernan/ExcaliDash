@@ -1,6 +1,6 @@
 import React from "react";
-import { Excalidraw, MainMenu } from "@excalidraw/excalidraw";
-import { ArrowLeft, Download } from "lucide-react";
+import { Excalidraw, Footer, MainMenu } from "@excalidraw/excalidraw";
+import { ArrowLeft, Download, History } from "lucide-react";
 import { Toaster } from "sonner";
 import { LanguageSelector } from "../../components/LanguageSelector";
 import { UIOptions } from "./shared";
@@ -12,6 +12,8 @@ import { useExcalidrawRoot } from "./useExcalidrawRoot";
 import { useExcalidrawUiState } from "./useExcalidrawUiState";
 import type { Peer } from "./useEditorCollaboration";
 import type { Follower } from "./followMode";
+import type { WorkshopTimerController } from "./workshopTimer";
+import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
 
 type EditorViewProps = {
   id?: string;
@@ -29,6 +31,7 @@ type EditorViewProps = {
   newName: string;
   peers: Peer[];
   theme: string;
+  workshopTimer: WorkshopTimerController;
   onBackClick: () => void;
   onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
   stickyOverlay?: React.ReactNode;
@@ -69,6 +72,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   newName,
   peers,
   theme,
+  workshopTimer,
   onBackClick,
   onCanvasChange,
   onCanvasDropCapture,
@@ -145,13 +149,22 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 isMobile={isMobile}
                 canEdit={canEdit}
                 followerNotice={describeFollowers(followers)}
-                showHistory={canEdit && !!id}
                 showShare={accessLevel === "owner" && !!id}
-                onHistoryOpen={onHistoryOpen}
                 onShareOpen={onShareOpen}
               />
             )}
           >
+            {/*
+              The timer lives at the bottom, in the Footer slot Excalidraw
+              offers and we had never filled. It belongs there rather than in
+              the top-right cluster: that column is capped near 275px and every
+              button in it competes with the avatar list, which collapses the
+              moment it drops below 76px. A countdown is ambient anyway -- you
+              glance at it, you do not hunt for it.
+            */}
+            <Footer>
+              <WorkshopTimerWidget timer={workshopTimer} canEdit={canEdit} />
+            </Footer>
             <MainMenu>
               {/*
                 The way back, in the one place that exists at every window size.
@@ -167,6 +180,11 @@ export const EditorView: React.FC<EditorViewProps> = ({
               <MainMenu.Item onSelect={onExportClick} icon={<Download size={16} />}>
                 Export drawing
               </MainMenu.Item>
+              {canEdit && id ? (
+                <MainMenu.Item onSelect={onHistoryOpen} icon={<History size={16} />}>
+                  Version history
+                </MainMenu.Item>
+              ) : null}
               <MainMenu.DefaultItems.ClearCanvas />
               <MainMenu.DefaultItems.ChangeCanvasBackground />
               <MainMenu.DefaultItems.Help />

@@ -34,6 +34,7 @@ import { createRateLimiter, parseDrawingId, SOCKET_QUEUE_LIMITS } from "./socket
 import { ActiveAccountCache } from "./activeAccountCache";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent } from "./socketSelection";
+import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -60,6 +61,7 @@ export const registerSocketHandlers = ({
   const credentialChecks = new Map<string, Promise<boolean>>();
   const drawingBySocket = new Map<string, string>();
   const shareTokenBySocket = new Map<string, string>();
+  const workshopTimers = createWorkshopTimerManager({ io });
   let followManager: ReturnType<typeof createSocketFollowManager>;
   const activeAccounts = new ActiveAccountCache(async (userId) => {
     const account = await prisma.user.findUnique({
@@ -87,6 +89,7 @@ export const registerSocketHandlers = ({
     followManager.clearSocket(socket.id, reason);
     drawingBySocket.delete(socket.id);
     presences.leave(drawingId, socket.id);
+    if (presences.list(drawingId).length === 0) workshopTimers.clear(drawingId);
     if (leaveSocketRoom) await socket.leave(roomName(drawingId));
     emitPresence(drawingId);
   };
@@ -182,6 +185,7 @@ export const registerSocketHandlers = ({
       emitPresence,
     });
     registerSelectionRoomEvent({ socket, presences, requireAccess });
+    registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
 
     socket.on("join-room", (data: unknown, ack?: (value: unknown) => void) => {
       const rejectJoin = (code: string, message: string) => {
@@ -294,6 +298,7 @@ export const registerSocketHandlers = ({
         else shareTokenBySocket.delete(socket.id);
         presences.join(drawingId, presence);
         emitPresence(drawingId);
+        socket.emit("workshop-timer-update", workshopTimers.snapshot(drawingId));
         followManager.invalidateAccess(socket.id);
         ack?.({ ok: true, presence });
       };

@@ -6,6 +6,11 @@
  * and, worse, two rows of collaborator avatars showing the same people, of which
  * ours were the decorative ones: follow mode listens to Excalidraw's avatars.
  *
+ * Version history joined export in the main menu for the same reason, once the
+ * timer and the invite button wanted room here too: three of us competing for a
+ * column this narrow is a fight the avatars lose. What stays visible is what a
+ * live session needs -- who is here, and how to bring someone in.
+ *
  * Export moved into the main menu, and that was not tidying. Excalidraw's top
  * row is a grid whose right column is capped at roughly 275px, and the avatar
  * list shrinks to fit whatever is left: at 71px it decided it had room for zero
@@ -20,15 +25,13 @@
  * gesture is in progress, and we are told when the layout is mobile.
  */
 import React from "react";
-import { History, Share2 } from "lucide-react";
+import { Share2 } from "lucide-react";
 
 type EditorTopRightProps = {
   isMobile: boolean;
   canEdit: boolean;
   followerNotice: string | null;
-  showHistory: boolean;
   showShare: boolean;
-  onHistoryOpen: () => void;
   onShareOpen: () => void;
 };
 
@@ -60,9 +63,7 @@ const iconButton: React.CSSProperties = {
 export const EditorTopRight: React.FC<EditorTopRightProps> = ({
   isMobile,
   followerNotice,
-  showHistory,
   showShare,
-  onHistoryOpen,
   onShareOpen,
 }) => {
   // On a phone the top row is already crowded by Excalidraw's own controls, and
@@ -87,17 +88,6 @@ export const EditorTopRight: React.FC<EditorTopRightProps> = ({
         >
           {followerNotice}
         </span>
-      ) : null}
-      {showHistory ? (
-        <button
-          onClick={onHistoryOpen}
-          style={iconButton}
-          title="Version history"
-          aria-label="Version history"
-          data-testid="editor-history"
-        >
-          <History size={16} />
-        </button>
       ) : null}
       {showShare ? (
         <button

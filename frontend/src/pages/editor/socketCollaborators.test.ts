@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("socket collaborators", () => {
-  it("merges initial selection and removes the collaborator through presence cleanup", () => {
+  it("does not require selections in presence and removes the collaborator through cleanup", () => {
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn(() => 1),
@@ -49,13 +49,49 @@ describe("socket collaborators", () => {
         name: "Peer",
         color: "#123456",
         isActive: true,
-        selectedElementIds: { element: true },
       },
     ]);
-    expect(collaborators.get("peer")?.selectedElementIds).toEqual({ element: true });
+    expect(collaborators.get("peer")?.selectedElementIds).toEqual({});
 
     socket.trigger("presence-update", []);
     expect(collaborators.has("peer")).toBe(false);
     binding.dispose();
+  });
+
+  it("preserves the large-selection status when presence refreshes the collaborator name", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const socket = new FakeSocket();
+    let collaborators = new Map<string, any>([
+      [
+        "peer",
+        {
+          username: "Peer · large selection",
+          selectionAllSelected: true,
+          selectedElementIds: {},
+        },
+      ],
+    ]);
+    const api = {
+      getAppState: () => ({ collaborators }),
+      updateScene: vi.fn((scene: any) => {
+        collaborators = scene.collaborators;
+      }),
+    };
+    bindSocketCollaborators({ socket: socket as any, api, onPeersChange: vi.fn() });
+
+    socket.trigger("presence-update", [
+      {
+        presenceId: "peer",
+        name: "Peer",
+        color: "#123456",
+        isActive: true,
+      },
+    ]);
+
+    expect(collaborators.get("peer")?.username).toBe("Peer · large selection");
   });
 });

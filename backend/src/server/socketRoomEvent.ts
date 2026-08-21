@@ -2,6 +2,70 @@ import type { Socket } from "socket.io";
 import { createRateLimiter } from "./socketProtocol";
 
 export type RoomEventPayload = { drawingId: string };
+export type RoomEventError = { code: string; message: string };
+export type RoomEventAck = (
+  value: { ok: true; warning?: RoomEventError } | { ok: false; error: RoomEventError },
+) => void;
+export type RoomEventResult = { warning: RoomEventError } | void;
+
+const ROOM_EVENT_FEEDBACK_EVENT = "room-event-error";
+const HARD_FAILURE_LIMIT = 10;
+const HARD_FAILURE_WINDOW_MS = 60_000;
+const hardFailures = new WeakMap<Socket, { windowStartedAt: number; count: number }>();
+
+const reportHardFailure = (
+  socket: Socket,
+  event: string,
+  error: RoomEventError,
+  ack?: RoomEventAck,
+) => {
+  if (ack) ack({ ok: false, error });
+  else socket.emit(ROOM_EVENT_FEEDBACK_EVENT, { event, error });
+
+  const now = Date.now();
+  let failures = hardFailures.get(socket);
+  if (!failures || now - failures.windowStartedAt >= HARD_FAILURE_WINDOW_MS) {
+    failures = { windowStartedAt: now, count: 0 };
+    hardFailures.set(socket, failures);
+  }
+  failures.count += 1;
+  // A normal client cannot produce a stream of invalid packets. Closing the
+  // connection bounds error traffic while every packet the server accepts is
+  // still answered exactly once.
+  if (failures.count >= HARD_FAILURE_LIMIT) socket.disconnect(true);
+};
+
+export const createRoomEventFeedback = (socket: Socket, event: string, windowMs: number) => {
+  let nextRateLimitNoticeAt = 0;
+  return {
+    invalid(ack?: RoomEventAck) {
+      reportHardFailure(
+        socket,
+        event,
+        { code: "invalid-request", message: `Invalid ${event} payload` },
+        ack,
+      );
+    },
+    rateLimited() {
+      const now = Date.now();
+      if (now < nextRateLimitNoticeAt) return false;
+      nextRateLimitNoticeAt = now + windowMs;
+      socket.emit(ROOM_EVENT_FEEDBACK_EVENT, {
+        event,
+        error: { code: "rate-limited", message: `${event} rate limit exceeded` },
+      });
+      return true;
+    },
+    succeeded(ack?: RoomEventAck, warning?: RoomEventError) {
+      if (warning) {
+        if (ack) ack({ ok: true, warning });
+        else socket.emit(ROOM_EVENT_FEEDBACK_EVENT, { event, error: warning });
+        return;
+      }
+      ack?.({ ok: true });
+    },
+  };
+};
 
 type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
   socket: Socket;
@@ -23,7 +87,7 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
    * a single tab spend all of it.
    */
   allow?: () => boolean;
-  handle: (payload: Payload) => void | Promise<void>;
+  handle: (payload: Payload) => RoomEventResult | Promise<RoomEventResult>;
 };
 
 /**
@@ -53,15 +117,24 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
   const allowThisConnection = createRateLimiter(limit, windowMs);
   const allow = () => allowThisConnection() && (sharedAllow?.() ?? true);
+  const feedback = createRoomEventFeedback(socket, event, windowMs);
   let tail: Promise<void> = Promise.resolve();
-  socket.on(event, (value: unknown) => {
+  socket.on(event, (value: unknown, ack?: RoomEventAck) => {
     // Rate limiting stays synchronous and outside the queue: refusing traffic
     // is the one thing that must not wait behind the traffic it is refusing.
-    if (!allow()) return;
+    if (!allow()) {
+      feedback.rateLimited();
+      return;
+    }
     tail = tail.then(async () => {
       const payload = parse(value);
-      if (!payload || !(await requireAccess(socket, payload.drawingId, requireEdit))) return;
-      await handle(payload);
+      if (!payload) {
+        feedback.invalid(ack);
+        return;
+      }
+      if (!(await requireAccess(socket, payload.drawingId, requireEdit))) return;
+      const result = await handle(payload);
+      feedback.succeeded(ack, result ? result.warning : undefined);
     });
     // A thrown handler must not poison the tail for everything after it.
     tail = tail.catch(() => {});

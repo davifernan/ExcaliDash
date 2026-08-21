@@ -89,6 +89,17 @@ type InFlightPage = {
 const inFlight = new Map<string, InFlightPage>();
 const globalRenderQueue = new BoundedTaskQueue();
 
+/**
+ * What the render queue is holding.
+ *
+ * Reaching the queue means first missing the cache, which is a read from disk,
+ * so a caller is admitted some time after it was called rather than at the
+ * moment of calling. Anything that wants to know the queue is full -- a health
+ * check, or a test that has to act once it is -- has to look rather than
+ * assume.
+ */
+export const renderQueueDepth = () => globalRenderQueue.depth;
+
 const renderConcurrency = (configured?: number): number => {
   const value = configured ?? Number(process.env.ASSET_RENDER_CONCURRENCY ?? "1");
   return Number.isInteger(value) && value > 0 ? value : 1;

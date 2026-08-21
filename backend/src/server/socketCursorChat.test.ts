@@ -64,15 +64,20 @@ describe("cursor chat over the socket", () => {
     const to = () => ({
       emit: (event: string, payload: any) => emitted.push({ event, payload }),
     });
+    // The room path can now answer the sender directly -- a refused packet says
+    // so instead of vanishing -- so the stand-in needs its own emit as well as
+    // the room's. Anything sent back to the sender is recorded separately.
+    const toSender: { event: string; payload: any }[] = [];
     const socket = {
       id: "socket-1",
       on: (event: string, handler: any) => handlers.set(event, handler),
+      emit: (event: string, payload: any) => toSender.push({ event, payload }),
       volatile: { to },
       to,
     } as any;
     const requireAccess = vi.fn(async () => allowed);
     registerCursorChatRoomEvent({ socket, requireAccess });
-    return { handlers, emitted, requireAccess };
+    return { handlers, emitted, toSender, requireAccess };
   };
 
   it("stamps the sender from the socket, never from the payload", async () => {
@@ -92,13 +97,17 @@ describe("cursor chat over the socket", () => {
     expect(emitted).toHaveLength(0);
   });
 
-  it("stops relaying once the rate limit is reached", async () => {
-    const { handlers, emitted } = setup();
+  it("stops relaying once the rate limit is reached, and says so once", async () => {
+    const { handlers, emitted, toSender } = setup();
     const send = handlers.get(CURSOR_CHAT_EVENT)!;
     for (let i = 0; i < CURSOR_CHAT_LIMITS.eventsPerSecond + 5; i += 1) {
       await send({ drawingId, text: `message ${i}` });
     }
     expect(emitted.length).toBe(CURSOR_CHAT_LIMITS.eventsPerSecond);
+    // Five refusals, one notice. A reply per dropped packet would answer a
+    // flood with a flood, which is the shape of the problem rather than a fix.
+    expect(toSender).toHaveLength(1);
+    expect(toSender[0].payload.error.code).toBe("rate-limited");
   });
   it("relays in the order sent even when the access checks finish backwards", async () => {
     // The access check is a database round trip. Two messages a millisecond
@@ -108,9 +117,14 @@ describe("cursor chat over the socket", () => {
     const handlers = new Map<string, (value: unknown) => Promise<void> | void>();
     const emitted: any[] = [];
     const to = () => ({ emit: (_event: string, payload: any) => emitted.push(payload) });
+    // The room path can now answer the sender directly -- a refused packet says
+    // so instead of vanishing -- so the stand-in needs its own emit as well as
+    // the room's. Anything sent back to the sender is recorded separately.
+    const toSender: { event: string; payload: any }[] = [];
     const socket = {
       id: "socket-1",
       on: (event: string, handler: any) => handlers.set(event, handler),
+      emit: (event: string, payload: any) => toSender.push({ event, payload }),
       volatile: { to },
       to,
     } as any;

@@ -2,6 +2,24 @@ import { useCallback, useRef } from "react";
 import { elementContentSignature } from "../../utils/sync";
 import type { ElementVersionInfo } from "./shared";
 
+export const computeElementOrderSig = (elements: readonly any[]) => {
+  let hash = 2166136261;
+  let count = 0;
+  for (const el of elements) {
+    if (el?.isDeleted) continue;
+    const id = typeof el?.id === "string" ? el.id : "";
+    if (!id) continue;
+    count += 1;
+    for (let i = 0; i < id.length; i++) {
+      hash ^= id.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= 124;
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${count}:${(hash >>> 0).toString(16)}`;
+};
+
 export const useEditorElementTracking = () => {
   const elementVersionMap = useRef<Map<string, ElementVersionInfo>>(new Map());
 
@@ -29,23 +47,6 @@ export const useEditorElementTracking = () => {
       previous.updated !== nextUpdated ||
       previous.contentSig !== nextSig
     );
-  }, []);
-
-  const computeElementOrderSig = useCallback((elements: readonly any[]) => {
-    let hash = 2166136261;
-    let count = 0;
-    for (const el of elements) {
-      const id = typeof el?.id === "string" ? el.id : "";
-      if (!id) continue;
-      count += 1;
-      for (let i = 0; i < id.length; i++) {
-        hash ^= id.charCodeAt(i);
-        hash = Math.imul(hash, 16777619);
-      }
-      hash ^= 124;
-      hash = Math.imul(hash, 16777619);
-    }
-    return `${count}:${(hash >>> 0).toString(16)}`;
   }, []);
 
   return {

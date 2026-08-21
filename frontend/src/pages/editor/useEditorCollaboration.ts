@@ -150,6 +150,13 @@ export const useEditorCollaboration = ({
       }
       if (message) toast.error(message);
     });
+    socket.on("room-event-error", (payload: any) => {
+      const message = typeof payload?.error?.message === "string" ? payload.error.message : null;
+      if (!message) return;
+      console.warn("[Editor] Room event rejected:", payload);
+      if (payload?.error?.code === "rate-limited") toast.info(message);
+      else toast.error(message);
+    });
     const unbindFollowMode = bindFollowMode({
       socket,
       drawingId,
@@ -320,6 +327,7 @@ export const useEditorCollaboration = ({
       document.removeEventListener("mouseenter", onMouseEnter);
       document.removeEventListener("mouseleave", onMouseLeave);
       socket.off("error");
+      socket.off("room-event-error");
       socket.off("element-update");
       socket.off("drawing-server-update");
       unbindSocketRoomLifecycle();

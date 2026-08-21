@@ -1,6 +1,6 @@
 import type { Socket } from "socket.io-client";
 import { buildRemoteSceneUpdate } from "./shared";
-import { parseRemoteSelectedElementIds } from "./remoteSelection";
+import { withLargeSelectionStatus } from "./remoteSelection";
 
 export interface Peer {
   presenceId: string;
@@ -10,7 +10,6 @@ export interface Peer {
   initials: string;
   color: string;
   isActive: boolean;
-  selectedElementIds?: Record<string, true>;
 }
 
 type ExcalidrawApi = {
@@ -59,10 +58,14 @@ export const bindSocketCollaborators = ({
     if (cursorBuffer.size > 0) {
       const collaborators = new Map<string, any>(api.getAppState().collaborators || []);
       cursorBuffer.forEach((data, presenceId) => {
+        const existing = collaborators.get(presenceId) || {};
         collaborators.set(presenceId, {
-          ...(collaborators.get(presenceId) || {}),
+          ...existing,
           ...data,
-          username: decorateName(data.username, presenceId),
+          username: withLargeSelectionStatus(
+            decorateName(data.username, presenceId),
+            existing.selectionAllSelected === true,
+          ),
         });
       });
       cursorBuffer.clear();
@@ -95,14 +98,16 @@ export const bindSocketCollaborators = ({
         return;
       }
       const existing = collaborators.get(user.presenceId) || {};
-      const selectedElementIds = parseRemoteSelectedElementIds(user.selectedElementIds);
       collaborators.set(user.presenceId, {
         ...existing,
         id: user.presenceId,
-        username: decorateName(user.name, user.presenceId),
+        username: withLargeSelectionStatus(
+          decorateName(user.name, user.presenceId),
+          existing.selectionAllSelected === true,
+        ),
         color: { background: user.color, stroke: user.color },
         isCurrentUser: false,
-        selectedElementIds: selectedElementIds || existing.selectedElementIds || {},
+        selectedElementIds: existing.selectedElementIds || {},
       });
     });
     knownPresenceIds = nextPresenceIds;

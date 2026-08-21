@@ -19,8 +19,8 @@ export const CURSOR_CHAT_MAX_LENGTH = 140;
 /**
  * How often the draft goes out while somebody types.
  *
- * The server allows ten of these a second and silently drops the rest, so
- * sending one per keystroke loses the end of any sentence typed at a normal
+ * The server allows ten of these a second and drops the rest, so sending one
+ * per keystroke loses the end of any sentence typed at a normal
  * speed -- the reader is left looking at the first half. Sending on a timer
  * with a trailing edge means the last thing typed always arrives, which is the
  * only version that has to.

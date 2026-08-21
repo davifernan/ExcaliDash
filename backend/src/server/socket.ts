@@ -45,7 +45,11 @@ import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
 import { ipKeyGenerator } from "express-rate-limit";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
-import { registerSelectionRoomEvent, SELECTION_LIMITS } from "./socketSelection";
+import {
+  registerSelectionRoomEvent,
+  SELECTION_LIMITS,
+  SELECTION_SNAPSHOT_EVENT,
+} from "./socketSelection";
 import { registerCursorChatRoomEvent, CURSOR_CHAT_LIMITS } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import {
@@ -54,6 +58,7 @@ import {
   registerDocumentPageRoomEvent,
 } from "./socketDocumentPages";
 import { createSocketInviteHereManager } from "./socketInviteHere";
+import { createRoomEventFeedback, type RoomEventAck } from "./socketRoomEvent";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -236,6 +241,7 @@ export const registerSocketHandlers = ({
         : `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`;
     };
     const allowJoin = createRateLimiter(10, 60_000);
+    const leaveRoomFeedback = createRoomEventFeedback(socket, "leave-room", 60_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
     followManager.registerHandlers(socket, allowFollow, allowViewport);
@@ -378,12 +384,14 @@ export const registerSocketHandlers = ({
           kind,
           isActive: true,
           selectedElementIds: {},
+          allSelected: false,
         };
         drawingBySocket.set(socket.id, drawingId);
         if (shareToken) shareTokenBySocket.set(socket.id, shareToken);
         else shareTokenBySocket.delete(socket.id);
         presences.join(drawingId, presence);
         emitPresence(drawingId);
+        socket.emit(SELECTION_SNAPSHOT_EVENT, presences.selectionSnapshot(drawingId));
         socket.emit("workshop-timer-update", workshopTimers.snapshot(drawingId));
         // Somebody arriving mid-meeting should see the page the room is on,
         // not page one. Sent only to this socket; nobody else has to repaint.
@@ -406,16 +414,24 @@ export const registerSocketHandlers = ({
       return result;
     });
 
-    socket.on("leave-room", async (data: unknown) => {
+    socket.on("leave-room", async (data: unknown, ack?: RoomEventAck) => {
       joinRevision += 1;
-      if (!allowJoin()) return;
+      if (!allowJoin()) {
+        leaveRoomFeedback.rateLimited();
+        return;
+      }
       const drawingId =
         data && typeof data === "object"
           ? parseDrawingId((data as Record<string, unknown>).drawingId)
           : null;
+      if (!drawingId) {
+        leaveRoomFeedback.invalid(ack);
+        return;
+      }
       if (drawingId && drawingBySocket.get(socket.id) === drawingId) {
         await removeFromDrawing(socket, "left-room");
       }
+      leaveRoomFeedback.succeeded(ack);
     });
 
     socket.on("disconnect", async () => {

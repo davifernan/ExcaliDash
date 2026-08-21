@@ -81,6 +81,14 @@ export const registerCoreRoomEvents = ({
         files: payload.files,
         elementOrder: payload.elementOrder,
       });
+      if (payload.elementOrderOmittedBytes) {
+        return {
+          warning: {
+            code: "payload-too-large",
+            message: `Element ordering was omitted because it uses ${payload.elementOrderOmittedBytes} bytes`,
+          },
+        };
+      }
     },
   });
 

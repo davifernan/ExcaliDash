@@ -9,6 +9,7 @@ import {
   DiskFullError,
   QueueAbortedError,
   QueueCapacityError,
+  renderQueueDepth,
   evictToBudget,
   getPage,
   listCached,
@@ -39,6 +40,33 @@ const svgRender = vi.fn(async (_path: string, page: number) => ({
   body: Buffer.from(`<svg>page ${page} ${"filler ".repeat(50)}</svg>`),
   mimeType: "image/svg+xml" as const,
 }));
+
+/**
+ * Wait until the render queue actually holds what the test is about to rely on.
+ *
+ * Calling getPage does not put anything in the queue: it reads the cache first,
+ * and only a miss reaches the queue, an await later. Acting on the next line
+ * assumes the scheduler got there first, which it usually does -- until
+ * something else in the run allocates enough to make it not. That is exactly
+ * how these tests failed only when the whole suite ran, and never alone.
+ */
+const waitForQueue = async (running: number, waiting: number) => {
+  // Waited out in wall-clock time rather than in event-loop turns: reaching the
+  // queue means reading the cache off disk first, and a machine under load can
+  // spend more real time on that read than a few hundred immediate callbacks
+  // take to burn through. Counting turns is how a wait like this looks patient
+  // and is not.
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const depth = renderQueueDepth();
+    if (depth.running === running && depth.waiting === waiting) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error(
+    `queue never reached running=${running} waiting=${waiting}; ` +
+      `it is at ${JSON.stringify(renderQueueDepth())}`,
+  );
+};
 
 describe("rendering a page once", () => {
   beforeEach(() => svgRender.mockClear());
@@ -143,7 +171,9 @@ describe("rendering a page once", () => {
       );
 
     const first = page(1);
+    await waitForQueue(1, 0);
     const second = page(2);
+    await waitForQueue(1, 1);
     await expect(page(3)).rejects.toBeInstanceOf(QueueCapacityError);
     release();
     await Promise.all([first, second]);
@@ -163,6 +193,7 @@ describe("rendering a page once", () => {
       { id: "abort-active", blob: { storageKey: "originals/active" } },
       10,
     );
+    await waitForQueue(1, 0);
     const controller = new AbortController();
     const waiting = getPage(
       options,
@@ -170,6 +201,7 @@ describe("rendering a page once", () => {
       11,
       controller.signal,
     );
+    await waitForQueue(1, 1);
     controller.abort();
 
     await expect(waiting).rejects.toBeInstanceOf(QueueAbortedError);

@@ -66,6 +66,17 @@ describe("presence registry", () => {
     expect(registry.setActive("d1", "s1", false)).toBe(true);
     expect(registry.setActive("d1", "missing", false)).toBe(false);
   });
+
+  it("clears a selection when its presence becomes inactive", () => {
+    const registry = new PresenceRegistry();
+    registry.join("d1", entry({ selectedElementIds: { selected: true }, allSelected: true }));
+
+    expect(registry.setActive("d1", "s1", false)).toBe(true);
+    expect(registry.get("d1", "s1")?.selectedElementIds).toEqual({});
+    expect(registry.get("d1", "s1")?.allSelected).toBe(false);
+    expect(registry.setSelection("d1", "s1", ["late-update"])).toBe(false);
+    expect(registry.get("d1", "s1")?.selectedElementIds).toEqual({});
+  });
 });
 
 describe("what leaves the server", () => {
@@ -94,5 +105,15 @@ describe("what leaves the server", () => {
     expect(entry).toMatchObject({ presenceId: "socket-owner", name: "Owner", kind: "owner" });
     // The server keeps it for itself: the member summary still groups by account.
     expect(registry.summarise("d1").members[0].accountId).toBe("owner-account-id");
+  });
+
+  it("keeps selections out of the public presence projection", () => {
+    const registry = new PresenceRegistry();
+    registry.join("d1", entry({ selectedElementIds: { "element-1": true } }));
+
+    const [publicEntry] = registry.listPublic("d1");
+
+    expect(publicEntry).not.toHaveProperty("selectedElementIds");
+    expect(registry.get("d1", "s1")?.selectedElementIds).toEqual({ "element-1": true });
   });
 });

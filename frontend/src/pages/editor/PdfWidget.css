@@ -142,3 +142,26 @@
     font-size: 10px;
   }
 }
+
+/*
+ * The widget's own link is plumbing, not something to read.
+ *
+ * An embeddable element needs a link — that is how Excalidraw decides whether
+ * it may embed it at all — so the widget carries a made-up one. Excalidraw then
+ * shows that link in the bar above a selected element, and "excalidash://
+ * pdf-widget" is meaningless to whoever is looking at a document. Matching on
+ * the scheme keeps every real link people paste onto a board visible.
+ */
+.excalidraw-hyperlinkContainer:has(a[href^="excalidash://"]) {
+  display: none;
+}
+
+/*
+ * A page must not be draggable. Dragging one out dropped it back onto the
+ * canvas, where the editor took it for a new upload.
+ */
+.pdf-widget__page-image {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

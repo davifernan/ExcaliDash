@@ -73,6 +73,12 @@ export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
             className="pdf-widget__page-image"
             src={displayedPageUrl}
             alt={`${asset.name}, page ${displayedPage}`}
+            // A page is an image, and an image can be dragged. Dragging one out
+            // of the widget dropped it back onto the canvas, where the editor
+            // took it for a new upload — so paging through a document quietly
+            // created copies of its pages as separate images.
+            draggable={false}
+            onDragStart={(event) => event.preventDefault()}
           />
         ) : null}
         {requestedPageUrl && displayedPage !== requestedPage ? (
@@ -81,6 +87,8 @@ export const PdfWidget = ({ assetId, drawingId, theme }: PdfWidgetProps) => {
             src={requestedPageUrl}
             alt=""
             aria-hidden="true"
+            draggable={false}
+            onDragStart={(event) => event.preventDefault()}
             onLoad={() => {
               setDisplayedPage(requestedPage);
               setPageError(null);

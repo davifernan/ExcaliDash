@@ -1,8 +1,50 @@
 import type { NextFunction } from "express";
 import { describe, expect, it, vi } from "vitest";
-import { generateApiKey, serializeApiKeyScopes } from "../auth/apiKeys";
+import {
+  DRAWINGS_HISTORY_SCOPE,
+  DRAWINGS_WRITE_SCOPE,
+  generateApiKey,
+  serializeApiKeyScopes,
+} from "../auth/apiKeys";
 import { createAuthMiddleware } from "./auth";
 import { createDeps, createRequest, createResponse } from "./authTestHelpers";
+
+const authenticateApiKeyRequest = async (
+  scopes?: readonly string[],
+  request = {
+    method: "POST",
+    originalUrl: "/drawings/drawing-1/history/snapshot-1/restore",
+  },
+) => {
+  const { prisma, authModeService } = createDeps();
+  authModeService.getAuthEnabled.mockResolvedValue(true);
+  const generated = generateApiKey();
+  prisma.apiKey.findUnique.mockResolvedValue({
+    id: "api-key-1",
+    tokenHash: generated.tokenHash,
+    scopes: serializeApiKeyScopes(scopes),
+    revokedAt: null,
+    user: {
+      id: "user-1",
+      username: "user1",
+      email: "user-1@test.local",
+      name: "User One",
+      role: "USER",
+      mustResetPassword: false,
+      isActive: true,
+    },
+  });
+  prisma.apiKey.update.mockResolvedValue({});
+  const { optionalAuth } = createAuthMiddleware({ prisma, authModeService });
+  const req = createRequest({
+    ...request,
+    headers: { authorization: `Bearer ${generated.token}` },
+  });
+  const res = createResponse();
+  const next = vi.fn() as NextFunction;
+  await optionalAuth(req, res, next);
+  return { req, res, next };
+};
 
 describe("auth middleware API key authentication", () => {
   it("attaches active user for valid API key", async () => {
@@ -224,6 +266,45 @@ describe("auth middleware API key authentication", () => {
     await requireAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it("rejects a history-only API key on the restore write endpoint", async () => {
+    const { req, res, next } = await authenticateApiKeyRequest([DRAWINGS_HISTORY_SCOPE]);
+
+    expect(req.user).toBeUndefined();
+    expect(req.authError).toEqual({ code: "INVALID_ACCESS_TOKEN" });
+    expect(res.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a write-scoped API key on the restore endpoint", async () => {
+    const { req, res, next } = await authenticateApiKeyRequest([DRAWINGS_WRITE_SCOPE]);
+
+    expect(req.user).toMatchObject({ id: "user-1", authCredentialType: "apiKey" });
+    expect(req.authError).toBeUndefined();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a standard read-and-write API key on the restore endpoint", async () => {
+    const { req, res, next } = await authenticateApiKeyRequest();
+
+    expect(req.user).toMatchObject({ id: "user-1", authCredentialType: "apiKey" });
+    expect(req.authError).toBeUndefined();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a history-scoped API key on a history read endpoint", async () => {
+    const { req, res, next } = await authenticateApiKeyRequest([DRAWINGS_HISTORY_SCOPE], {
+      method: "GET",
+      originalUrl: "/drawings/drawing-1/history/snapshot-1",
+    });
+
+    expect(req.user).toMatchObject({ id: "user-1", authCredentialType: "apiKey" });
+    expect(req.authError).toBeUndefined();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
   });
 
   it("rejects revoked API keys", async () => {

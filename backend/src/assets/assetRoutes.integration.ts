@@ -81,6 +81,10 @@ describe("document routes", () => {
     );
     assetId = created.asset.id;
     await prisma.asset.update({ where: { id: assetId }, data: { pageCount: 3 } });
+    await prisma.drawingAsset.update({
+      where: { drawingId_assetId: { drawingId, assetId } },
+      data: { state: "ACTIVE", expiresAt: null },
+    });
 
     app = express();
     // Stands in for the real auth middleware: the tests care about what the

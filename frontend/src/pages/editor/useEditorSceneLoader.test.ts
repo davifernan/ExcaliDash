@@ -28,6 +28,7 @@ const buildRefs = () => ({
   lastPersistedFiles: ref<Record<string, any>>({}),
   currentDrawingVersion: ref<number | null>(null),
   lastPersistedElements: ref([] as readonly any[]),
+  lastPersistedAppStateSig: ref(null as string | null),
   suspiciousBlankLoad: ref(false),
   hasSceneChangesSinceLoad: ref(false),
   excalidrawAPI: ref<any>(null),

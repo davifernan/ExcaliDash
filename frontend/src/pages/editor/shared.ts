@@ -70,6 +70,26 @@ export const getPersistedAppState = (appState: Record<string, any> | null | unde
   return base;
 };
 
+export const boardSettingsSignature = (appState: Record<string, any> | null | undefined): string =>
+  JSON.stringify(getPersistedAppState(appState));
+
+/**
+ * Whether the board settings -- grid, snapping, canvas colour -- differ from
+ * the baseline and therefore have to be saved.
+ *
+ * The baseline is a state Excalidraw itself reported, never the one the server
+ * stored: Excalidraw fills in defaults for everything we do not persist, so a
+ * board that never saved a grid size still reports one, and comparing the two
+ * would make every board look changed the moment it opened.
+ *
+ * Without a baseline nothing is saved. Settings arriving before the scene has
+ * hydrated are the scene being set up, not somebody deciding something.
+ */
+export const shouldSaveBoardSettings = (
+  baseline: string | null,
+  appState: Record<string, any> | null | undefined,
+): boolean => baseline !== null && baseline !== boardSettingsSignature(appState);
+
 /**
  * Decides whether a drawing opens with object snapping on.
  *

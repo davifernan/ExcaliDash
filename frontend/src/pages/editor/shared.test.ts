@@ -7,6 +7,8 @@ import {
   isStaleEmptySnapshot,
   isStaleNonRenderableSnapshot,
   resolveObjectsSnapMode,
+  boardSettingsSignature,
+  shouldSaveBoardSettings,
 } from "./shared";
 
 describe("editor/shared scene guards", () => {
@@ -197,5 +199,43 @@ describe("editor/shared scene guards", () => {
     expect(resolveObjectsSnapMode({ gridModeEnabled: true, objectsSnapModeEnabled: "yes" })).toBe(
       false,
     );
+  });
+});
+
+describe("board settings that have to be saved on their own", () => {
+  const live = (overrides: Record<string, any> = {}) => ({
+    viewBackgroundColor: "#ffffff",
+    gridSize: 20,
+    gridStep: 5,
+    gridModeEnabled: false,
+    objectsSnapModeEnabled: true,
+    ...overrides,
+  });
+
+  it("saves nothing before the scene has hydrated", () => {
+    // Everything Excalidraw reports while the scene is being set up is the
+    // board arriving, not somebody changing it.
+    expect(shouldSaveBoardSettings(null, live())).toBe(false);
+  });
+
+  it("stays quiet while the settings are unchanged", () => {
+    const baseline = boardSettingsSignature(live());
+    expect(shouldSaveBoardSettings(baseline, live())).toBe(false);
+  });
+
+  it("notices snapping and the grid being switched", () => {
+    const baseline = boardSettingsSignature(live());
+    expect(shouldSaveBoardSettings(baseline, live({ objectsSnapModeEnabled: false }))).toBe(true);
+    expect(shouldSaveBoardSettings(baseline, live({ gridModeEnabled: true }))).toBe(true);
+    expect(shouldSaveBoardSettings(baseline, live({ viewBackgroundColor: "#111111" }))).toBe(true);
+  });
+
+  it("does not treat a stored board as a changed one", () => {
+    // The trap this exists to prevent: a stored board carries no grid size,
+    // Excalidraw always reports one. Seeded from the server, every board would
+    // save itself the moment it opened -- bumping its version for everyone.
+    const stored = getPersistedAppState({ objectsSnapModeEnabled: true });
+    expect(stored.gridSize).toBeNull();
+    expect(boardSettingsSignature(stored)).not.toBe(boardSettingsSignature(live()));
   });
 });

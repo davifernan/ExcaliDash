@@ -9,10 +9,12 @@ import { toast } from "sonner";
 import { getDroppedImageFiles, loadDroppedImageData, MULTI_IMAGE_DROP_GAP } from "./droppedImages";
 import { addDroppedDocumentWidgets, getDocumentDropFiles } from "./documentDrop";
 import {
+  boardSettingsSignature,
   hasRenderableElements,
   haveSameElements,
   isStaleNonRenderableSnapshot,
   isSuspiciousEmptySnapshot,
+  shouldSaveBoardSettings,
 } from "./shared";
 
 type CanvasHandlerRefs = {
@@ -25,6 +27,7 @@ type CanvasHandlerRefs = {
   isHistoryPreviewing: MutableRefObject<boolean>;
   isUnmounting: MutableRefObject<boolean>;
   lastLocalChangeAt: MutableRefObject<number>;
+  lastPersistedAppStateSig: MutableRefObject<string | null>;
   latestAppState: MutableRefObject<any>;
   latestElements: MutableRefObject<readonly any[]>;
   latestFiles: MutableRefObject<any>;
@@ -76,6 +79,7 @@ export const useEditorCanvasHandlers = ({
     isHistoryPreviewing: isHistoryPreviewingRef,
     isUnmounting: isUnmountingRef,
     lastLocalChangeAt: lastLocalChangeAtRef,
+    lastPersistedAppStateSig: lastPersistedAppStateSigRef,
     latestAppState: latestAppStateRef,
     latestElements: latestElementsRef,
     latestFiles: latestFilesRef,
@@ -115,6 +119,10 @@ export const useEditorCanvasHandlers = ({
         if (transientHydrationEmpty || transientHydrationNonRenderable) return;
         hasHydratedInitialSceneRef.current = true;
         isBootstrappingSceneRef.current = false;
+        // The hydrated scene is the baseline for board settings: this state came
+        // from the server, so nothing in it is a change worth saving. Every
+        // later difference is somebody's decision.
+        lastPersistedAppStateSigRef.current = boardSettingsSignature(appState);
         if (matchesInitialSnapshot) return;
       }
       const { prevented: preventedCanvasOverwrite } = resolveSafeSnapshot(allElements);
@@ -125,11 +133,23 @@ export const useEditorCanvasHandlers = ({
       }
       if (isBootstrappingSceneRef.current && !hasRenderable) return;
       latestElementsRef.current = allElements;
+      // Board settings -- the grid, snapping, the canvas colour -- belong to the
+      // drawing and are saved with it, but they change nothing about any
+      // element. Broadcasting only carries elements, files and their ordering,
+      // so a settings change on its own would reach the server nowhere: it
+      // would hold until something happened to be drawn, and on an untouched
+      // board it would be lost at the reload it was meant to survive.
+      if (drawingId && shouldSaveBoardSettings(lastPersistedAppStateSigRef.current, appState)) {
+        lastPersistedAppStateSigRef.current = boardSettingsSignature(appState);
+        debouncedSaveRef.current?.(drawingId, allElements, appState, currentFiles);
+      }
       broadcastChanges(allElements, currentFiles);
     },
     [
       broadcastChanges,
       canEdit,
+      debouncedSaveRef,
+      drawingId,
       excalidrawAPIRef,
       hasHydratedInitialSceneRef,
       initialSceneElementsRef,
@@ -137,6 +157,7 @@ export const useEditorCanvasHandlers = ({
       isSyncingRef,
       isHistoryPreviewingRef,
       isUnmountingRef,
+      lastPersistedAppStateSigRef,
       latestAppStateRef,
       latestElementsRef,
       latestFilesRef,

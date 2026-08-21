@@ -70,6 +70,7 @@ export const Editor: React.FC = () => {
   >(null);
   const currentDrawingVersionRef = useRef<number | null>(null);
   const lastPersistedElementsRef = useRef<readonly any[]>([]);
+  const lastPersistedAppStateSigRef = useRef<string | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const suspiciousBlankLoadRef = useRef(false);
   const hasSceneChangesSinceLoadRef = useRef(false);
@@ -197,6 +198,7 @@ export const Editor: React.FC = () => {
       lastPersistedFiles: lastPersistedFilesRef,
       currentDrawingVersion: currentDrawingVersionRef,
       lastPersistedElements: lastPersistedElementsRef,
+      lastPersistedAppStateSig: lastPersistedAppStateSigRef,
       suspiciousBlankLoad: suspiciousBlankLoadRef,
       hasSceneChangesSinceLoad: hasSceneChangesSinceLoadRef,
       excalidrawAPI,
@@ -232,6 +234,7 @@ export const Editor: React.FC = () => {
       isHistoryPreviewing,
       isUnmounting,
       lastLocalChangeAt: lastLocalChangeAtRef,
+      lastPersistedAppStateSig: lastPersistedAppStateSigRef,
       latestAppState: latestAppStateRef,
       latestElements: latestElementsRef,
       latestFiles: latestFilesRef,

@@ -28,6 +28,7 @@ type SceneLoaderParams = {
     lastPersistedFiles: MutableRefObject<Record<string, any>>;
     currentDrawingVersion: MutableRefObject<number | null>;
     lastPersistedElements: MutableRefObject<readonly any[]>;
+    lastPersistedAppStateSig: MutableRefObject<string | null>;
     suspiciousBlankLoad: MutableRefObject<boolean>;
     hasSceneChangesSinceLoad: MutableRefObject<boolean>;
     excalidrawAPI: MutableRefObject<any>;
@@ -83,6 +84,7 @@ export const useEditorSceneLoader = ({
     refs.lastPersistedFiles.current = {};
     refs.currentDrawingVersion.current = null;
     refs.lastPersistedElements.current = [];
+    refs.lastPersistedAppStateSig.current = null;
     refs.suspiciousBlankLoad.current = false;
     refs.hasSceneChangesSinceLoad.current = false;
     refs.excalidrawAPI.current = null;
@@ -147,6 +149,12 @@ export const useEditorSceneLoader = ({
           collaborators: new Map(),
         };
         refs.latestAppState.current = hydratedAppState;
+        // Left unset on purpose: what the server stores and what Excalidraw
+        // reports are not comparable. Excalidraw fills in its own defaults for
+        // anything we never saved -- a board with no grid still reports a grid
+        // size -- so the settings are compared with the first state Excalidraw
+        // itself reports, once the scene has hydrated.
+        refs.lastPersistedAppStateSig.current = null;
         setInitialData({
           elements,
           appState: hydratedAppState,
@@ -185,6 +193,7 @@ export const useEditorSceneLoader = ({
         refs.lastPersistedFiles.current = {};
         refs.currentDrawingVersion.current = null;
         refs.lastPersistedElements.current = [];
+    refs.lastPersistedAppStateSig.current = null;
         refs.suspiciousBlankLoad.current = false;
         refs.hasSceneChangesSinceLoad.current = false;
         setLoadError(message);

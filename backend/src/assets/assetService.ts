@@ -51,6 +51,87 @@ type Deps = {
   now?: () => number;
 };
 
+type BlobDeps = Pick<Deps, "prisma" | "storageDir">;
+
+/**
+ * Put trusted, already-validated bytes into the shared content-addressed blob
+ * store. Document uploads and generated link-preview images both use this so
+ * deduplication, atomic publication and cleanup semantics stay identical.
+ */
+export async function storeBlob(
+  deps: BlobDeps,
+  input: {
+    source: Readable;
+    limitBytes: number;
+    compress?: boolean;
+    purpose?: "ASSET" | "LINK_PREVIEW";
+    prepareStored?: (
+      stored: Readonly<StoredFile & { path: string }>,
+    ) => Promise<{ note: string | null }>;
+  },
+) {
+  const provisionalId = randomUUID();
+  let stored = await storeStream(
+    deps.storageDir,
+    originalKey(provisionalId),
+    input.source,
+    input.limitBytes,
+    { compress: input.compress },
+  );
+
+  let preparation: { note: string | null } | undefined;
+  if (input.prepareStored) {
+    try {
+      preparation = await input.prepareStored({
+        ...stored,
+        path: resolveStoragePath(deps.storageDir, stored.storageKey),
+      });
+      // Preparation is allowed to replace the file. Never trust its reported
+      // size or the pre-preparation hash for content-addressed deduplication.
+      stored = await inspectStoredFile(deps.storageDir, stored);
+    } catch (error) {
+      await removeStored(deps.storageDir, stored.storageKey);
+      throw error;
+    }
+  }
+
+  let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
+  if (blob) {
+    await removeStored(deps.storageDir, stored.storageKey);
+    if (blob.deleteAfter || (input.purpose === "LINK_PREVIEW" && blob.purpose !== "LINK_PREVIEW")) {
+      blob = await deps.prisma.storedBlob.update({
+        where: { id: blob.id },
+        data: {
+          deleteAfter: null,
+          state: "READY",
+          ...(input.purpose === "LINK_PREVIEW" ? { purpose: "LINK_PREVIEW" } : {}),
+        },
+      });
+    }
+  } else {
+    try {
+      blob = await deps.prisma.storedBlob.create({
+        data: {
+          id: provisionalId,
+          sha256: stored.sha256,
+          sizeBytes: stored.sizeBytes,
+          storedBytes: stored.storedBytes,
+          contentEncoding: stored.contentEncoding,
+          storageKey: stored.storageKey,
+          purpose: input.purpose ?? "ASSET",
+          state: "READY",
+        },
+      });
+    } catch (err: any) {
+      if (err?.code !== "P2002") throw err;
+      await removeStored(deps.storageDir, stored.storageKey);
+      blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
+      if (!blob) throw err;
+    }
+  }
+  return { blob, stored, preparation };
+}
+
 const ownerUploadTails = new Map<string, Promise<void>>();
 
 /**
@@ -131,63 +212,12 @@ async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
   // The file is written before its hash is known, so it lands under a
   // provisional id. If those exact bytes turn out to be on disk already, the
   // provisional copy is thrown away and the existing one reused.
-  const provisionalId = randomUUID();
-  let stored = await storeStream(
-    deps.storageDir,
-    originalKey(provisionalId),
-    input.source,
-    Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
-    { compress: shouldCompress(input.mimeType) },
-  );
-
-  let preparation: { note: string | null } | undefined;
-  if (input.prepareStored) {
-    try {
-      preparation = await input.prepareStored({
-        ...stored,
-        path: resolveStoragePath(deps.storageDir, stored.storageKey),
-      });
-      // Preparation is allowed to replace the file. Never trust its reported
-      // size or the pre-preparation hash for content-addressed deduplication.
-      stored = await inspectStoredFile(deps.storageDir, stored);
-    } catch (error) {
-      await removeStored(deps.storageDir, stored.storageKey);
-      throw error;
-    }
-  }
-
-  let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
-  if (blob) {
-    await removeStored(deps.storageDir, stored.storageKey);
-    if (blob.deleteAfter) {
-      // It was on its way out; a new reference cancels that.
-      blob = await deps.prisma.storedBlob.update({
-        where: { id: blob.id },
-        data: { deleteAfter: null, state: "READY" },
-      });
-    }
-  } else {
-    try {
-      blob = await deps.prisma.storedBlob.create({
-        data: {
-          id: provisionalId,
-          sha256: stored.sha256,
-          sizeBytes: stored.sizeBytes,
-          storedBytes: stored.storedBytes,
-          contentEncoding: stored.contentEncoding,
-          storageKey: stored.storageKey,
-          state: "READY",
-        },
-      });
-    } catch (err: any) {
-      // Two uploads of the same bytes at the same time: sha256 is unique, so
-      // one of them loses the race and joins the winner instead.
-      if (err?.code !== "P2002") throw err;
-      await removeStored(deps.storageDir, stored.storageKey);
-      blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
-      if (!blob) throw err;
-    }
-  }
+  const { blob, stored, preparation } = await storeBlob(deps, {
+    source: input.source,
+    limitBytes: Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
+    compress: shouldCompress(input.mimeType),
+    prepareStored: input.prepareStored,
+  });
 
   const asset = await deps.prisma.asset.create({
     data: {
@@ -361,7 +391,10 @@ export async function collectExpired(deps: Deps): Promise<{ assets: number; blob
   let removed = 0;
   for (const blobId of touchedBlobs) {
     const stillUsed = await deps.prisma.asset.count({ where: { blobId } });
-    if (stillUsed > 0) continue;
+    const usedByPreview = await deps.prisma.linkPreview.count({
+      where: { OR: [{ imageBlobId: blobId }, { faviconBlobId: blobId }] },
+    });
+    if (stillUsed > 0 || usedByPreview > 0) continue;
     const blob = await deps.prisma.storedBlob.findUnique({ where: { id: blobId } });
     if (!blob) continue;
     // Disk first, row second: a missing file with a row left over is a broken

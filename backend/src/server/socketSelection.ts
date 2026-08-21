@@ -33,10 +33,13 @@ export const registerSelectionRoomEvent = ({
   socket,
   presences,
   requireAccess,
+  allow,
 }: {
   socket: Socket;
   presences: PresenceRegistry;
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
+  /** Budget shared across this person's connections; see socketRoomEvent. */
+  allow?: () => boolean;
 }): void => {
   registerAuthorizedRoomEvent({
     socket,
@@ -45,6 +48,7 @@ export const registerSelectionRoomEvent = ({
     windowMs: 1_000,
     parse: parseSelectionPayload,
     requireAccess,
+    allow,
     handle: (payload) => {
       if (!presences.setSelection(payload.drawingId, socket.id, payload.selectedElementIds)) return;
       const selection = presences.get(payload.drawingId, socket.id)?.selectedElementIds;

@@ -261,26 +261,61 @@ model S3File {
 /// name, owner and quota. Sharing Asset rows across owners instead would make
 /// deleting one person's document able to take away someone else's.
 model StoredBlob {
-  id              String    @id @default(uuid())
-  sha256          String    @unique
+  id                  String        @id @default(uuid())
+  sha256              String        @unique
   /// Size of the original content — what a reader receives.
-  sizeBytes       Int
+  sizeBytes           Int
   /// Size on disk. Smaller when the content was worth compressing.
-  storedBytes     Int
+  storedBytes         Int
   /// Set when the file is stored compressed and must be served that way.
-  contentEncoding String?
-  storageKey      String    @unique
+  contentEncoding     String?
+  storageKey          String        @unique
+  /// Origin of the bytes; preview cache blobs remain identifiable after row races.
+  purpose             String        @default("ASSET")
   /// STAGING while the upload is still running, READY once it is usable,
   /// DELETING once nothing references it any more.
-  state           String    @default("STAGING")
+  state               String        @default("STAGING")
   /// Set when the last reference goes away. A grace period means a board
   /// deleted by mistake and restored from a snapshot still finds its bytes.
-  deleteAfter     DateTime?
-  assets          Asset[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  deleteAfter         DateTime?
+  assets              Asset[]
+  linkPreviewImages   LinkPreview[] @relation("LinkPreviewImage")
+  linkPreviewFavicons LinkPreview[] @relation("LinkPreviewFavicon")
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   @@index([state, deleteAfter])
+  @@index([purpose, createdAt])
+}
+
+/// Cached public metadata. Foreign image URLs never leave the backend; only
+/// references to sanitized local blobs are exposed to board viewers.
+model LinkPreview {
+  id             String   @id @default(uuid())
+  cacheKey       String   @unique
+  requestedUrl   String
+  resolvedUrl    String?
+  status         String
+  failureCode    String?
+  title          String?
+  description    String?
+  imageBlobId    String?
+  faviconBlobId  String?
+  /// Creator charged for this cache entry. Null only for rows predating this field.
+  ownerUserId    String?
+  expiresAt      DateTime
+  lastAccessedAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  imageBlob   StoredBlob? @relation("LinkPreviewImage", fields: [imageBlobId], references: [id], onDelete: SetNull)
+  faviconBlob StoredBlob? @relation("LinkPreviewFavicon", fields: [faviconBlobId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  @@index([ownerUserId, lastAccessedAt])
+  @@index([lastAccessedAt])
+  @@index([imageBlobId])
+  @@index([faviconBlobId])
 }
 
 /// A document as a person thinks of it: a name, an owner, a page count.

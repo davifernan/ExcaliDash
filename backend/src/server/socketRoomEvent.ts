@@ -12,12 +12,15 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
   requireAccess: (socket: Socket, drawingId: string, requireEdit?: boolean) => Promise<unknown>;
   requireEdit?: boolean;
   /**
-   * A budget that outlives this socket.
+   * A budget that outlives this socket, checked in addition to the
+   * per-connection one rather than instead of it.
    *
-   * The default limiter is per-connection, which is fine for anything a client
-   * only gains by doing quickly. It is not fine where reconnecting would reset
-   * the budget: there the caller passes a shared limiter keyed by account or
-   * address, so dropping and redialling buys nothing.
+   * The per-connection limiter is fine for anything a client only gains by
+   * doing quickly. It is not fine where opening a second tab hands out a second
+   * budget: there the caller passes a limiter keyed by account or address, so
+   * reconnecting -- or connecting fifty times -- buys nothing. Both apply,
+   * because a shared budget large enough for several tabs would otherwise let
+   * a single tab spend all of it.
    */
   allow?: () => boolean;
   handle: (payload: Payload) => void | Promise<void>;
@@ -48,7 +51,8 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   allow: sharedAllow,
   handle,
 }: RegisterAuthorizedRoomEventOptions<Payload>): void => {
-  const allow = sharedAllow ?? createRateLimiter(limit, windowMs);
+  const allowThisConnection = createRateLimiter(limit, windowMs);
+  const allow = () => allowThisConnection() && (sharedAllow?.() ?? true);
   let tail: Promise<void> = Promise.resolve();
   socket.on(event, (value: unknown) => {
     // Rate limiting stays synchronous and outside the queue: refusing traffic

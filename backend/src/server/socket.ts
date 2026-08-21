@@ -45,8 +45,8 @@ import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
 import { ipKeyGenerator } from "express-rate-limit";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
-import { registerSelectionRoomEvent } from "./socketSelection";
-import { registerCursorChatRoomEvent } from "./socketCursorChat";
+import { registerSelectionRoomEvent, SELECTION_LIMITS } from "./socketSelection";
+import { registerCursorChatRoomEvent, CURSOR_CHAT_LIMITS } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import {
   createDocumentPageManager,
@@ -81,7 +81,18 @@ export const registerSocketHandlers = ({
   const drawingBySocket = new Map<string, string>();
   // Keyed by who, not by which connection: a per-socket budget for activity
   // pings resets on reconnect, and reconnecting is free.
+  // Budgets that outlive a connection. Everything a client can repeat by
+  // opening another tab belongs here: the tab is free, the budget must not be.
+  // Joining and following stay per connection on purpose -- those refuse
+  // somebody outright, and an office behind one address is one actor here.
   const allowActivity = createKeyedRateLimiter(20, 10_000);
+  // Four times the per-connection allowance: two tabs and a phone are normal,
+  // fifty connections are not, and the point is to stop the budget growing with
+  // them rather than to punish a second window.
+  const allowCursorMove = createKeyedRateLimiter(40 * 4, 1_000);
+  const allowElementUpdate = createKeyedRateLimiter(120 * 4, 1_000);
+  const allowSelection = createKeyedRateLimiter(SELECTION_LIMITS.eventsPerSecond * 4, 1_000);
+  const allowCursorChat = createKeyedRateLimiter(CURSOR_CHAT_LIMITS.eventsPerSecond * 4, 1_000);
   const shareTokenBySocket = new Map<string, string>();
   const workshopTimers = createWorkshopTimerManager({ io });
   const documentPages = createDocumentPageManager({ io, prisma });
@@ -215,6 +226,15 @@ export const registerSocketHandlers = ({
     let joinRevision = 0;
     let joinQueue = Promise.resolve();
     let pendingJoins = 0;
+    // Who a shared budget belongs to. An account is itself; anyone else is
+    // their address, normalised the way the HTTP limiter does it -- a raw
+    // address hands anyone with an IPv6 range a fresh budget per connection.
+    const actorKey = () => {
+      const principal = principals.get(socket.id);
+      return principal && !principal.allowInactive
+        ? `account:${principal.userId}`
+        : `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`;
+    };
     const allowJoin = createRateLimiter(10, 60_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
@@ -226,19 +246,21 @@ export const registerSocketHandlers = ({
       setActive: (drawingId, presenceId, active) =>
         presences.setActive(drawingId, presenceId, active),
       emitPresence,
-      allowActivity: () => {
-        const principal = principals.get(socket.id);
-        const actor =
-          principal && !principal.allowInactive
-            ? `account:${principal.userId}`
-            : // Normalised the same way the HTTP limiter does it. A raw address
-              // hands anyone with an IPv6 range a fresh budget per connection.
-              `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`;
-        return allowActivity(actor);
-      },
+      allowActivity: () => allowActivity(actorKey()),
+      allowCursorMove: () => allowCursorMove(actorKey()),
+      allowElementUpdate: () => allowElementUpdate(actorKey()),
     });
-    registerSelectionRoomEvent({ socket, presences, requireAccess });
-    registerCursorChatRoomEvent({ socket, requireAccess });
+    registerSelectionRoomEvent({
+      socket,
+      presences,
+      requireAccess,
+      allow: () => allowSelection(actorKey()),
+    });
+    registerCursorChatRoomEvent({
+      socket,
+      requireAccess,
+      allow: () => allowCursorChat(actorKey()),
+    });
     registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
     registerDocumentPageRoomEvent({ socket, pages: documentPages, requireAccess });
     inviteHereManager.registerHandlers(socket);

@@ -177,8 +177,11 @@ export const registerCollectionRoutes = (app: express.Express, deps: DashboardRo
       });
 
       await prisma.$transaction([
+        // Every board in the collection, not only the ones this account owns.
+        // The rest relied on the foreign key quietly nulling the column, which
+        // is a rule in the schema doing work the route should be doing.
         prisma.drawing.updateMany({
-          where: { collectionId: id, userId: req.user.id },
+          where: { collectionId: id },
           data: { collectionId: null },
         }),
         prisma.collectionShare.deleteMany({ where: { collectionId: id } }),

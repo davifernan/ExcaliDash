@@ -34,9 +34,7 @@ const buildApp = () => {
   const prisma: any = {
     collection: { findUnique: vi.fn().mockResolvedValue({ userId: "acct-olga" }) },
     collectionShare: {
-      findMany: vi
-        .fn()
-        .mockResolvedValue([{ granteeUserId: "acct-max", role: "edit" }]),
+      findMany: vi.fn().mockResolvedValue([{ granteeUserId: "acct-max", role: "edit" }]),
     },
     user: {
       findMany: vi.fn(async ({ where }: any) =>

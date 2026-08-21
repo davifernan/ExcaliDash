@@ -140,6 +140,7 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
         createdAt: true,
         updatedAt: true,
         user: { select: { id: true, name: true } },
+        createdBy: { select: { name: true } },
       };
 
       const orderBy: Prisma.DrawingOrderByWithRelationInput =
@@ -167,15 +168,18 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
           elements: parseJsonField(d.elements, []),
           appState: parseJsonField(d.appState, {}),
           files: parseJsonField(d.files, {}),
-          creatorName: d.user?.name ?? null,
+          creatorName: d.createdBy?.name ?? d.user?.name ?? null,
           user: undefined,
+          createdBy: undefined,
         }));
       } else {
         responsePayload = (drawings as any[]).map((d: any) => ({
           ...d,
           collectionId: toPublicTrashCollectionId(d.collectionId, req.user!.id),
-          creatorName: d.user?.name ?? null,
+          // Who drew it, which is not always who controls it.
+          creatorName: d.createdBy?.name ?? d.user?.name ?? null,
           user: undefined,
+          createdBy: undefined,
         }));
       }
 
@@ -277,6 +281,8 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
         createdAt: true,
         updatedAt: true,
         userId: true,
+        user: { select: { name: true } },
+        createdBy: { select: { name: true } },
         permissions: {
           where: { granteeUserId: req.user.id },
           select: { permission: true },
@@ -299,9 +305,11 @@ export const registerDrawingListRoutes = (app: express.Express, context: Drawing
       const normalize = (d: any) => {
         const rawPerm = Array.isArray(d?.permissions) ? d.permissions[0]?.permission : null;
         const perm = normalizeDrawingPermission(rawPerm) ?? "view";
-        const { permissions: _permissions, ...rest } = d;
+        const { permissions: _permissions, user: _user, createdBy: _createdBy, ...rest } = d;
         return {
           ...rest,
+          // A board someone shared with you is worth a name.
+          creatorName: d.createdBy?.name ?? d.user?.name ?? null,
           // Collections are owner-scoped; don't leak the owner's collection ids to viewers.
           collectionId: null,
           accessLevel: perm,

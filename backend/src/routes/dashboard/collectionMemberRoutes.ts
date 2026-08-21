@@ -16,10 +16,7 @@ const ROLE_BY_LEVEL = { owner: "owner", edit: "editor", view: "viewer" } as cons
  * existing and not being a member answer the same way, so the endpoint cannot be
  * used to find out which collections exist.
  */
-export const registerCollectionMemberRoutes = (
-  app: express.Express,
-  deps: DashboardRouteDeps,
-) => {
+export const registerCollectionMemberRoutes = (app: express.Express, deps: DashboardRouteDeps) => {
   const { prisma, requireAuth, asyncHandler, subjectKeySecret } = deps;
 
   app.get(

@@ -28,6 +28,7 @@ type UseEditorCollaborationInput = {
   isReady: boolean;
   excalidrawAPI: MutableRefObject<any>;
   editorContainerRef: RefObject<HTMLDivElement>;
+  elementUpdateRefusalHandlerRef: MutableRefObject<(() => void) | null>;
   lastSyncedFilesRef: MutableRefObject<Record<string, any>>;
   lastSyncedElementOrderSigRef: MutableRefObject<string>;
   latestElementsRef: MutableRefObject<readonly any[]>;
@@ -50,6 +51,7 @@ export const useEditorCollaboration = ({
   isReady,
   excalidrawAPI,
   editorContainerRef,
+  elementUpdateRefusalHandlerRef,
   lastSyncedFilesRef,
   lastSyncedElementOrderSigRef,
   latestElementsRef,
@@ -119,7 +121,11 @@ export const useEditorCollaboration = ({
       },
       decorateName: chat.decorateName,
     });
-    const refusals = bindElementUpdateRefusals({ socket, notify: toast.warning });
+    const refusals = bindElementUpdateRefusals({
+      socket,
+      notify: toast.warning,
+      onRefused: () => elementUpdateRefusalHandlerRef.current?.(),
+    });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
     const workshopTimer = bindSocketWorkshopTimer({
       socket,
@@ -248,6 +254,7 @@ export const useEditorCollaboration = ({
     isReady,
     excalidrawAPI,
     editorContainerRef,
+    elementUpdateRefusalHandlerRef,
     lastSyncedFilesRef,
     lastSyncedElementOrderSigRef,
     latestElementsRef,

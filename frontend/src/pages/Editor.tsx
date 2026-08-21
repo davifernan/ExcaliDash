@@ -57,6 +57,7 @@ export const Editor: React.FC = () => {
   const latestFilesRef = useRef<any>(null);
   const lastSyncedFilesRef = useRef<Record<string, any>>({});
   const lastSyncedElementOrderSigRef = useRef<string>("");
+  const elementUpdateRefusalHandlerRef = useRef<(() => void) | null>(null);
   const lastPersistedFilesRef = useRef<Record<string, any>>({});
   const latestAppStateRef = useRef<any>(null);
   const debouncedSaveRef = useRef<
@@ -110,6 +111,7 @@ export const Editor: React.FC = () => {
     isReady,
     excalidrawAPI,
     editorContainerRef,
+    elementUpdateRefusalHandlerRef,
     lastSyncedFilesRef,
     lastSyncedElementOrderSigRef,
     latestElementsRef,
@@ -117,20 +119,6 @@ export const Editor: React.FC = () => {
     computeElementOrderSig,
     recordElementVersion,
     onAccessDenied: handleSocketAccessDenied,
-  });
-  const { emitFilesDeltaIfNeeded, setExcalidrawAPI } = useEditorAddFilesBridge({
-    drawingId: id,
-    debouncedSaveRef,
-    excalidrawAPIRef: excalidrawAPI,
-    hasSceneChangesSinceLoadRef,
-    isHistoryPreviewingRef: isHistoryPreviewing,
-    isSyncingRef: isSyncing,
-    lastSyncedFilesRef,
-    latestAppStateRef,
-    latestElementsRef,
-    latestFilesRef,
-    setIsReady,
-    socketRef,
   });
   useLibraryImportFromUrl({ excalidrawAPIRef: excalidrawAPI, isReady, user });
   const persistenceRefs = React.useMemo(
@@ -168,8 +156,10 @@ export const Editor: React.FC = () => {
   const markSceneChangedSinceLoad = useCallback(() => {
     hasSceneChangesSinceLoadRef.current = true;
   }, []);
-  const broadcastChanges = useEditorBroadcast({
+  const { broadcastChanges, broadcastFiles } = useEditorBroadcast({
     drawingId: id,
+    elementUpdateRefusalHandlerRef,
+    elementVersionMap,
     excalidrawAPI,
     lastLocalChangeAtRef,
     lastSyncedElementOrderSigRef,
@@ -184,6 +174,19 @@ export const Editor: React.FC = () => {
     normalizeImageElementStatus,
     recordElementVersion,
     setHasSceneChangesSinceLoad: markSceneChangedSinceLoad,
+  });
+  const { emitFilesDeltaIfNeeded, setExcalidrawAPI } = useEditorAddFilesBridge({
+    drawingId: id,
+    debouncedSaveRef,
+    excalidrawAPIRef: excalidrawAPI,
+    hasSceneChangesSinceLoadRef,
+    isHistoryPreviewingRef: isHistoryPreviewing,
+    isSyncingRef: isSyncing,
+    latestAppStateRef,
+    latestElementsRef,
+    latestFilesRef,
+    setIsReady,
+    broadcastFiles,
   });
   const sceneLoaderRefs = React.useMemo(
     () => ({

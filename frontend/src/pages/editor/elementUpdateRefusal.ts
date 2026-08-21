@@ -18,6 +18,7 @@ export const REFUSAL_QUIET_MS = 60_000;
 export const bindElementUpdateRefusals = ({
   socket,
   notify,
+  onRefused: rollbackRefusedUpdate,
   now = () => Date.now(),
 }: {
   socket: {
@@ -25,16 +26,18 @@ export const bindElementUpdateRefusals = ({
     off: (event: string, handler: () => void) => void;
   };
   notify: (message: string) => void;
+  onRefused?: () => void;
   now?: () => number;
 }) => {
   let lastSaid = 0;
 
   const onRefused = () => {
+    rollbackRefusedUpdate?.();
     const at = now();
     if (lastSaid && at - lastSaid < REFUSAL_QUIET_MS) return;
     lastSaid = at;
     notify(
-      "This change was too large to share live. It is still saved — reload to bring everyone back in step.",
+      "This change was too large to share live. It is still saved; live sharing will retry briefly, then you can reload to bring everyone back in step.",
     );
   };
 

@@ -15,6 +15,7 @@ import type { Follower } from "./followMode";
 import type { WorkshopTimerController } from "./workshopTimer";
 import { WorkshopTimerWidget } from "./WorkshopTimerWidget";
 import { InviteHereOverlay, type InviteHereUiState } from "./InviteHereOverlay";
+import { CursorChatComposer } from "./CursorChatComposer";
 
 type EditorViewProps = {
   id?: string;
@@ -34,6 +35,9 @@ type EditorViewProps = {
   theme: string;
   workshopTimer: WorkshopTimerController;
   inviteHere: InviteHereUiState;
+  cursorChatDraft: string | null;
+  onCursorChatType: (text: string) => void;
+  onCursorChatClose: () => void;
   onBackClick: () => void;
   onCanvasChange: (elements: readonly any[], appState: any, files?: Record<string, any>) => void;
   stickyOverlay?: React.ReactNode;
@@ -76,6 +80,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
   theme,
   workshopTimer,
   inviteHere,
+  cursorChatDraft,
+  onCursorChatType,
+  onCursorChatClose,
   onBackClick,
   onCanvasChange,
   onCanvasDropCapture,
@@ -223,6 +230,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
               onDecline={inviteHere.decline}
             />
           ) : null}
+          <CursorChatComposer
+            container={excalidrawRoot}
+            draft={cursorChatDraft}
+            onType={onCursorChatType}
+            onClose={onCursorChatClose}
+          />
           {stickyOverlay}
         </>
       ) : (

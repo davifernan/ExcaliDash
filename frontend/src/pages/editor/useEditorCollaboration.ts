@@ -11,6 +11,7 @@ import { getShareLinkToken } from "../../api";
 import { bindSocketCollaborators } from "./socketCollaborators";
 import type { Peer } from "./socketCollaborators";
 import { bindRemoteSelection } from "./remoteSelection";
+import { bindCursorChat, withCursorChat, type CursorChatController } from "./cursorChat";
 import {
   bindSocketWorkshopTimer,
   createIdleWorkshopTimerSnapshot,
@@ -57,6 +58,10 @@ export const useEditorCollaboration = ({
   onAccessDenied,
 }: UseEditorCollaborationInput) => {
   const [peers, setPeers] = useState<Peer[]>([]);
+  // Controller in a ref because it outlives renders; draft in state because the
+  // composer draws it and React has to hear about every keystroke.
+  const cursorChatRef = useRef<CursorChatController | null>(null);
+  const [cursorChatDraft, setCursorChatDraft] = useState<string | null>(null);
   // What the server decided this connection is called. For an account it agrees
   // with the local identity; for a share-link visitor the server picks the name,
   // and showing them a different one than everyone else sees is a small lie.
@@ -98,10 +103,23 @@ export const useEditorCollaboration = ({
         (window as any).__EXCALIDASH_SOCKET_STATUS__ = { connected: false };
       });
     }
-    const collaborators = bindSocketCollaborators({
+    // Bound before the collaborators (they read it) and referred to after (a
+    // message has to refresh the names).
+    let collaborators: ReturnType<typeof bindSocketCollaborators> | null = null;
+
+    const cursorChat = bindCursorChat({
+      socket,
+      drawingId,
+      onRemoteChange: () => collaborators?.refresh(),
+      onDraftChange: setCursorChatDraft,
+    });
+    cursorChatRef.current = cursorChat;
+
+    collaborators = bindSocketCollaborators({
       socket,
       api: excalidrawAPI.current,
       onPeersChange: setPeers,
+      decorateName: (name, presenceId) => withCursorChat(name, cursorChat.remote.get(presenceId)),
     });
     const remoteSelection = bindRemoteSelection({ socket, drawingId, api: excalidrawAPI.current });
     const workshopTimer = bindSocketWorkshopTimer({
@@ -297,6 +315,9 @@ export const useEditorCollaboration = ({
       socket.off("drawing-server-update");
       unbindSocketRoomLifecycle();
       unbindFollowMode();
+      cursorChat.dispose();
+      cursorChatRef.current = null;
+      setCursorChatDraft(null);
       collaborators.dispose();
       remoteSelection.dispose();
       workshopTimer.dispose();
@@ -364,6 +385,8 @@ export const useEditorCollaboration = ({
 
   return {
     peers,
+    cursorChatRef,
+    cursorChatDraft,
     selfIdentity,
     followers,
     workshopTimer: { snapshot: workshopTimerSnapshot, sendCommand: sendWorkshopTimerCommand },

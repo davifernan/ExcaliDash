@@ -48,6 +48,58 @@ type Deps = {
   now?: () => number;
 };
 
+type BlobDeps = Pick<Deps, "prisma" | "storageDir">;
+
+/**
+ * Put trusted, already-validated bytes into the shared content-addressed blob
+ * store. Document uploads and generated link-preview images both use this so
+ * deduplication, atomic publication and cleanup semantics stay identical.
+ */
+export async function storeBlob(
+  deps: BlobDeps,
+  input: { source: Readable; limitBytes: number; compress?: boolean },
+) {
+  const provisionalId = randomUUID();
+  const stored = await storeStream(
+    deps.storageDir,
+    originalKey(provisionalId),
+    input.source,
+    input.limitBytes,
+    { compress: input.compress },
+  );
+
+  let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
+  if (blob) {
+    await removeStored(deps.storageDir, stored.storageKey);
+    if (blob.deleteAfter) {
+      blob = await deps.prisma.storedBlob.update({
+        where: { id: blob.id },
+        data: { deleteAfter: null, state: "READY" },
+      });
+    }
+  } else {
+    try {
+      blob = await deps.prisma.storedBlob.create({
+        data: {
+          id: provisionalId,
+          sha256: stored.sha256,
+          sizeBytes: stored.sizeBytes,
+          storedBytes: stored.storedBytes,
+          contentEncoding: stored.contentEncoding,
+          storageKey: stored.storageKey,
+          state: "READY",
+        },
+      });
+    } catch (err: any) {
+      if (err?.code !== "P2002") throw err;
+      await removeStored(deps.storageDir, stored.storageKey);
+      blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
+      if (!blob) throw err;
+    }
+  }
+  return { blob, stored };
+}
+
 const ownerUploadTails = new Map<string, Promise<void>>();
 
 /**
@@ -121,47 +173,11 @@ async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
   // The file is written before its hash is known, so it lands under a
   // provisional id. If those exact bytes turn out to be on disk already, the
   // provisional copy is thrown away and the existing one reused.
-  const provisionalId = randomUUID();
-  const stored = await storeStream(
-    deps.storageDir,
-    originalKey(provisionalId),
-    input.source,
-    Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
-    { compress: shouldCompress(input.mimeType) },
-  );
-
-  let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
-  if (blob) {
-    await removeStored(deps.storageDir, stored.storageKey);
-    if (blob.deleteAfter) {
-      // It was on its way out; a new reference cancels that.
-      blob = await deps.prisma.storedBlob.update({
-        where: { id: blob.id },
-        data: { deleteAfter: null, state: "READY" },
-      });
-    }
-  } else {
-    try {
-      blob = await deps.prisma.storedBlob.create({
-        data: {
-          id: provisionalId,
-          sha256: stored.sha256,
-          sizeBytes: stored.sizeBytes,
-          storedBytes: stored.storedBytes,
-          contentEncoding: stored.contentEncoding,
-          storageKey: stored.storageKey,
-          state: "READY",
-        },
-      });
-    } catch (err: any) {
-      // Two uploads of the same bytes at the same time: sha256 is unique, so
-      // one of them loses the race and joins the winner instead.
-      if (err?.code !== "P2002") throw err;
-      await removeStored(deps.storageDir, stored.storageKey);
-      blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
-      if (!blob) throw err;
-    }
-  }
+  const { blob, stored } = await storeBlob(deps, {
+    source: input.source,
+    limitBytes: Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
+    compress: shouldCompress(input.mimeType),
+  });
 
   const asset = await deps.prisma.asset.create({
     data: {
@@ -329,7 +345,10 @@ export async function collectExpired(deps: Deps): Promise<{ assets: number; blob
   let removed = 0;
   for (const blobId of touchedBlobs) {
     const stillUsed = await deps.prisma.asset.count({ where: { blobId } });
-    if (stillUsed > 0) continue;
+    const usedByPreview = await deps.prisma.linkPreview.count({
+      where: { OR: [{ imageBlobId: blobId }, { faviconBlobId: blobId }] },
+    });
+    if (stillUsed > 0 || usedByPreview > 0) continue;
     const blob = await deps.prisma.storedBlob.findUnique({ where: { id: blobId } });
     if (!blob) continue;
     // Disk first, row second: a missing file with a row left over is a broken

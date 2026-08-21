@@ -111,6 +111,7 @@ interface Config {
   mail: MailConfig;
   s3: S3Config;
   assets: AssetConfig;
+  linkPreviews: LinkPreviewConfig;
 }
 
 /**
@@ -142,6 +143,27 @@ export interface AssetConfig {
   pdfShrinkMinBytes: number;
   pdfShrinkConcurrency: number;
   pdfShrinkQueueLimit: number;
+}
+
+export interface LinkPreviewConfig {
+  positiveTtlMs: number;
+  negativeTtlMs: number;
+  dnsTimeoutMs: number;
+  connectTimeoutMs: number;
+  totalTimeoutMs: number;
+  maxRedirects: number;
+  maxPageWireBytes: number;
+  maxPageDecodedBytes: number;
+  maxImageWireBytes: number;
+  maxImageDecodedBytes: number;
+  maxSanitizedImageBytes: number;
+  maxImagePixels: number;
+  maxImageDimension: number;
+  maxFaviconDimension: number;
+  imageProcessTimeoutMs: number;
+  maxConcurrentPerUser: number;
+  maxConcurrentInstance: number;
+  maxQueueSize: number;
 }
 
 export type AuthMode = "local" | "hybrid" | "oidc_enforced";
@@ -493,6 +515,30 @@ export const config: Config = {
     pdfShrinkMinBytes: getRequiredEnvNumber("ASSET_PDF_SHRINK_MIN_MB", 4) * 1024 * 1024,
     pdfShrinkConcurrency: getRequiredEnvNumber("ASSET_PDF_SHRINK_CONCURRENCY", 1),
     pdfShrinkQueueLimit: getRequiredEnvNumber("ASSET_PDF_SHRINK_QUEUE_LIMIT", 2),
+  },
+  linkPreviews: {
+    positiveTtlMs: getRequiredEnvNumber("LINK_PREVIEW_POSITIVE_TTL_MS", 24 * 60 * 60 * 1000),
+    negativeTtlMs: getRequiredEnvNumber("LINK_PREVIEW_NEGATIVE_TTL_MS", 15 * 60 * 1000),
+    dnsTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_DNS_TIMEOUT_MS", 2_000),
+    connectTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_CONNECT_TIMEOUT_MS", 3_000),
+    totalTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_TOTAL_TIMEOUT_MS", 8_000),
+    maxRedirects: getRequiredEnvNumber("LINK_PREVIEW_MAX_REDIRECTS", 3),
+    // Both the bytes on the wire and the bytes after Content-Encoding are
+    // bounded independently. The latter is what defeats gzip/brotli bombs.
+    maxPageWireBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_PAGE_WIRE_KB", 256) * 1024,
+    maxPageDecodedBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_PAGE_DECODED_KB", 512) * 1024,
+    maxImageWireBytes: getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_WIRE_MB", 4) * 1024 * 1024,
+    maxImageDecodedBytes:
+      getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_DECODED_MB", 8) * 1024 * 1024,
+    maxSanitizedImageBytes:
+      getRequiredEnvNumber("LINK_PREVIEW_MAX_STORED_IMAGE_MB", 2) * 1024 * 1024,
+    maxImagePixels: getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_PIXELS", 16_000_000),
+    maxImageDimension: getRequiredEnvNumber("LINK_PREVIEW_MAX_IMAGE_DIMENSION", 2_048),
+    maxFaviconDimension: getRequiredEnvNumber("LINK_PREVIEW_MAX_FAVICON_DIMENSION", 256),
+    imageProcessTimeoutMs: getRequiredEnvNumber("LINK_PREVIEW_IMAGE_TIMEOUT_MS", 10_000),
+    maxConcurrentPerUser: getRequiredEnvNumber("LINK_PREVIEW_CONCURRENCY_PER_USER", 2),
+    maxConcurrentInstance: getRequiredEnvNumber("LINK_PREVIEW_CONCURRENCY_INSTANCE", 4),
+    maxQueueSize: getRequiredEnvNumber("LINK_PREVIEW_QUEUE_SIZE", 16),
   },
 };
 

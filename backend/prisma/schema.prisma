@@ -267,10 +267,37 @@ model StoredBlob {
   /// deleted by mistake and restored from a snapshot still finds its bytes.
   deleteAfter DateTime?
   assets      Asset[]
+  linkPreviewImages   LinkPreview[] @relation("LinkPreviewImage")
+  linkPreviewFavicons LinkPreview[] @relation("LinkPreviewFavicon")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([state, deleteAfter])
+}
+
+/// Cached public metadata. Foreign image URLs never leave the backend; only
+/// references to sanitized local blobs are exposed to board viewers.
+model LinkPreview {
+  id            String   @id @default(uuid())
+  cacheKey      String   @unique
+  requestedUrl  String
+  resolvedUrl   String?
+  status        String
+  failureCode   String?
+  title         String?
+  description   String?
+  imageBlobId   String?
+  faviconBlobId String?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  imageBlob   StoredBlob? @relation("LinkPreviewImage", fields: [imageBlobId], references: [id], onDelete: SetNull)
+  faviconBlob StoredBlob? @relation("LinkPreviewFavicon", fields: [faviconBlobId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  @@index([imageBlobId])
+  @@index([faviconBlobId])
 }
 
 /// A document as a person thinks of it: a name, an owner, a page count.

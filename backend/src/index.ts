@@ -45,6 +45,8 @@ import { issueBootstrapSetupCodeIfRequired } from "./auth/bootstrapSetupCode";
 import { processFilesForS3 as processFilesForS3WithPrisma } from "./fileProcessing";
 import { initS3 } from "./s3";
 import { startScheduledMaintenance } from "./backups/scheduler";
+import { registerLinkPreviewRoutes } from "./linkPreviews/routes";
+import { collectExpiredLinkPreviews, createLinkPreviewService } from "./linkPreviews/service";
 const backendRoot = path.resolve(__dirname, "../");
 const redactDatabaseUrl = (value: string | undefined): string => {
   if (!value) return "<unset>";
@@ -595,6 +597,19 @@ registerAssetRoutes({
     return { finalBytes: result.finalBytes, note: describeShrink(result) };
   },
 });
+const linkPreviewDeps = {
+  prisma,
+  storageDir: config.assets.storageDir,
+  config: config.linkPreviews,
+};
+registerLinkPreviewRoutes({
+  app,
+  prisma,
+  requireAuth,
+  asyncHandler,
+  storageDir: config.assets.storageDir,
+  getPreview: createLinkPreviewService(linkPreviewDeps),
+});
 registerImportExportRoutes({
   app,
   prisma,
@@ -642,10 +657,12 @@ setInterval(async () => {
   try {
     const swept = await sweepUnclaimed(assetDeps);
     const collected = await collectExpired(assetDeps);
-    if (swept.pending || collected.assets) {
+    const expiredPreviews = await collectExpiredLinkPreviews(linkPreviewDeps);
+    if (swept.pending || collected.assets || expiredPreviews) {
       console.log(
         `[assets] released ${swept.pending} unclaimed upload(s), ` +
-          `removed ${collected.assets} document(s) and ${collected.blobs} file(s)`,
+          `removed ${collected.assets} document(s), ${expiredPreviews} link preview(s) ` +
+          `and ${collected.blobs} file(s)`,
       );
     }
   } catch (error) {

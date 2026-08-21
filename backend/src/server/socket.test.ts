@@ -345,7 +345,7 @@ describe("who the server decides someone is", () => {
     expect(ack.presence.name).not.toBe("Account Name");
   });
 
-  it("shares one activity budget across one account's simultaneous sockets", async () => {
+  it("shares activity, selection, and cursor-chat budgets across one account's sockets", async () => {
     // A per-connection budget resets on reconnect, and reconnecting is free.
     const io = new FakeIo();
     const prisma = {
@@ -405,5 +405,25 @@ describe("who the server decides someone is", () => {
 
     // Twenty-two pings, one budget of twenty between the two connections.
     expect(io.emissions.filter((item) => item.event === "presence-update")).toHaveLength(20);
+
+    io.emissions.length = 0;
+    for (let index = 0; index < 21; index += 1) {
+      await first.trigger("selection-update", {
+        drawingId: "drawing-1",
+        selectedElementIds: [`first-${index}`],
+      });
+      await second.trigger("selection-update", {
+        drawingId: "drawing-1",
+        selectedElementIds: [`second-${index}`],
+      });
+    }
+    expect(io.emissions.filter((item) => item.event === "selection-update")).toHaveLength(40);
+
+    io.emissions.length = 0;
+    for (let index = 0; index < 6; index += 1) {
+      await first.trigger("cursor-chat", { drawingId: "drawing-1", text: `first ${index}` });
+      await second.trigger("cursor-chat", { drawingId: "drawing-1", text: `second ${index}` });
+    }
+    expect(io.emissions.filter((item) => item.event === "cursor-chat")).toHaveLength(10);
   });
 });

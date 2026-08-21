@@ -49,8 +49,8 @@ import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
 import { ipKeyGenerator } from "express-rate-limit";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
-import { registerSelectionRoomEvent } from "./socketSelection";
-import { registerCursorChatRoomEvent } from "./socketCursorChat";
+import { registerSelectionRoomEvent, SELECTION_LIMITS } from "./socketSelection";
+import { CURSOR_CHAT_LIMITS, registerCursorChatRoomEvent } from "./socketCursorChat";
 import { createWorkshopTimerManager, registerWorkshopTimerRoomEvent } from "./socketWorkshopTimer";
 import { createSocketInviteHereManager } from "./socketInviteHere";
 
@@ -83,6 +83,8 @@ export const registerSocketHandlers = ({
   // Keyed by who, not by which connection: a per-socket budget for activity
   // pings resets on reconnect, and reconnecting is free.
   const allowActivity = createKeyedRateLimiter(20, 10_000);
+  const allowSelection = createKeyedRateLimiter(SELECTION_LIMITS.eventsPerSecond, 1_000);
+  const allowCursorChat = createKeyedRateLimiter(CURSOR_CHAT_LIMITS.eventsPerSecond, 1_000);
   const allowAccountElementBytes = createKeyedByteLimiter(
     elementUpdateTrafficLimits.accountBytesPerWindow,
     elementUpdateTrafficLimits.windowMs,
@@ -225,6 +227,7 @@ export const registerSocketHandlers = ({
     let pendingJoins = 0;
     const allowJoin = createRateLimiter(10, 60_000);
     const allowFollow = createRateLimiter(12, 60_000);
+    const allowUnfollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
     const actor = () => {
       const principal = principals.get(socket.id);
@@ -235,7 +238,7 @@ export const registerSocketHandlers = ({
             isAccount: false,
           };
     };
-    followManager.registerHandlers(socket, allowFollow, allowViewport);
+    followManager.registerHandlers(socket, allowFollow, allowViewport, allowUnfollow);
     registerCoreRoomEvents({
       socket,
       getPresence,
@@ -257,8 +260,17 @@ export const registerSocketHandlers = ({
         return allowAnonymousElementBytes(currentActor.key, serializedBytes);
       },
     });
-    registerSelectionRoomEvent({ socket, presences, requireAccess });
-    registerCursorChatRoomEvent({ socket, requireAccess });
+    registerSelectionRoomEvent({
+      socket,
+      presences,
+      requireAccess,
+      allow: () => allowSelection(actor().key),
+    });
+    registerCursorChatRoomEvent({
+      socket,
+      requireAccess,
+      allow: () => allowCursorChat(actor().key),
+    });
     registerWorkshopTimerRoomEvent({ socket, timers: workshopTimers, requireAccess });
     inviteHereManager.registerHandlers(socket);
 
@@ -368,7 +380,7 @@ export const registerSocketHandlers = ({
         }
         const presence: PresenceEntry = {
           presenceId: socket.id,
-          accountId: principal?.userId || null,
+          accountId: isAccount && principal ? principal.userId : null,
           name,
           initials: toPresenceInitials(name),
           color,

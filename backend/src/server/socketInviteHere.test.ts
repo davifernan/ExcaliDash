@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { BOOTSTRAP_USER_ID } from "../auth/authMode";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
-import { FakeIo, type FakeSocket, room } from "../__tests__/socketTestDoubles";
+import { FakeIo, FakeSocket, room } from "../__tests__/socketTestDoubles";
 import { registerSocketHandlers } from "./socket";
+import { createSocketInviteHereManager } from "./socketInviteHere";
 
 const bounds = [-100, -50, 500, 350];
 
@@ -122,5 +123,52 @@ describe("invite here socket flow", () => {
     ]);
     expect(Object.values(io.emissions[0]!.payload)).not.toContain("recipient");
     expect(io.emissions.some((item) => item.scope === room("drawing-1"))).toBe(false);
+  });
+
+  it("counts two accepted tabs of the same account as one arrival", async () => {
+    const sockets = ["sender", "recipient-one", "recipient-two"].map(
+      (id) => new FakeSocket(id, io.emissions),
+    );
+    const connectedSockets = new Map(sockets.map((socket) => [socket.id, socket as any]));
+    const manager = createSocketInviteHereManager({
+      connectedSockets,
+      getPresence: (socketId) => ({
+        presenceId: socketId,
+        accountId: socketId === "sender" ? "inviter-account" : "recipient-account",
+        name: socketId,
+        initials: "T",
+        color: "#123456",
+        kind: "member",
+        isActive: true,
+        selectedElementIds: {},
+      }),
+      requireAccess: async () => true,
+    });
+    for (const socket of sockets) manager.registerHandlers(socket as any);
+
+    await sockets[0].trigger("invite-here", { drawingId: "drawing-1", sceneBounds: bounds });
+    const invitation = io.emissions.find((item) => item.event === "invite-here")?.payload;
+    io.emissions.length = 0;
+    for (const recipient of sockets.slice(1)) {
+      await recipient.trigger("invite-here-response", {
+        drawingId: "drawing-1",
+        invitationId: invitation.invitationId,
+        decision: "accepted",
+      });
+    }
+
+    expect(io.emissions).toEqual([
+      expect.objectContaining({
+        scope: "sender",
+        event: "invite-here-status",
+        payload: expect.objectContaining({ arrivedCount: 1 }),
+      }),
+    ]);
+    expect(Object.keys(io.emissions[0]!.payload)).toEqual([
+      "drawingId",
+      "invitationId",
+      "expiresAt",
+      "arrivedCount",
+    ]);
   });
 });

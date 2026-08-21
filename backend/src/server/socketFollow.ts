@@ -134,6 +134,7 @@ export const createSocketFollowManager = ({
     socket: Socket,
     allowFollow: () => boolean,
     allowViewport: () => boolean,
+    allowUnfollow: () => boolean,
   ) => {
     let followQueue = Promise.resolve();
     let pendingFollowCommands = 0;
@@ -154,14 +155,19 @@ export const createSocketFollowManager = ({
       }
       const payload = data as Record<string, unknown>;
       if (payload.action === "UNFOLLOW") {
-        // Recovery must not wait behind slow access checks. Advancing the
-        // revision also prevents any already-running FOLLOW from recreating
-        // the edge after this immediate cleanup.
-        followCancellationRevision += 1;
-        clearFollower(socket.id, "unfollowed", false);
-        emitFollowStatus(socket, drawingId);
-        ack?.({ ok: true });
-        return;
+        if (!allowUnfollow()) return;
+        // Keep recovery outside the FOLLOW queue so it can still overtake a
+        // slow target check, but trust it only after fresh room access.
+        const run = async () => {
+          if (!(await requireAccess(socket, drawingId))) return;
+          // Advancing the revision prevents any already-running FOLLOW from
+          // recreating the edge after this cleanup.
+          followCancellationRevision += 1;
+          clearFollower(socket.id, "unfollowed", false);
+          emitFollowStatus(socket, drawingId);
+          ack?.({ ok: true });
+        };
+        return run();
       }
       if (!allowFollow()) {
         reject("rate-limited", "Follow command rate limit exceeded");

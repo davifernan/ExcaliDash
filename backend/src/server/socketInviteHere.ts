@@ -21,7 +21,7 @@ type ActiveInvitation = {
   drawingId: string;
   inviterPresenceId: string;
   expiresAt: number;
-  arrivedPresenceIds: Set<string>;
+  arrivedPersonKeys: Set<string>;
 };
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
@@ -63,7 +63,7 @@ export const createSocketInviteHereManager = ({
       drawingId: invitation.drawingId,
       invitationId: invitation.invitationId,
       expiresAt: invitation.expiresAt,
-      arrivedCount: invitation.arrivedPresenceIds.size,
+      arrivedCount: invitation.arrivedPersonKeys.size,
     });
   };
 
@@ -84,7 +84,7 @@ export const createSocketInviteHereManager = ({
           drawingId: payload.drawingId,
           inviterPresenceId: socket.id,
           expiresAt: Date.now() + INVITE_HERE_LIMITS.durationMs,
-          arrivedPresenceIds: new Set(),
+          arrivedPersonKeys: new Set(),
         };
         activeByDrawing.set(payload.drawingId, invitation);
         emitStatus(invitation);
@@ -113,8 +113,15 @@ export const createSocketInviteHereManager = ({
           return;
         }
         if (payload.decision !== "accepted" || invitation.inviterPresenceId === socket.id) return;
-        if (invitation.arrivedPresenceIds.has(socket.id)) return;
-        invitation.arrivedPresenceIds.add(socket.id);
+        const presence = getPresence(socket.id);
+        if (!presence) return;
+        // Accounts are people across tabs. Anonymous visitors have no honest
+        // person identifier, so only repeat responses from one socket collapse.
+        const personKey = presence.accountId
+          ? `account:${presence.accountId}`
+          : `presence:${presence.presenceId}`;
+        if (invitation.arrivedPersonKeys.has(personKey)) return;
+        invitation.arrivedPersonKeys.add(personKey);
         emitStatus(invitation);
       },
     });

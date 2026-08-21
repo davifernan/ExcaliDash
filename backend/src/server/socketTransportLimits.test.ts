@@ -37,6 +37,38 @@ const fullRectangle = (index: number) => ({
 const drawingId = "00000000-0000-0000-0000-000000000000";
 
 describe("element-update transport limits", () => {
+  const connectGuests = async (
+    boardIds: string[],
+    trafficLimits: {
+      accountBytesPerWindow: number;
+      anonymousBytesPerWindow: number;
+      accountActorBytesPerWindow: number;
+      anonymousActorBytesPerWindow: number;
+      windowMs: number;
+    },
+  ) => {
+    const io = new FakeIo();
+    registerSocketHandlers({
+      io: io as any,
+      prisma: {
+        drawing: { findUnique: vi.fn().mockResolvedValue({ userId: BOOTSTRAP_USER_ID }) },
+        drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+      } as any,
+      authModeService: { getAuthEnabled: async () => false } as any,
+      jwtSecret: "test-secret",
+      elementUpdateTrafficLimits: trafficLimits,
+    });
+    const sockets = await Promise.all(
+      boardIds.map(async (boardId, index) => {
+        const socket = await io.connect(`guest-${index}`);
+        await socket.trigger("join-room", { drawingId: boardId, user: {} });
+        return socket;
+      }),
+    );
+    io.emissions.length = 0;
+    return { io, sockets };
+  };
+
   it("rejects an oversized serialized payload", () => {
     expect(
       parseElementUpdatePayload({
@@ -104,6 +136,8 @@ describe("element-update transport limits", () => {
     const trafficLimits = {
       accountBytesPerWindow: payloadBytes,
       anonymousBytesPerWindow: payloadBytes,
+      accountActorBytesPerWindow: payloadBytes * 4,
+      anonymousActorBytesPerWindow: payloadBytes * 4,
       windowMs: 1_000,
     };
     const join = (socket: FakeSocket) =>
@@ -192,6 +226,46 @@ describe("element-update transport limits", () => {
     await secondAccount.trigger("element-update", payload);
     expect(accountIo.emissions.filter((item) => item.event === "element-update")).toHaveLength(1);
   });
+
+  it("does not spend one actor's board budget on another board", async () => {
+    const payload = { drawingId: "board-a", elements: [fullRectangle(0)] };
+    const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+    const { io, sockets } = await connectGuests(["board-a", "board-a", "board-b"], {
+      accountBytesPerWindow: payloadBytes,
+      anonymousBytesPerWindow: payloadBytes,
+      accountActorBytesPerWindow: payloadBytes * 2,
+      anonymousActorBytesPerWindow: payloadBytes * 2,
+      windowMs: 1_000,
+    });
+
+    await sockets[0].trigger("element-update", payload);
+    await sockets[1].trigger("element-update", payload);
+    await sockets[2].trigger("element-update", { ...payload, drawingId: "board-b" });
+
+    expect(io.emissions.filter((item) => item.event === "element-update")).toHaveLength(2);
+  });
+
+  it("caps one actor's element bytes across many boards", async () => {
+    const payload = { drawingId: "board-a", elements: [fullRectangle(0)] };
+    const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+    const { io, sockets } = await connectGuests(["board-a", "board-b", "board-c"], {
+      accountBytesPerWindow: payloadBytes,
+      anonymousBytesPerWindow: payloadBytes,
+      accountActorBytesPerWindow: payloadBytes * 2,
+      anonymousActorBytesPerWindow: payloadBytes * 2,
+      windowMs: 1_000,
+    });
+
+    for (const [index, socket] of sockets.entries()) {
+      await socket.trigger("element-update", {
+        ...payload,
+        drawingId: `board-${String.fromCharCode(97 + index)}`,
+      });
+    }
+
+    expect(io.emissions.filter((item) => item.event === "element-update")).toHaveLength(2);
+  });
+
   it("tells the sender when a change was refused, and tells only them", async () => {
     // The change is still saved over HTTP, so nothing is lost. What is lost is
     // the live sharing -- and without a word the sender keeps drawing while
@@ -210,6 +284,8 @@ describe("element-update transport limits", () => {
         // No budget at all, so the very first change is refused.
         accountBytesPerWindow: 0,
         anonymousBytesPerWindow: 0,
+        accountActorBytesPerWindow: 0,
+        anonymousActorBytesPerWindow: 0,
         windowMs: 1_000,
       },
     });

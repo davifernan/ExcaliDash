@@ -58,7 +58,7 @@ describe("cursor chat payloads", () => {
 describe("cursor chat over the socket", () => {
   const drawingId = "11111111-2222-3333-4444-555555555555";
 
-  const setup = (allowed = true) => {
+  const setup = (allowed = true, allow?: () => boolean) => {
     const handlers = new Map<string, (value: unknown) => Promise<void> | void>();
     const emitted: { event: string; payload: any }[] = [];
     const to = () => ({
@@ -71,7 +71,7 @@ describe("cursor chat over the socket", () => {
       to,
     } as any;
     const requireAccess = vi.fn(async () => allowed);
-    registerCursorChatRoomEvent({ socket, requireAccess });
+    registerCursorChatRoomEvent({ socket, requireAccess, allow });
     return { handlers, emitted, requireAccess };
   };
 
@@ -92,13 +92,22 @@ describe("cursor chat over the socket", () => {
     expect(emitted).toHaveLength(0);
   });
 
-  it("stops relaying once the rate limit is reached", async () => {
-    const { handlers, emitted } = setup();
+  it("stops relaying text at the rate limit but always relays a clear", async () => {
+    let typingBudget = CURSOR_CHAT_LIMITS.eventsPerSecond;
+    const { handlers, emitted } = setup(true, () => {
+      typingBudget -= 1;
+      return typingBudget >= 0;
+    });
     const send = handlers.get(CURSOR_CHAT_EVENT)!;
     for (let i = 0; i < CURSOR_CHAT_LIMITS.eventsPerSecond + 5; i += 1) {
       await send({ drawingId, text: `message ${i}` });
     }
     expect(emitted.length).toBe(CURSOR_CHAT_LIMITS.eventsPerSecond);
+    await send({ drawingId, text: null });
+    expect(emitted).toHaveLength(CURSOR_CHAT_LIMITS.eventsPerSecond + 1);
+    expect(emitted.at(-1)?.payload.text).toBeNull();
+    await send({ drawingId, text: null });
+    expect(emitted).toHaveLength(CURSOR_CHAT_LIMITS.eventsPerSecond + 1);
   });
   it("relays in the order sent even when the access checks finish backwards", async () => {
     // The access check is a database round trip. Two messages a millisecond

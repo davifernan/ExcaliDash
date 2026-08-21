@@ -20,6 +20,10 @@ type RegisterAuthorizedRoomEventOptions<Payload extends RoomEventPayload> = {
    * address, so dropping and redialling buys nothing.
    */
   allow?: () => boolean;
+  /** Valid no-op/removal payloads that must remain deliverable over budget. */
+  rateLimitExempt?: (value: unknown) => boolean;
+  /** Observes accepted or exempt events synchronously, before they enter the queue. */
+  onRateLimitAdmitted?: (value: unknown) => void;
   /** Payload-aware budget, evaluated after validation but before access I/O. */
   allowPayload?: (payload: Payload) => boolean;
   /**
@@ -58,6 +62,8 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   requireAccess,
   requireEdit = false,
   allow: sharedAllow,
+  rateLimitExempt,
+  onRateLimitAdmitted,
   allowPayload,
   onRefused,
   handle,
@@ -67,7 +73,8 @@ export const registerAuthorizedRoomEvent = <Payload extends RoomEventPayload>({
   socket.on(event, (value: unknown) => {
     // Rate limiting stays synchronous and outside the queue: refusing traffic
     // is the one thing that must not wait behind the traffic it is refusing.
-    if (!allow()) return;
+    if (!rateLimitExempt?.(value) && !allow()) return;
+    onRateLimitAdmitted?.(value);
     tail = tail.then(async () => {
       const payload = parse(value);
       if (!payload || (allowPayload && !allowPayload(payload))) {

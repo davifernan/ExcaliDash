@@ -16,8 +16,8 @@ type CoreRoomEventDeps = {
   emitPresence: (drawingId: string) => void;
   /** Shared, keyed budget for activity pings; see registerAuthorizedRoomEvent. */
   allowActivity: () => boolean;
-  /** Shared, actor-keyed serialized-byte budget for scene relays. */
-  allowElementUpdate: (serializedBytes: number) => boolean;
+  /** Shared actor-and-board serialized-byte budgets for scene relays. */
+  allowElementUpdate: (drawingId: string, serializedBytes: number) => boolean;
 };
 
 type ActivityPayload = RoomEventPayload & { isActive: boolean };
@@ -69,7 +69,7 @@ export const registerCoreRoomEvents = ({
     limit: 120,
     windowMs: 1_000,
     parse: parseElementUpdatePayload,
-    allowPayload: (payload) => allowElementUpdate(payload.serializedBytes),
+    allowPayload: (payload) => allowElementUpdate(payload.drawingId, payload.serializedBytes),
     // Only the sender hears this. The change is still saved over HTTP, so
     // nothing is lost -- but without a word the sender keeps drawing and
     // nobody else sees any of it, which is the worse failure.

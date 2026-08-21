@@ -1,0 +1,8 @@
+# The Prisma client is written by the generator on every build and is not in
+# the repository. The format check runs from this directory, so it reads the
+# ignore files here — the entry in the repository root never reaches it, and
+# without this line CI checks the formatting of code nobody wrote.
+src/generated/
+
+# Migrations are written by Prisma too.
+prisma/migrations/

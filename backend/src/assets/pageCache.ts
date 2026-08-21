@@ -27,11 +27,7 @@ import {
   storeStream,
 } from "./assetStorage";
 import { RENDERER_VERSION, renderPage } from "./pdfRenderer";
-import {
-  BoundedTaskQueue,
-  QueueAbortedError,
-  QueueCapacityError,
-} from "../utils/boundedTaskQueue";
+import { BoundedTaskQueue, QueueAbortedError, QueueCapacityError } from "../utils/boundedTaskQueue";
 
 export type CachedPage = {
   body: Buffer;

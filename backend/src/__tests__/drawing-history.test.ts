@@ -178,7 +178,6 @@ describe("Drawing Version History", () => {
       expect(res.status).toBe(404);
     });
   });
-
 });
 
 describe("Snapshot payload compression", () => {

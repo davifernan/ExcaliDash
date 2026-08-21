@@ -136,7 +136,11 @@ describe("rendering a page once", () => {
     });
     const options = deps({ render: slowRender, renderConcurrency: 1, renderQueueLimit: 1 });
     const page = (number: number) =>
-      getPage(options, { id: `queued-${number}`, blob: { storageKey: `originals/${number}` } }, number);
+      getPage(
+        options,
+        { id: `queued-${number}`, blob: { storageKey: `originals/${number}` } },
+        number,
+      );
 
     const first = page(1);
     const second = page(2);

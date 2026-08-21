@@ -3,10 +3,7 @@
  * every live collaboration event. Access-control rows are not cached here.
  */
 export class ActiveAccountCache {
-  private readonly entries = new Map<
-    string,
-    { expiresAt: number; value: Promise<boolean> }
-  >();
+  private readonly entries = new Map<string, { expiresAt: number; value: Promise<boolean> }>();
 
   constructor(
     private readonly load: (userId: string) => Promise<boolean>,

@@ -155,7 +155,9 @@ export const Dashboard: React.FC = () => {
     const collection = collections.find((c) => c.id === selectedCollectionId);
     return collection ? collection.name : "Collection";
   }, [selectedCollectionId, collections]);
-  const presence = useDashboardPresence(React.useMemo(() => sortedDrawings.map((d) => d.id), [sortedDrawings]));
+  const presence = useDashboardPresence(
+    React.useMemo(() => sortedDrawings.map((d) => d.id), [sortedDrawings]),
+  );
   const visibleCollections = React.useMemo(
     () => collections.filter((c) => c.id !== "trash"),
     [collections],

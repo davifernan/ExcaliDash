@@ -24,11 +24,26 @@ import { QueueAbortedError, QueueCapacityError } from "./pageCache";
 import { InvalidTextDocumentError, MAX_TEXT_UPLOAD_BYTES, validatedTextUpload } from "./textUpload";
 
 const ID = /^[\w-]{1,64}$/;
-const UPLOAD_TYPES = {
+const UPLOAD_PRESENTATIONS = {
   "application/pdf": { kind: "PDF" as const, fallbackName: "document.pdf" },
   "text/markdown": { kind: "MARKDOWN" as const, fallbackName: "document.md" },
   "text/plain": { kind: "TEXT" as const, fallbackName: "document.txt" },
 };
+
+/**
+ * Select how an upload should be presented. For text this deliberately records
+ * the client's preference; it does not claim that the bytes prove Markdown.
+ */
+export function requestedUploadPresentation(contentType: unknown) {
+  const mediaType = String(contentType ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  return {
+    mediaType,
+    presentation: UPLOAD_PRESENTATIONS[mediaType as keyof typeof UPLOAD_PRESENTATIONS],
+  };
+}
 
 export type AssetRouteDeps = {
   app: Express;
@@ -142,20 +157,22 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         });
       }
 
-      const declared = String(req.headers["content-type"] ?? "")
-        .split(";")[0]
-        .trim()
-        .toLowerCase();
-      const uploadType = UPLOAD_TYPES[declared as keyof typeof UPLOAD_TYPES];
-      if (!uploadType) {
+      const { mediaType: requestedPresentationType, presentation: uploadPresentation } =
+        requestedUploadPresentation(req.headers["content-type"]);
+      if (!uploadPresentation) {
         return res.status(415).json({
           error: "Unsupported file type",
-          message: `Only PDF, Markdown, and text documents can be added, not "${declared || "unknown"}".`,
+          message: `Only PDF, Markdown, and text documents can be added, not "${requestedPresentationType || "unknown"}".`,
         });
       }
 
-      const name = typeof req.query.name === "string" ? req.query.name : uploadType.fallbackName;
-      const isText = uploadType.kind !== "PDF";
+      // For UTF-8 documents Content-Type is a client-selected presentation
+      // preference, not a fact inferred from the bytes. Plain prose is valid
+      // Markdown and Markdown syntax can be shown as plain text, so a content
+      // heuristic would silently override intentional choices.
+      const name =
+        typeof req.query.name === "string" ? req.query.name : uploadPresentation.fallbackName;
+      const isText = uploadPresentation.kind !== "PDF";
       const source = isText ? Readable.from(validatedTextUpload(req)) : req;
 
       try {
@@ -175,12 +192,12 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
             ownerUserId: drawing.userId,
             uploadedByUserId: req.user?.id ?? null,
             drawingId,
-            kind: uploadType.kind,
+            kind: uploadPresentation.kind,
             originalName: name,
             mimeType:
-              uploadType.kind === "MARKDOWN"
+              uploadPresentation.kind === "MARKDOWN"
                 ? "text/markdown; charset=utf-8"
-                : uploadType.kind === "TEXT"
+                : uploadPresentation.kind === "TEXT"
                   ? "text/plain; charset=utf-8"
                   : "application/pdf",
             source,
@@ -190,10 +207,10 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         let pageCount: number | null = null;
         let note: string | null = null;
         try {
-          if (uploadType.kind !== "PDF") {
+          if (uploadPresentation.kind !== "PDF") {
             return res.status(201).json({
               id: created.asset.id,
-              kind: uploadType.kind,
+              kind: uploadPresentation.kind,
               name: created.asset.originalName,
               sizeBytes: created.sizeBytes,
               pageCount: null,
@@ -238,7 +255,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
 
         return res.status(201).json({
           id: created.asset.id,
-          kind: uploadType.kind,
+          kind: uploadPresentation.kind,
           name: created.asset.originalName,
           sizeBytes: created.sizeBytes,
           pageCount,
@@ -259,7 +276,7 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
     }),
   );
 
-  // Served as source bytes; the widget parses and sanitizes Markdown.
+  // Served as source bytes; the widget renders Markdown as React elements.
   app.get(
     "/drawings/:drawingId/assets/:assetId/content",
     deps.optionalAuth,

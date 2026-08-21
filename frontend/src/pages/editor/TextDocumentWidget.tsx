@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   getDocumentAsset,
   getDocumentContent,
@@ -7,8 +9,26 @@ import {
   type TextAsset,
 } from "../../api";
 import type { AssetWidgetKind } from "./pdfWidgetElements";
-import { renderSafeMarkdown } from "./renderMarkdown";
+import { paginateDocumentSource } from "./documentPagination";
 import "./TextDocumentWidget.css";
+
+const markdownComponents: Components = {
+  a: ({ node: _node, href, children, ...props }) => {
+    const safeHref = href && /^(?:https?:|mailto:)/i.test(href) ? href : undefined;
+    const external = safeHref && /^https?:/i.test(safeHref);
+    return (
+      <a
+        {...props}
+        href={safeHref}
+        rel={external ? "noopener noreferrer" : undefined}
+        target={external ? "_blank" : undefined}
+      >
+        {children}
+      </a>
+    );
+  },
+  img: () => null,
+};
 
 type TextDocumentWidgetProps = {
   assetId: string;
@@ -27,11 +47,14 @@ export const TextDocumentWidget = ({
 }: TextDocumentWidgetProps) => {
   const [loaded, setLoaded] = useState<LoadedDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
     setLoaded(null);
     setError(null);
+    setPageIndex(0);
     Promise.all([getDocumentAsset(drawingId, assetId), getDocumentContent(drawingId, assetId)])
       .then(([asset, content]) => {
         if (!active) return;
@@ -50,10 +73,22 @@ export const TextDocumentWidget = ({
     };
   }, [assetId, drawingId, widgetKind]);
 
-  const markdownHtml = useMemo(
-    () => (loaded?.asset.kind === "MARKDOWN" ? renderSafeMarkdown(loaded.content) : null),
+  const pages = useMemo(
+    () => (loaded ? paginateDocumentSource(loaded.content, loaded.asset.kind) : []),
     [loaded],
   );
+
+  const downloadUrl = getDocumentOriginalUrl(drawingId, assetId);
+  const page = pages[pageIndex] ?? "";
+  const pageCount = pages.length;
+
+  const changePage = (direction: 1 | -1) => {
+    setPageIndex((current) => Math.min(pageCount - 1, Math.max(0, current + direction)));
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+      bodyRef.current.scrollLeft = 0;
+    }
+  };
 
   return (
     <div
@@ -64,27 +99,56 @@ export const TextDocumentWidget = ({
       <div className="text-document-widget__title" title={loaded?.asset.name}>
         {loaded?.asset.name ?? (widgetKind === "markdown" ? "Markdown document" : "Text document")}
       </div>
-      <div className="text-document-widget__body">
+      <div className="text-document-widget__body" ref={bodyRef}>
         {!loaded && !error ? (
           <Loader2 aria-label="Loading document" className="animate-spin" />
         ) : null}
         {error ? <p className="text-document-widget__status">{error}</p> : null}
         {loaded?.asset.kind === "TEXT" ? (
-          <pre className="text-document-widget__plain">{loaded.content}</pre>
+          <pre className="text-document-widget__plain">{page}</pre>
         ) : null}
-        {markdownHtml !== null ? (
-          <div
-            className="text-document-widget__markdown"
-            dangerouslySetInnerHTML={{ __html: markdownHtml }}
-          />
+        {loaded?.asset.kind === "MARKDOWN" ? (
+          <div className="text-document-widget__markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {page}
+            </ReactMarkdown>
+          </div>
         ) : null}
       </div>
       {loaded ? (
-        <div className="text-document-widget__controls">
-          <span>{loaded.asset.kind === "MARKDOWN" ? "Markdown" : "Plain text"}</span>
+        <div
+          className={`text-document-widget__controls${pageCount === 1 ? " text-document-widget__controls--single" : ""}`}
+        >
+          {pageCount > 1 ? (
+            <>
+              <button
+                type="button"
+                className="text-document-widget__button"
+                aria-label="Previous page"
+                disabled={pageIndex === 0}
+                onClick={() => changePage(-1)}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="text-document-widget__page-number">
+                Page {pageIndex + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                className="text-document-widget__button"
+                aria-label="Next page"
+                disabled={pageIndex === pageCount - 1}
+                onClick={() => changePage(1)}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </>
+          ) : (
+            <span>{loaded.asset.kind === "MARKDOWN" ? "Markdown" : "Plain text"}</span>
+          )}
           <a
             className="text-document-widget__button"
-            href={getDocumentOriginalUrl(drawingId, assetId)}
+            href={downloadUrl}
             download={loaded.asset.name}
             aria-label="Download original document"
             title="Download original document"

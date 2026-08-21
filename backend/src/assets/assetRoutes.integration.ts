@@ -271,6 +271,22 @@ describe("document routes", () => {
       expect(stored?.pageCount).toBeNull();
     });
 
+    it("uses the text media type as a presentation preference, not content detection", async () => {
+      const markdownPreference = await upload(
+        "ordinary prose without Markdown syntax",
+        "text/markdown",
+        "prose.txt",
+      ).expect(201);
+      const textPreference = await upload(
+        "# syntax that could be rendered",
+        "text/plain",
+        "source.md",
+      ).expect(201);
+
+      expect(markdownPreference.body.kind).toBe("MARKDOWN");
+      expect(textPreference.body.kind).toBe("TEXT");
+    });
+
     it("rejects a binary file that claims to be Markdown", async () => {
       const binary = Buffer.from([0x23, 0x20, 0x6f, 0x6b, 0, 0xff]);
       const res = await upload(binary, "text/markdown", "malware.md").expect(422);

@@ -5,7 +5,28 @@ export const SOCKET_LIMITS = {
   elementsPerUpdate: 10_000,
   filesPerUpdate: 1_000,
   elementOrderLength: 20_000,
+  elementBytes: 512 * 1024,
+  fileBytes: 10 * 1024 * 1024 + 4 * 1024,
+  fileDataUrlLength: 10 * 1024 * 1024,
+  elementUpdateBytes: 15 * 1024 * 1024,
+  anonymousElementUpdateBytes: 11 * 1024 * 1024,
 } as const;
+
+export type ElementUpdateTrafficLimits = {
+  accountBytesPerWindow: number;
+  anonymousBytesPerWindow: number;
+  windowMs: number;
+};
+
+export const ELEMENT_UPDATE_TRAFFIC_LIMITS: ElementUpdateTrafficLimits = {
+  // The frontend emits at most ten times per second. Two maximum signed-in
+  // updates still fit, while 120 large relays no longer do.
+  accountBytesPerWindow: 30 * 1024 * 1024,
+  // A link guest can still send one maximum 10 MiB embedded image, but does
+  // not receive an account's sustained relay allowance.
+  anonymousBytesPerWindow: 12 * 1024 * 1024,
+  windowMs: 1_000,
+};
 
 export const SOCKET_QUEUE_LIMITS = { joins: 8 } as const;
 
@@ -24,6 +45,7 @@ export type ElementUpdatePayload = {
   elements: unknown[];
   files?: Record<string, unknown>;
   elementOrder?: string[];
+  serializedBytes: number;
 };
 
 export const parseDrawingId = (value: unknown): string | null => {
@@ -82,16 +104,140 @@ export const parseCursorPayload = (value: unknown): CursorPayload | null => {
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+const serializedByteLength = (value: unknown): number | null => {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? null : Buffer.byteLength(serialized, "utf8");
+  } catch {
+    return null;
+  }
+};
+
+const ELEMENT_NUMBER_FIELDS = [
+  "x",
+  "y",
+  "width",
+  "height",
+  "angle",
+  "strokeWidth",
+  "roughness",
+  "opacity",
+  "seed",
+  "version",
+  "versionNonce",
+  "updated",
+  "fontSize",
+  "fontFamily",
+] as const;
+const ELEMENT_BOOLEAN_FIELDS = ["isDeleted", "locked", "autoResize"] as const;
+const ELEMENT_STRING_FIELDS = [
+  "index",
+  "strokeColor",
+  "backgroundColor",
+  "fillStyle",
+  "strokeStyle",
+  "textAlign",
+  "verticalAlign",
+  "fileId",
+] as const;
+
+const hasPlausibleElementFields = (value: unknown): value is Record<string, unknown> => {
+  if (!isPlainRecord(value)) return false;
+  if (typeof value.id !== "string" || value.id.length < 1 || value.id.length > 200) return false;
+  if (
+    value.type !== undefined &&
+    (typeof value.type !== "string" || value.type.length < 1 || value.type.length > 64)
+  ) {
+    return false;
+  }
+  for (const field of ELEMENT_NUMBER_FIELDS) {
+    const candidate = value[field];
+    if (candidate !== undefined && candidate !== null) {
+      if (typeof candidate !== "number" || !Number.isFinite(candidate)) return false;
+    }
+  }
+  for (const field of ELEMENT_BOOLEAN_FIELDS) {
+    const candidate = value[field];
+    if (candidate !== undefined && candidate !== null && typeof candidate !== "boolean")
+      return false;
+  }
+  for (const field of ELEMENT_STRING_FIELDS) {
+    const candidate = value[field];
+    if (candidate !== undefined && candidate !== null && typeof candidate !== "string")
+      return false;
+  }
+  if (
+    value.groupIds !== undefined &&
+    value.groupIds !== null &&
+    (!Array.isArray(value.groupIds) ||
+      !value.groupIds.every((id) => typeof id === "string" && id.length <= 200))
+  ) {
+    return false;
+  }
+  if (
+    value.points !== undefined &&
+    value.points !== null &&
+    (!Array.isArray(value.points) ||
+      !value.points.every(
+        (point) =>
+          Array.isArray(point) &&
+          point.length >= 2 &&
+          point.length <= 3 &&
+          point.every(
+            (coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate),
+          ),
+      ))
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const hasPlausibleFileFields = (fileId: string, value: unknown): boolean => {
+  if (!/^[\w-]{1,200}$/.test(fileId) || !isPlainRecord(value)) return false;
+  if (value.id !== undefined && value.id !== fileId) return false;
+  if (
+    value.mimeType !== undefined &&
+    (typeof value.mimeType !== "string" || value.mimeType.length > 200)
+  ) {
+    return false;
+  }
+  if (
+    value.dataURL !== undefined &&
+    (typeof value.dataURL !== "string" || value.dataURL.length > SOCKET_LIMITS.fileDataUrlLength)
+  ) {
+    return false;
+  }
+  for (const field of ["created", "lastRetrieved"] as const) {
+    const candidate = value[field];
+    if (candidate !== undefined && candidate !== null) {
+      if (typeof candidate !== "number" || !Number.isFinite(candidate)) return false;
+    }
+  }
+  const bytes = serializedByteLength(value);
+  return bytes !== null && bytes <= SOCKET_LIMITS.fileBytes;
+};
+
 export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload | null => {
   if (!isPlainRecord(value)) return null;
+  const serializedBytes = serializedByteLength(value);
+  if (serializedBytes === null || serializedBytes > SOCKET_LIMITS.elementUpdateBytes) return null;
   const drawingId = parseDrawingId(value.drawingId);
   if (!drawingId || !Array.isArray(value.elements)) return null;
   if (value.elements.length > SOCKET_LIMITS.elementsPerUpdate) return null;
+  for (const element of value.elements) {
+    if (!hasPlausibleElementFields(element)) return null;
+    const elementBytes = serializedByteLength(element);
+    if (elementBytes === null || elementBytes > SOCKET_LIMITS.elementBytes) return null;
+  }
 
   let files: Record<string, unknown> | undefined;
   if (value.files !== undefined) {
     if (!isPlainRecord(value.files)) return null;
     if (Object.keys(value.files).length > SOCKET_LIMITS.filesPerUpdate) return null;
+    if (!Object.entries(value.files).every(([id, file]) => hasPlausibleFileFields(id, file))) {
+      return null;
+    }
     files = value.files;
   }
 
@@ -107,7 +253,7 @@ export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload 
     elementOrder = value.elementOrder;
   }
 
-  return { drawingId, elements: value.elements, files, elementOrder };
+  return { drawingId, elements: value.elements, files, elementOrder, serializedBytes };
 };
 
 export const createRateLimiter = (limit: number, windowMs: number) => {
@@ -141,5 +287,27 @@ export const createKeyedRateLimiter = (limit: number, windowMs: number, maxKeys 
     }
     bucket.count += 1;
     return bucket.count <= limit;
+  };
+};
+
+export const createKeyedByteLimiter = (limit: number, windowMs: number, maxKeys = 10_000) => {
+  const buckets = new Map<string, { windowStartedAt: number; bytes: number }>();
+  return (key: string, bytes: number, now = Date.now()): boolean => {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) return false;
+    let bucket = buckets.get(key);
+    if (!bucket || now - bucket.windowStartedAt >= windowMs) {
+      if (!bucket && buckets.size >= maxKeys) {
+        for (const [candidateKey, candidate] of buckets) {
+          if (now - candidate.windowStartedAt >= windowMs) buckets.delete(candidateKey);
+        }
+        if (buckets.size >= maxKeys) return false;
+      }
+      bucket = { windowStartedAt: now, bytes: 0 };
+      buckets.set(key, bucket);
+    }
+    // Charge the crossing event too. It is not relayed, and further traffic
+    // from the actor cannot probe for a smaller remainder in this window.
+    bucket.bytes += bytes;
+    return bucket.bytes <= limit;
   };
 };

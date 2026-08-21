@@ -111,6 +111,7 @@ interface Config {
   mail: MailConfig;
   s3: S3Config;
   assets: AssetConfig;
+  socketMaxHttpBufferBytes: number;
 }
 
 /**
@@ -422,6 +423,7 @@ export const config: Config = {
   rateLimitMaxRequests: getRequiredEnvNumber("RATE_LIMIT_MAX_REQUESTS", 1000),
   csrfMaxRequests: getRequiredEnvNumber("CSRF_MAX_REQUESTS", 60),
   csrfSecret: process.env.CSRF_SECRET || null,
+  socketMaxHttpBufferBytes: getRequiredEnvNumber("SOCKET_MAX_HTTP_BUFFER_MB", 16) * 1024 * 1024,
   oidc: resolveOidcConfig(resolvedAuthMode),
   enablePasswordReset: getOptionalBoolean("ENABLE_PASSWORD_RESET", false),
   enableRefreshTokenRotation: getOptionalBoolean("ENABLE_REFRESH_TOKEN_ROTATION", true),

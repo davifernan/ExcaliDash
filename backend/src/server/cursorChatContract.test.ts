@@ -8,7 +8,6 @@ const FRONTEND_CURSOR_CHAT = path.resolve(
   "../../../frontend/src/pages/editor/cursorChat.ts",
 );
 
-
 describe("cursor chat protocol contract", () => {
   it("keeps the frontend input cap equal to the server-enforced cap", () => {
     const source = fs.readFileSync(FRONTEND_CURSOR_CHAT, "utf8");

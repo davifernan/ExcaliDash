@@ -14,7 +14,6 @@ export const SOCKET_LIMITS = {
   // would start losing live updates as it grew, and somebody editing through a
   // share link is a real collaborator rather than a suspect.
   anonymousElementUpdateBytes: 13 * 1024 * 1024,
-
 } as const;
 
 export type ElementUpdateTrafficLimits = {

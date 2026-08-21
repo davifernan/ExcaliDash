@@ -193,7 +193,7 @@ export const useEditorSceneLoader = ({
         refs.lastPersistedFiles.current = {};
         refs.currentDrawingVersion.current = null;
         refs.lastPersistedElements.current = [];
-    refs.lastPersistedAppStateSig.current = null;
+        refs.lastPersistedAppStateSig.current = null;
         refs.suspiciousBlankLoad.current = false;
         refs.hasSceneChangesSinceLoad.current = false;
         setLoadError(message);

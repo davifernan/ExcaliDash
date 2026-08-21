@@ -39,6 +39,7 @@ export const registerDrawingCreateUpdateRoutes = (
     getRequestPrincipal,
     getShareToken,
     respondWithAuthErrorIfPresent,
+    collaborationAccess,
   } = context;
   app.post(
     "/drawings",
@@ -73,6 +74,11 @@ export const registerDrawingCreateUpdateRoutes = (
       const targetCollectionId =
         toInternalTrashCollectionId(targetCollectionIdRaw, req.user.id) ?? null;
 
+      // A board drawn inside someone else's collection belongs to that
+      // collection, not to the hand that drew it. Otherwise the person who owns
+      // the team folder cannot share, move or clean up what is in it, and the
+      // board silently leaves the team the day its author does.
+      let ownerUserId = req.user.id;
       if (targetCollectionId && !isTrashCollectionId(targetCollectionId, req.user.id)) {
         const collection = await prisma.collection.findFirst({
           where: { id: targetCollectionId },
@@ -89,6 +95,7 @@ export const registerDrawingCreateUpdateRoutes = (
             },
           });
           if (!share) return res.status(403).json({ error: "No edit access to this collection" });
+          ownerUserId = collection.userId;
         }
       } else if (targetCollectionIdRaw === "trash") {
         await ensureTrashCollection(prisma, req.user.id);
@@ -96,7 +103,7 @@ export const registerDrawingCreateUpdateRoutes = (
 
       const newDrawingId = uuidv4();
       const originalFiles = payload.files ?? {};
-      const processedFiles = await processFilesForS3(originalFiles, req.user.id, newDrawingId);
+      const processedFiles = await processFilesForS3(originalFiles, ownerUserId, newDrawingId);
       const processedPreview = rewritePreviewForS3(
         payload.preview ?? null,
         originalFiles,
@@ -109,7 +116,8 @@ export const registerDrawingCreateUpdateRoutes = (
           name: drawingName,
           elements: JSON.stringify(payload.elements),
           appState: JSON.stringify(payload.appState),
-          userId: req.user.id,
+          userId: ownerUserId,
+          createdByUserId: req.user.id,
           collectionId: targetCollectionId,
           preview: typeof processedPreview === "string" ? processedPreview : null,
           files: JSON.stringify(processedFiles),
@@ -313,6 +321,12 @@ export const registerDrawingCreateUpdateRoutes = (
         return res.status(404).json({ error: "Drawing not found" });
       }
       invalidateDrawingsCache();
+      // Moving a board out of a shared collection revokes everyone who reached it
+      // that way. HTTP notices immediately; a socket that is only listening would
+      // otherwise keep receiving the board until the periodic sweep caught up.
+      if (payload.collectionId !== undefined) {
+        await collaborationAccess.recheckDrawingAccess(id);
+      }
 
       return res.json({
         ...updatedDrawing,

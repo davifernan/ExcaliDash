@@ -1,6 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import type { PrismaClient } from "../generated/client";
-import { BOOTSTRAP_USER_ID, type AuthModeService } from "../auth/authMode";
+import type { AuthModeService } from "../auth/authMode";
 import {
   canEditDrawing,
   canViewDrawing,
@@ -22,16 +22,18 @@ import {
 import { DRAWINGS_READ_SCOPE, DRAWINGS_WRITE_SCOPE } from "../auth/apiKeys";
 import { startNonOverlappingSocketAccessSweep } from "./socketAccessSweep";
 import { createSocketCredentialGuard } from "./socketCredentials";
-import { toPresenceColor, toPresenceInitials, toPresenceName } from "./socketPresence";
 import {
-  createRateLimiter,
-  parseCursorPayload,
-  parseDrawingId,
-  parseElementUpdatePayload,
-  SOCKET_QUEUE_LIMITS,
-  type PresenceUser,
-} from "./socketProtocol";
+  derivePresenceColor,
+  deriveGuestName,
+  toPresenceColor,
+  toPresenceInitials,
+  toPresenceName,
+} from "./socketPresence";
+import { PresenceRegistry, type PresenceEntry, type PresenceKind } from "./presenceRegistry";
+import { createRateLimiter, parseDrawingId, SOCKET_QUEUE_LIMITS } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
+import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
+import { registerSelectionRoomEvent } from "./socketSelection";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -39,6 +41,8 @@ type RegisterSocketHandlersDeps = {
   authModeService: AuthModeService;
   jwtSecret: string;
   accessRecheckIntervalMs?: number;
+  /** Shared with the HTTP side so the dashboard can read presence too. */
+  presences?: PresenceRegistry;
 };
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
@@ -49,13 +53,13 @@ export const registerSocketHandlers = ({
   authModeService,
   jwtSecret,
   accessRecheckIntervalMs = 5_000,
+  presences = new PresenceRegistry(),
 }: RegisterSocketHandlersDeps): CollaborationAccessController => {
   const principals = new Map<string, DrawingPrincipal>();
   const connectedSockets = new Map<string, Socket>();
   const credentialChecks = new Map<string, Promise<boolean>>();
   const drawingBySocket = new Map<string, string>();
   const shareTokenBySocket = new Map<string, string>();
-  const presencesByDrawing = new Map<string, Map<string, PresenceUser>>();
   let followManager: ReturnType<typeof createSocketFollowManager>;
   const activeAccounts = new ActiveAccountCache(async (userId) => {
     const account = await prisma.user.findUnique({
@@ -68,13 +72,12 @@ export const registerSocketHandlers = ({
   io.use(createSocketAuthenticator({ prisma, authModeService, jwtSecret, principals }));
 
   const emitPresence = (drawingId: string) => {
-    const users = Array.from(presencesByDrawing.get(drawingId)?.values() || []);
-    io.to(roomName(drawingId)).emit("presence-update", users);
+    io.to(roomName(drawingId)).emit("presence-update", presences.list(drawingId));
   };
 
-  const getPresence = (socketId: string): PresenceUser | null => {
+  const getPresence = (socketId: string): PresenceEntry | null => {
     const drawingId = drawingBySocket.get(socketId);
-    return drawingId ? presencesByDrawing.get(drawingId)?.get(socketId) || null : null;
+    return drawingId ? presences.get(drawingId, socketId) : null;
   };
 
   const removeFromDrawing = async (socket: Socket, reason: string, leaveSocketRoom = true) => {
@@ -83,9 +86,7 @@ export const registerSocketHandlers = ({
     if (!drawingId) return;
     followManager.clearSocket(socket.id, reason);
     drawingBySocket.delete(socket.id);
-    const presences = presencesByDrawing.get(drawingId);
-    presences?.delete(socket.id);
-    if (presences?.size === 0) presencesByDrawing.delete(drawingId);
+    presences.leave(drawingId, socket.id);
     if (leaveSocketRoom) await socket.leave(roomName(drawingId));
     emitPresence(drawingId);
   };
@@ -169,12 +170,18 @@ export const registerSocketHandlers = ({
     let joinQueue = Promise.resolve();
     let pendingJoins = 0;
     const allowJoin = createRateLimiter(10, 60_000);
-    const allowCursor = createRateLimiter(40, 1_000);
-    const allowElements = createRateLimiter(120, 1_000);
-    const allowActivity = createRateLimiter(20, 10_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
     followManager.registerHandlers(socket, allowFollow, allowViewport);
+    registerCoreRoomEvents({
+      socket,
+      getPresence,
+      requireAccess,
+      setActive: (drawingId, presenceId, active) =>
+        presences.setActive(drawingId, presenceId, active),
+      emitPresence,
+    });
+    registerSelectionRoomEvent({ socket, presences, requireAccess });
 
     socket.on("join-room", (data: unknown, ack?: (value: unknown) => void) => {
       const rejectJoin = (code: string, message: string) => {
@@ -240,34 +247,52 @@ export const registerSocketHandlers = ({
             ? (payload.user as Record<string, unknown>)
             : {};
         const principal = principals.get(socket.id) || null;
+        // Auth switched off gives every visitor the same standing identity,
+        // which is another way of saying nobody has one. That is the only case
+        // where the browser's own name and colour are all anyone has -- and it
+        // is told apart by allowInactive, which the authenticator sets for
+        // exactly that principal. The bootstrap *id* is no signal: once auth is
+        // on, it belongs to a real administrator with a real name.
+        const isSharedBootstrapIdentity = principal?.allowInactive === true;
+        const isAccount = Boolean(principal?.userId) && !isSharedBootstrapIdentity;
         let name = toPresenceName(clientUser.name);
-        if (principal?.userId && principal.userId !== BOOTSTRAP_USER_ID) {
+        let color = derivePresenceColor(socket.id);
+        let kind: PresenceKind = "guest";
+        if (isAccount && principal) {
+          // An account has a name the server can check. A share-link visitor
+          // does not, so the server names them rather than repeat their claim.
           const account = await prisma.user.findUnique({
             where: { id: principal.userId },
             select: { name: true },
           });
           if (!isCurrentJoin()) return;
           if (account) name = toPresenceName(account.name);
+          color = derivePresenceColor(principal.userId);
+          kind = access === "owner" ? "owner" : "member";
+        } else if (isSharedBootstrapIdentity) {
+          color = toPresenceColor(clientUser.color);
+        } else {
+          name = deriveGuestName(socket.id);
         }
         await socket.join(roomName(drawingId));
         if (!isCurrentJoin()) {
           await socket.leave(roomName(drawingId));
           return;
         }
-        const presence: PresenceUser = {
+        const presence: PresenceEntry = {
           presenceId: socket.id,
           accountId: principal?.userId || null,
           name,
           initials: toPresenceInitials(name),
-          color: toPresenceColor(clientUser.color),
+          color,
+          kind,
           isActive: true,
+          selectedElementIds: {},
         };
         drawingBySocket.set(socket.id, drawingId);
         if (shareToken) shareTokenBySocket.set(socket.id, shareToken);
         else shareTokenBySocket.delete(socket.id);
-        const presences = presencesByDrawing.get(drawingId) || new Map();
-        presences.set(socket.id, presence);
-        presencesByDrawing.set(drawingId, presences);
+        presences.join(drawingId, presence);
         emitPresence(drawingId);
         followManager.invalidateAccess(socket.id);
         ack?.({ ok: true, presence });
@@ -282,51 +307,6 @@ export const registerSocketHandlers = ({
         },
       );
       return result;
-    });
-
-    socket.on("cursor-move", async (data: unknown) => {
-      if (!allowCursor()) return;
-      const payload = parseCursorPayload(data);
-      if (!payload || !(await requireAccess(socket, payload.drawingId))) return;
-      const self = getPresence(socket.id);
-      if (!self) return;
-      socket.volatile.to(roomName(payload.drawingId)).emit("cursor-move", {
-        drawingId: payload.drawingId,
-        presenceId: socket.id,
-        pointer: payload.pointer,
-        button: payload.button,
-        username: self.name,
-        color: self.color,
-      });
-    });
-
-    socket.on("element-update", async (data: unknown) => {
-      if (!allowElements()) return;
-      const payload = parseElementUpdatePayload(data);
-      if (!payload || !(await requireAccess(socket, payload.drawingId, true))) return;
-      socket.to(roomName(payload.drawingId)).emit("element-update", {
-        elements: payload.elements,
-        files: payload.files,
-        elementOrder: payload.elementOrder,
-      });
-    });
-
-    socket.on("user-activity", async (data: unknown) => {
-      if (!allowActivity() || !data || typeof data !== "object") return;
-      const payload = data as Record<string, unknown>;
-      const drawingId = parseDrawingId(payload.drawingId);
-      if (
-        !drawingId ||
-        typeof payload.isActive !== "boolean" ||
-        !(await requireAccess(socket, drawingId))
-      ) {
-        return;
-      }
-      const user = presencesByDrawing.get(drawingId)?.get(socket.id);
-      if (user) {
-        user.isActive = payload.isActive;
-        emitPresence(drawingId);
-      }
     });
 
     socket.on("leave-room", async (data: unknown) => {

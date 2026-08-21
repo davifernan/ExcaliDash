@@ -93,20 +93,21 @@ export const Editor: React.FC = () => {
       replace: true,
     });
   }, [id, location.hash, location.pathname, location.search, navigate]);
-  const { peers, followers, socketRef, isSyncing, onPointerUpdate } = useEditorCollaboration({
-    drawingId: id,
-    me,
-    isReady,
-    excalidrawAPI,
-    editorContainerRef,
-    lastSyncedFilesRef,
-    lastSyncedElementOrderSigRef,
-    latestElementsRef,
-    latestFilesRef,
-    computeElementOrderSig,
-    recordElementVersion,
-    onAccessDenied: handleSocketAccessDenied,
-  });
+  const { peers, followers, socketRef, isSyncing, onPointerUpdate, onSelectionChange } =
+    useEditorCollaboration({
+      drawingId: id,
+      me,
+      isReady,
+      excalidrawAPI,
+      editorContainerRef,
+      lastSyncedFilesRef,
+      lastSyncedElementOrderSigRef,
+      latestElementsRef,
+      latestFilesRef,
+      computeElementOrderSig,
+      recordElementVersion,
+      onAccessDenied: handleSocketAccessDenied,
+    });
   const emitFilesDeltaIfNeeded = useCallback(
     (nextFiles: Record<string, any>) => {
       if (!socketRef.current || !id) return false;
@@ -282,6 +283,13 @@ export const Editor: React.FC = () => {
     canEdit,
     onCanvasChange: handleCanvasChange,
   });
+  const handleChangeWithSelection = useCallback(
+    (elements: readonly any[], appState: any, files?: Record<string, any>) => {
+      onSelectionChange(appState);
+      handleChangeWithNotes(elements, appState, files);
+    },
+    [handleChangeWithNotes, onSelectionChange],
+  );
   const commandRefs = React.useMemo(
     () => ({
       excalidrawAPI,
@@ -335,7 +343,7 @@ export const Editor: React.FC = () => {
         peers={peers}
         theme={theme}
         onBackClick={handleBackClick}
-        onCanvasChange={handleChangeWithNotes}
+        onCanvasChange={handleChangeWithSelection}
         stickyOverlay={stickyOverlay}
         onCanvasDropCapture={handleCanvasDropCapture}
         onExportClick={handleExportClick}

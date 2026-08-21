@@ -20,15 +20,12 @@ describe("file routes", () => {
   it("allows private S3 redirects for users with collection share access", async () => {
     const prisma = {
       drawing: {
-        findUnique: vi
-          .fn()
-          .mockResolvedValueOnce({
-            userId: "owner-user",
-          })
-          .mockResolvedValueOnce({
-            collectionId: "shared-collection",
-            userId: "owner-user",
-          }),
+        // One read now answers both questions the access lookup used to ask
+        // in two.
+        findUnique: vi.fn().mockResolvedValue({
+          userId: "owner-user",
+          collectionId: "shared-collection",
+        }),
       },
       // The access lookup re-reads the account on every call now, so a
       // fixture without it makes every route answer 500.

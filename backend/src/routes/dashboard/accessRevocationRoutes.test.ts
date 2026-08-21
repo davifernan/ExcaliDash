@@ -158,6 +158,11 @@ const createHarness = async () => {
           ? { id: "drawing-1", userId: "owner", collectionId: "collection-1", name: "Board" }
           : null,
       ),
+      // The sharing routes now ask who controls the board, which is a batched
+      // question: the drawing row, then each possible claim on it.
+      findMany: vi.fn(async () =>
+        drawingExists ? [{ id: "drawing-1", userId: "owner", collectionId: "collection-1" }] : [],
+      ),
       updateMany: vi.fn(async () => ({ count: drawingExists ? 1 : 0 })),
       deleteMany: vi.fn(async () => {
         if (!drawingExists) return { count: 0 };
@@ -172,6 +177,11 @@ const createHarness = async () => {
           : null,
       ),
       findFirst: vi.fn(async () => (directShare ? { granteeUserId: "viewer" } : null)),
+      findMany: vi.fn(async ({ where }: any) =>
+        directShare && where.granteeUserId === "viewer"
+          ? [{ drawingId: "drawing-1", permission: "view" }]
+          : [],
+      ),
       deleteMany: vi.fn(async () => {
         const count = directShare ? 1 : 0;
         directShare = false;
@@ -184,12 +194,25 @@ const createHarness = async () => {
         return null;
       }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findMany: vi.fn(async ({ where }: any) =>
+        where.userId === "owner" ? [{ id: "collection-1" }] : [],
+      ),
     },
     collectionShare: {
       findFirst: vi.fn(async ({ where }: any) =>
         collectionShare && where.granteeUserId === "viewer" ? { role: "view" } : null,
       ),
-      findMany: vi.fn(async () => (collectionShare ? [{ granteeUserId: "viewer" }] : [])),
+      findMany: vi.fn(async ({ where }: any) => {
+        if (!collectionShare) return [];
+        // Two callers, two shapes: the membership lookup asks about one person,
+        // the revocation path asks who is affected.
+        if (where.granteeUserId) {
+          return where.granteeUserId === "viewer"
+            ? [{ collectionId: "collection-1", role: "view" }]
+            : [];
+        }
+        return [{ granteeUserId: "viewer" }];
+      }),
       deleteMany: vi.fn(async () => {
         const count = collectionShare ? 1 : 0;
         collectionShare = false;

@@ -4,6 +4,7 @@ import { AlertTriangle, Folder, Inbox, Loader2, Trash2 } from "lucide-react";
 import { DrawingCard } from "../../components/DrawingCard";
 import type { Collection, DrawingSummary } from "../../types";
 import { useDashboardDataStatus } from "./dashboardDataStatus";
+import type { PresenceByDrawing } from "./useDashboardPresence";
 
 type DragPreviewProps = {
   drawings: DrawingSummary[];
@@ -112,6 +113,7 @@ type DrawingsGridProps = {
   onMouseDown: (event: React.MouseEvent, id: string) => void;
   onDragStart: (event: React.DragEvent, id: string) => void;
   onPreviewGenerated: (id: string, preview: string) => void;
+  presence?: PresenceByDrawing | null;
 };
 
 export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
@@ -135,6 +137,7 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
   onMouseDown,
   onDragStart,
   onPreviewGenerated,
+  presence = null,
 }) => {
   const dataStatus = useDashboardDataStatus();
 
@@ -227,6 +230,8 @@ export const DrawingsGrid: React.FC<DrawingsGridProps> = ({
                 onMouseDown={onMouseDown}
                 onDragStart={onDragStart}
                 onPreviewGenerated={onPreviewGenerated}
+                onlineKeys={presence ? (presence.get(drawing.id)?.keys ?? new Set()) : null}
+                guestCount={presence?.get(drawing.id)?.guestCount ?? 0}
               />
             );
           })

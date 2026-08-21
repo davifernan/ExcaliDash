@@ -4,6 +4,7 @@ import {
   hashShareLinkToken,
   normalizeDrawingPermission,
 } from "../../authz/sharing";
+import { controlsDrawing } from "../../authz/membership";
 import type { DrawingRouteContext } from "./drawingRouteContext";
 
 export const registerDrawingSharingRoutes = (
@@ -33,11 +34,7 @@ export const registerDrawingSharingRoutes = (
       const q = qRaw.toLowerCase();
       if (q.length < 3) return res.json({ users: [] });
 
-      const drawing = await prisma.drawing.findUnique({
-        where: { id },
-        select: { userId: true },
-      });
-      if (!drawing || drawing.userId !== req.user.id) {
+      if (!(await controlsDrawing({ prisma, userId: req.user.id, drawingId: id }))) {
         return res.status(404).json({ error: "Drawing not found" });
       }
 
@@ -66,11 +63,7 @@ export const registerDrawingSharingRoutes = (
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const { id } = req.params;
 
-      const drawing = await prisma.drawing.findUnique({
-        where: { id },
-        select: { userId: true },
-      });
-      if (!drawing || drawing.userId !== req.user.id) {
+      if (!(await controlsDrawing({ prisma, userId: req.user.id, drawingId: id }))) {
         return res.status(404).json({ error: "Drawing not found" });
       }
 
@@ -113,11 +106,7 @@ export const registerDrawingSharingRoutes = (
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const { id } = req.params;
 
-      const drawing = await prisma.drawing.findUnique({
-        where: { id },
-        select: { userId: true },
-      });
-      if (!drawing || drawing.userId !== req.user.id) {
+      if (!(await controlsDrawing({ prisma, userId: req.user.id, drawingId: id }))) {
         return res.status(404).json({ error: "Drawing not found" });
       }
 
@@ -190,11 +179,7 @@ export const registerDrawingSharingRoutes = (
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const { id, permId } = req.params;
 
-      const drawing = await prisma.drawing.findUnique({
-        where: { id },
-        select: { userId: true },
-      });
-      if (!drawing || drawing.userId !== req.user.id) {
+      if (!(await controlsDrawing({ prisma, userId: req.user.id, drawingId: id }))) {
         return res.status(404).json({ error: "Drawing not found" });
       }
 
@@ -232,11 +217,7 @@ export const registerDrawingSharingRoutes = (
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const { id } = req.params;
 
-      const drawing = await prisma.drawing.findUnique({
-        where: { id },
-        select: { userId: true },
-      });
-      if (!drawing || drawing.userId !== req.user.id) {
+      if (!(await controlsDrawing({ prisma, userId: req.user.id, drawingId: id }))) {
         return res.status(404).json({ error: "Drawing not found" });
       }
 
@@ -343,11 +324,7 @@ export const registerDrawingSharingRoutes = (
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const { id, shareId } = req.params;
 
-      const drawing = await prisma.drawing.findUnique({
-        where: { id },
-        select: { userId: true },
-      });
-      if (!drawing || drawing.userId !== req.user.id) {
+      if (!(await controlsDrawing({ prisma, userId: req.user.id, drawingId: id }))) {
         return res.status(404).json({ error: "Drawing not found" });
       }
 

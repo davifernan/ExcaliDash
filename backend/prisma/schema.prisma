@@ -20,7 +20,8 @@ model User {
   isActive            Boolean              @default(true)
   preferences         String?
   authIdentities      AuthIdentity[]
-  drawings            Drawing[]
+  drawings            Drawing[]            @relation("DrawingOwner")
+  createdDrawings     Drawing[]            @relation("DrawingCreator")
   collections         Collection[]
   drawingPermissions  DrawingPermission[]
   collectionShares    CollectionShare[]
@@ -72,8 +73,15 @@ model Drawing {
   files        String              @default("{}")
   preview      String?
   version      Int                 @default(1)
+  /// Who controls the board: shares it, moves it, deletes it, and carries its
+  /// storage quota. For a board drawn inside someone else's collection this is
+  /// the collection's owner, not the person who drew it.
   userId       String
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                @relation("DrawingOwner", fields: [userId], references: [id], onDelete: Cascade)
+  /// Who drew it. Kept apart from control so a team board can say where it came
+  /// from without that deciding who may give it away.
+  createdByUserId String?
+  createdBy       User?            @relation("DrawingCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   collectionId String?
   collection   Collection?         @relation(fields: [collectionId], references: [id])
   permissions  DrawingPermission[]
@@ -85,6 +93,7 @@ model Drawing {
 
   @@index([userId, updatedAt])
   @@index([userId, collectionId, updatedAt])
+  @@index([createdByUserId])
 }
 
 model DrawingSnapshot {

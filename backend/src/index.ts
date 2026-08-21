@@ -40,6 +40,7 @@ import { prisma, configureSqlite, reclaimSqliteFreeSpace } from "./db/prisma";
 import { createDrawingsCacheStore } from "./server/drawingsCache";
 import { registerCsrfProtection } from "./server/csrf";
 import { registerSocketHandlers } from "./server/socket";
+import { PresenceRegistry } from "./server/presenceRegistry";
 import { createHttpsRedirectPolicy, getHttpsRedirectUrl } from "./server/httpsRedirectPolicy";
 import { issueBootstrapSetupCodeIfRequired } from "./auth/bootstrapSetupCode";
 import { processFilesForS3 as processFilesForS3WithPrisma } from "./fileProcessing";
@@ -454,11 +455,15 @@ const removeFileIfExists = async (filePath?: string) => {
     console.error("Failed to remove file", { filePath, error });
   }
 };
+// One store, written by the socket server and read by the dashboard routes, so
+// neither side has to import the other.
+const presences = new PresenceRegistry();
 const collaborationAccess = registerSocketHandlers({
   io,
   prisma,
   authModeService,
   jwtSecret: config.jwtSecret,
+  presences,
 });
 app.get("/health", async (_req, res) => {
   try {
@@ -543,6 +548,8 @@ registerDashboardRoutes(app, {
   MAX_PAGE_SIZE,
   config,
   logAuditEvent,
+  subjectKeySecret: config.jwtSecret,
+  presences,
   processFilesForS3: (files, userId, drawingId) =>
     processFilesForS3WithPrisma(files, userId, drawingId, prisma),
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { PenTool, Check, Clock, MoreVertical } from "lucide-react";
+import { PenTool, Check, Clock, MoreVertical, Globe } from "lucide-react";
 import type { DrawingSummary, Collection } from "../types";
 import { formatDistanceToNow } from "date-fns";
 import clsx from "clsx";
@@ -8,6 +8,7 @@ import { StorageManageModal } from "./StorageManageModal";
 import { CollectionPicker } from "./drawing-card/CollectionPicker";
 import { DrawingCardContextMenu } from "./drawing-card/DrawingCardContextMenu";
 import { useDrawingPreview } from "./drawing-card/useDrawingPreview";
+import { MemberStack } from "./MemberAvatar";
 import * as api from "../api";
 
 interface DrawingCardProps {
@@ -26,6 +27,10 @@ interface DrawingCardProps {
   onDragStart?: (e: React.DragEvent, id: string) => void;
   onMouseDown?: (e: React.MouseEvent, id: string) => void;
   onPreviewGenerated?: (id: string, preview: string) => void;
+  /** Keys of the members on the board right now, or null while that is unknown. */
+  onlineKeys?: ReadonlySet<string> | null;
+  /** People on the board who are not members of it. Counted, never named. */
+  guestCount?: number;
 }
 
 export const DrawingCard: React.FC<DrawingCardProps> = ({
@@ -44,6 +49,8 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
   onDragStart,
   onMouseDown,
   onPreviewGenerated,
+  onlineKeys = null,
+  guestCount = 0,
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false);
@@ -216,6 +223,24 @@ export const DrawingCard: React.FC<DrawingCardProps> = ({
               <PenTool size={32} strokeWidth={1.5} className="sm:w-9 sm:h-9 lg:w-10 lg:h-10" />
             </div>
           )}
+          {(drawing.members?.totalCount ?? 0) > 1 || guestCount > 0 ? (
+            <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5">
+              <MemberStack
+                members={drawing.members?.items ?? []}
+                onlineKeys={onlineKeys}
+                size={24}
+                max={4}
+              />
+              {guestCount > 0 && (
+                <span
+                  title={`${guestCount} ${guestCount === 1 ? "guest" : "guests"} on this board`}
+                  className="flex h-6 items-center gap-1 rounded-full border-2 border-dashed border-slate-400 dark:border-neutral-500 bg-white/90 dark:bg-neutral-800/90 px-1.5 text-[10px] font-black text-slate-500 dark:text-neutral-300"
+                >
+                  <Globe size={10} /> {guestCount}
+                </span>
+              )}
+            </div>
+          ) : null}
         </button>
 
         <div className="p-4 sm:p-5 bg-white dark:bg-neutral-900 rounded-b-2xl relative z-10 flex-1 flex flex-col justify-between">

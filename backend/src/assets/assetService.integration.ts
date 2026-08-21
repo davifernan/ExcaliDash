@@ -6,13 +6,13 @@
  * constraint and the cascade behave as the design assumes.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { PrismaClient } from "../generated/client";
 import { getTestPrisma, setupTestDb, cleanupTestDb, createTestUser } from "../__tests__/testUtils";
-import { storedSize, originalKey } from "./assetStorage";
+import { storedSize, originalKey, resolveStoragePath } from "./assetStorage";
 import {
   QuotaExceededError,
   referencedAssetIds,
@@ -99,6 +99,43 @@ describe("document bookkeeping", () => {
     expect(second.asset.id).not.toBe(first.asset.id);
     expect(await prisma.storedBlob.count()).toBe(1);
     expect(await prisma.asset.count()).toBe(2);
+  });
+
+  it("deduplicates by prepared bytes when that blob already exists", async () => {
+    const optimized = "optimized pdf bytes";
+    const existing = await upload(optimized);
+    const prepared = await upload("large original pdf bytes that will be rebuilt", {
+      prepareStored: async ({ path }: { path: string }) => {
+        await writeFile(path, optimized);
+        return { note: "rebuilt" };
+      },
+    });
+
+    expect(prepared.blob.id).toBe(existing.blob.id);
+    expect(prepared.note).toBe("rebuilt");
+    expect(prepared.sizeBytes).toBe(Buffer.byteLength(optimized));
+    expect(await prisma.storedBlob.count()).toBe(1);
+  });
+
+  it("prepares a provisional copy without changing a shared original blob", async () => {
+    const original = "same original bytes uploaded twice";
+    const optimized = "smaller bytes";
+    const first = await upload(original);
+    const second = await upload(original, {
+      prepareStored: async ({ path }: { path: string }) => {
+        await writeFile(path, optimized);
+        return { note: null };
+      },
+    });
+
+    expect(second.blob.id).not.toBe(first.blob.id);
+    expect(await prisma.storedBlob.count()).toBe(2);
+    expect(await readFile(resolveStoragePath(storageDir, first.blob.storageKey), "utf8")).toBe(
+      original,
+    );
+    expect(await readFile(resolveStoragePath(storageDir, second.blob.storageKey), "utf8")).toBe(
+      optimized,
+    );
   });
 
   it("gives each upload its own name and owner even when the bytes are shared", async () => {

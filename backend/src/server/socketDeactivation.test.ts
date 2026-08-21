@@ -136,11 +136,29 @@ describe("live account deactivation", () => {
       },
       drawing: {
         findUnique: vi.fn().mockResolvedValue({ userId: "owner" }),
+        // Joining now asks the server what kind of presence somebody is, which
+        // reads the board rather than believing the client.
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: "drawing-1", userId: "owner", collectionId: null }]),
       },
       drawingPermission: {
         findUnique: vi.fn(async ({ where }: any) =>
           where.drawingId_granteeUserId.granteeUserId === "member" ? { permission: "edit" } : null,
         ),
+        findMany: vi.fn(async ({ where }: any) =>
+          where?.granteeUserId === "member"
+            ? [{ drawingId: "drawing-1", granteeUserId: "member", permission: "edit" }]
+            : [],
+        ),
+      },
+      collection: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      collectionShare: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
       },
       drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
     };

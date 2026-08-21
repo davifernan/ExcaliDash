@@ -1,12 +1,23 @@
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 
 export const PDF_WIDGET_LINK = "excalidash://pdf-widget";
+export const ASSET_WIDGET_LINK = "excalidash://asset-widget";
 export const PDF_WIDGET_WIDTH = 480;
 export const PDF_WIDGET_HEIGHT = 680;
+export const TEXT_WIDGET_WIDTH = 520;
+export const TEXT_WIDGET_HEIGHT = 560;
+
+export type AssetWidgetKind = "pdf" | "markdown" | "text";
 
 export type PdfWidgetCustomData = {
   schemaVersion: 1;
   widgetKind: "pdf";
+  assetId: string;
+};
+
+export type AssetWidgetData = {
+  schemaVersion: 1;
+  widgetKind: AssetWidgetKind;
   assetId: string;
 };
 
@@ -17,6 +28,8 @@ type EmbeddableLike = {
 };
 
 export const isPdfWidgetLink = (link: string) => link === PDF_WIDGET_LINK;
+export const isAssetWidgetLink = (link: string) =>
+  link === ASSET_WIDGET_LINK || isPdfWidgetLink(link);
 
 /**
  * Whether Excalidraw may embed this link.
@@ -28,23 +41,55 @@ export const isPdfWidgetLink = (link: string) => link === PDF_WIDGET_LINK;
  * judged by Excalidraw's normal rules again.
  */
 export const validateEmbeddableLink = (link: string): true | undefined =>
-  isPdfWidgetLink(link) ? true : undefined;
+  isAssetWidgetLink(link) ? true : undefined;
 
-export const getPdfWidgetAssetId = (element: EmbeddableLike): string | null => {
+export const getAssetWidgetData = (element: EmbeddableLike): AssetWidgetData | null => {
   const customData = element.customData;
   if (
     element.type !== "embeddable" ||
-    element.link !== PDF_WIDGET_LINK ||
+    !element.link ||
+    !isAssetWidgetLink(element.link) ||
     !customData ||
     Object.keys(customData).length !== 3 ||
     customData.schemaVersion !== 1 ||
-    customData.widgetKind !== "pdf" ||
+    !["pdf", "markdown", "text"].includes(String(customData.widgetKind)) ||
     typeof customData.assetId !== "string" ||
-    customData.assetId.length === 0
+    customData.assetId.length === 0 ||
+    (element.link === PDF_WIDGET_LINK && customData.widgetKind !== "pdf")
   ) {
     return null;
   }
-  return customData.assetId;
+  return customData as AssetWidgetData;
+};
+
+export const getPdfWidgetAssetId = (element: EmbeddableLike): string | null => {
+  const data = getAssetWidgetData(element);
+  return data?.widgetKind === "pdf" ? data.assetId : null;
+};
+
+export const createAssetWidgetElement = ({
+  assetId,
+  widgetKind,
+  x,
+  y,
+}: {
+  assetId: string;
+  widgetKind: AssetWidgetKind;
+  x: number;
+  y: number;
+}) => {
+  const width = widgetKind === "pdf" ? PDF_WIDGET_WIDTH : TEXT_WIDGET_WIDTH;
+  const height = widgetKind === "pdf" ? PDF_WIDGET_HEIGHT : TEXT_WIDGET_HEIGHT;
+  const customData: AssetWidgetData = { schemaVersion: 1, widgetKind, assetId };
+  const [baseElement] = convertToExcalidrawElements([
+    { type: "rectangle", x: x - width / 2, y: y - height / 2, width, height },
+  ]);
+  return {
+    ...baseElement,
+    type: "embeddable" as const,
+    link: ASSET_WIDGET_LINK,
+    customData,
+  };
 };
 
 export const createPdfWidgetElement = ({

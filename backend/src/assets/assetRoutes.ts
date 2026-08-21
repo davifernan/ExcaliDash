@@ -1,17 +1,16 @@
 /**
  * Serving documents.
- *
  * Every route here answers two questions, not one: may this person see this
  * board, and does this document actually belong to that board. The second is
  * not redundant — without it anyone with access to any board could fetch any
  * document by guessing its id, and ids are the only thing standing between
  * someone and a colleague's contract.
  *
- * Both answers come from the database on every request. Nothing is read out of
- * the element that pointed here, because board contents are written by clients.
+ * Both answers come from the database, never from client-written board contents.
  */
 import type { Express, Request, Response } from "express";
 import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import {
   canEditDrawing,
   canViewDrawing,
@@ -19,11 +18,33 @@ import {
   shareLinkTokenFromRequest,
 } from "../authz/sharing";
 import { resolveStoragePath } from "./assetStorage";
+import type { StoredFile } from "./assetStorage";
 import { AssetTooLargeError, QuotaExceededError, createAsset, usedBytesFor } from "./assetService";
 import { PdfRejectedError } from "./pdfRenderer";
 import { QueueAbortedError, QueueCapacityError } from "./pageCache";
+import { InvalidTextDocumentError, MAX_TEXT_UPLOAD_BYTES, validatedTextUpload } from "./textUpload";
 
 const ID = /^[\w-]{1,64}$/;
+const UPLOAD_PRESENTATIONS = {
+  "application/pdf": { kind: "PDF" as const, fallbackName: "document.pdf" },
+  "text/markdown": { kind: "MARKDOWN" as const, fallbackName: "document.md" },
+  "text/plain": { kind: "TEXT" as const, fallbackName: "document.txt" },
+};
+
+/**
+ * Select how an upload should be presented. For text this deliberately records
+ * the client's preference; it does not claim that the bytes prove Markdown.
+ */
+export function requestedUploadPresentation(contentType: unknown) {
+  const mediaType = String(contentType ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  return {
+    mediaType,
+    presentation: UPLOAD_PRESENTATIONS[mediaType as keyof typeof UPLOAD_PRESENTATIONS],
+  };
+}
 
 export type AssetRouteDeps = {
   app: Express;
@@ -50,7 +71,9 @@ export type AssetRouteDeps = {
    * Rebuilds the stored file smaller where that helps, and reports what
    * changed so the stored size stays honest.
    */
-  optimizeUpload?: (asset: any) => Promise<{ finalBytes: number; note: string | null }>;
+  optimizeUpload?: (
+    stored: Readonly<StoredFile & { path: string }>,
+  ) => Promise<{ note: string | null }>;
 };
 
 const principalOf = (req: Request) =>
@@ -76,11 +99,13 @@ async function authorizedAsset(deps: AssetRouteDeps, req: Request) {
   });
   if (!canViewDrawing(access)) return null;
 
-  // Belonging to the board is what makes this document reachable — either
-  // because it is on the board now, or because a kept version still needs it.
+  // ACTIVE is the persisted invariant that the live board references this
+  // document. Viewers may only follow that live reference; editors can also
+  // reach pending uploads and documents retained solely for version history.
   const link = await deps.prisma.drawingAsset.findUnique({
     where: { drawingId_assetId: { drawingId, assetId } },
   });
+  if (link?.state !== "ACTIVE" && !canEditDrawing(access)) return null;
   if (!link) {
     const viaSnapshot = await deps.prisma.drawingSnapshotAsset.findFirst({
       where: { assetId, snapshot: { drawingId } },
@@ -137,17 +162,23 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         });
       }
 
-      const declared = String(req.headers["content-type"] ?? "")
-        .split(";")[0]
-        .trim();
-      if (declared !== "application/pdf") {
+      const { mediaType: requestedPresentationType, presentation: uploadPresentation } =
+        requestedUploadPresentation(req.headers["content-type"]);
+      if (!uploadPresentation) {
         return res.status(415).json({
           error: "Unsupported file type",
-          message: `Only PDF documents can be added right now, not "${declared || "unknown"}".`,
+          message: `Only PDF, Markdown, and text documents can be added, not "${requestedPresentationType || "unknown"}".`,
         });
       }
 
-      const name = typeof req.query.name === "string" ? req.query.name : "document.pdf";
+      // For UTF-8 documents Content-Type is a client-selected presentation
+      // preference, not a fact inferred from the bytes. Plain prose is valid
+      // Markdown and Markdown syntax can be shown as plain text, so a content
+      // heuristic would silently override intentional choices.
+      const name =
+        typeof req.query.name === "string" ? req.query.name : uploadPresentation.fallbackName;
+      const isText = uploadPresentation.kind !== "PDF";
+      const source = isText ? Readable.from(validatedTextUpload(req)) : req;
 
       try {
         // Quota is charged to whoever owns the board, not whoever dropped the
@@ -157,36 +188,42 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
           {
             prisma: deps.prisma,
             storageDir: deps.storageDir,
-            maxUploadBytes: deps.maxUploadBytes,
+            maxUploadBytes: isText
+              ? Math.min(deps.maxUploadBytes, MAX_TEXT_UPLOAD_BYTES)
+              : deps.maxUploadBytes,
             maxPerUserBytes: deps.maxPerUserBytes,
           },
           {
             ownerUserId: drawing.userId,
             uploadedByUserId: req.user?.id ?? null,
             drawingId,
-            kind: "PDF",
+            kind: uploadPresentation.kind,
             originalName: name,
-            mimeType: "application/pdf",
-            source: req,
+            mimeType:
+              uploadPresentation.kind === "MARKDOWN"
+                ? "text/markdown; charset=utf-8"
+                : uploadPresentation.kind === "TEXT"
+                  ? "text/plain; charset=utf-8"
+                  : "application/pdf",
+            source,
+            // Only a PDF has anything to shrink; running the optimiser over
+            // UTF-8 text would rewrite bytes the user uploaded verbatim.
+            prepareStored: uploadPresentation.kind === "PDF" ? deps.optimizeUpload : undefined,
           },
         );
 
         let pageCount: number | null = null;
-        let note: string | null = null;
         try {
-          if (deps.optimizeUpload) {
-            const optimized = await deps.optimizeUpload({ ...created.asset, blob: created.blob });
-            note = optimized.note;
-            if (optimized.finalBytes !== created.blob.storedBytes) {
-              // The bytes on disk changed, so what the quota counts has to
-              // change with them.
-              await deps.prisma.storedBlob.update({
-                where: { id: created.blob.id },
-                data: { sizeBytes: optimized.finalBytes, storedBytes: optimized.finalBytes },
-              });
-            }
+          if (uploadPresentation.kind !== "PDF") {
+            return res.status(201).json({
+              id: created.asset.id,
+              kind: uploadPresentation.kind,
+              name: created.asset.originalName,
+              sizeBytes: created.sizeBytes,
+              pageCount: null,
+              note: null,
+            });
           }
-
           // The created row does not carry its blob, and describeUpload needs
           // to find the bytes on disk.
           ({ pageCount } = await deps.describeUpload({ ...created.asset, blob: created.blob }));
@@ -212,13 +249,16 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
 
         return res.status(201).json({
           id: created.asset.id,
-          kind: "PDF",
+          kind: uploadPresentation.kind,
           name: created.asset.originalName,
           sizeBytes: created.sizeBytes,
           pageCount,
-          note,
+          note: created.note,
         });
       } catch (err) {
+        if (err instanceof InvalidTextDocumentError) {
+          return res.status(422).json({ error: "Invalid text document", message: err.message });
+        }
         if (err instanceof AssetTooLargeError) {
           return res.status(413).json({ error: "File too large", message: err.message });
         }
@@ -227,6 +267,31 @@ export function registerAssetRoutes(deps: AssetRouteDeps): void {
         }
         throw err;
       }
+    }),
+  );
+
+  // Served as source bytes; the widget renders Markdown as React elements.
+  app.get(
+    "/drawings/:drawingId/assets/:assetId/content",
+    deps.optionalAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const found = await authorizedAsset(deps, req);
+      if (!found?.asset.blob || !["MARKDOWN", "TEXT"].includes(found.asset.kind)) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const { blob } = found.asset;
+      res.setHeader("Content-Type", found.asset.mimeType);
+      res.setHeader("Content-Disposition", contentDisposition("inline", found.asset.originalName));
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+      res.setHeader("Cache-Control", "private, no-cache, must-revalidate");
+      res.setHeader("Vary", "Cookie, Authorization");
+      res.setHeader("ETag", `"${blob.sha256}"`);
+      if (blob.contentEncoding) res.setHeader("Content-Encoding", blob.contentEncoding);
+
+      if (req.headers["if-none-match"] === `"${blob.sha256}"`) return res.status(304).end();
+      return createReadStream(resolveStoragePath(deps.storageDir, blob.storageKey)).pipe(res);
     }),
   );
 

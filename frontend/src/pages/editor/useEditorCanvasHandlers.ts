@@ -7,7 +7,7 @@ import {
 } from "@excalidraw/excalidraw";
 import { toast } from "sonner";
 import { getDroppedImageFiles, loadDroppedImageData, MULTI_IMAGE_DROP_GAP } from "./droppedImages";
-import { addDroppedPdfWidgets, isPdfFile } from "./pdfDrop";
+import { addDroppedDocumentWidgets, getDocumentDropFiles } from "./documentDrop";
 import {
   hasRenderableElements,
   haveSameElements,
@@ -148,8 +148,8 @@ export const useEditorCanvasHandlers = ({
   const handleCanvasDropCapture = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
       const allDroppedFiles = Array.from(event.dataTransfer?.files || []);
-      const isPdfOnlyDrop = allDroppedFiles.length > 0 && allDroppedFiles.every(isPdfFile);
-      if (isPdfOnlyDrop) {
+      const documentFiles = getDocumentDropFiles(allDroppedFiles);
+      if (documentFiles) {
         event.preventDefault();
         event.stopPropagation();
         if (!canEdit) {
@@ -163,10 +163,10 @@ export const useEditorCanvasHandlers = ({
           { clientX: event.clientX, clientY: event.clientY },
           appState,
         );
-        await addDroppedPdfWidgets({
+        await addDroppedDocumentWidgets({
           canvasApi: excalidrawAPIRef.current,
           drawingId,
-          files: allDroppedFiles,
+          files: documentFiles,
           point: dropPoint,
         });
         return;

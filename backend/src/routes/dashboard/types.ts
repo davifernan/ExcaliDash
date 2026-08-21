@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { Prisma, PrismaClient } from "../../generated/client";
 import type { CollaborationAccessController } from "../../server/collaborationAccess";
+import type { PresenceRegistry } from "../../server/presenceRegistry";
 import type { Server as SocketIoServer } from "socket.io";
 
 export type SortField = "name" | "createdAt" | "updatedAt";
@@ -59,6 +60,10 @@ export type DashboardRouteDeps = {
     snapshotMaxCountPerDrawing: number;
   };
   logAuditEvent: LogAuditEvent;
+  /** Used to derive opaque per-scope identifiers; never sent to a client. */
+  subjectKeySecret: string;
+  /** Written by the socket server, read here. */
+  presences: PresenceRegistry;
   processFilesForS3: (
     files: Record<string, any>,
     userId: string,

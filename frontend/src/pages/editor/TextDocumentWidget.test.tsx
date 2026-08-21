@@ -1,0 +1,135 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getDocumentAsset, getDocumentContent } from "../../api";
+import { TextDocumentWidget } from "./TextDocumentWidget";
+
+vi.mock("../../api", () => ({
+  getDocumentAsset: vi.fn(),
+  getDocumentContent: vi.fn(),
+  getDocumentOriginalUrl: (drawingId: string, assetId: string) =>
+    `/api/drawings/${drawingId}/assets/${assetId}/original`,
+}));
+
+describe("TextDocumentWidget", () => {
+  beforeEach(() => {
+    vi.mocked(getDocumentAsset).mockResolvedValue({
+      id: "asset-1",
+      kind: "MARKDOWN",
+      name: "notes.md",
+      sizeBytes: 100,
+      pageCount: null,
+    });
+  });
+
+  it("renders GFM without raw HTML and permits only hardened web and mail links", async () => {
+    vi.mocked(getDocumentContent).mockResolvedValue(
+      [
+        "# Notes",
+        "",
+        '<script>window.pwned = true</script><b onclick="alert(1)">raw</b>',
+        "",
+        "[bad](javascript:alert(1)) [relative](/private) [web](https://example.com) [mail](mailto:a@example.com)",
+        "",
+        "| A | B |",
+        "| - | - |",
+        "| one | `two` |",
+      ].join("\n"),
+    );
+    const { container } = render(
+      <TextDocumentWidget
+        assetId="asset-1"
+        drawingId="drawing-1"
+        theme="light"
+        widgetKind="markdown"
+      />,
+    );
+
+    await screen.findByText("Notes");
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("b")).toBeNull();
+    expect(screen.getByText("bad").closest("a")).not.toHaveAttribute("href");
+    expect(screen.getByText("relative").closest("a")).not.toHaveAttribute("href");
+    expect(screen.getByRole("link", { name: "web" })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("link", { name: "web" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "mail" })).toHaveAttribute(
+      "href",
+      "mailto:a@example.com",
+    );
+    expect(container.querySelector("table code")).toHaveTextContent("two");
+  });
+
+  it("renders plain text literally with preserved whitespace", async () => {
+    vi.mocked(getDocumentAsset).mockResolvedValue({
+      id: "asset-1",
+      kind: "TEXT",
+      name: "notes.txt",
+      sizeBytes: 40,
+      pageCount: null,
+    });
+    vi.mocked(getDocumentContent).mockResolvedValue("first line\n  <b>literal</b>");
+    const { container } = render(
+      <TextDocumentWidget
+        assetId="asset-1"
+        drawingId="drawing-1"
+        theme="light"
+        widgetKind="text"
+      />,
+    );
+
+    const plain = await screen.findByText(/first line/);
+    expect(plain.tagName).toBe("PRE");
+    expect(plain.textContent).toBe("first line\n  <b>literal</b>");
+    expect(container.querySelector("b")).toBeNull();
+    expect(screen.queryByText(/Page 1 of/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Download original document" })).toBeInTheDocument();
+  });
+
+  it("shows the correct page count and changes the rendered source when paging", async () => {
+    const first = `# First page\n\n${"first ".repeat(2_500)}`;
+    const second = `# Second page\n\n${"second ".repeat(2_500)}`;
+    vi.mocked(getDocumentContent).mockResolvedValue(`${first}\n\n${second}`);
+    render(
+      <TextDocumentWidget
+        assetId="asset-1"
+        drawingId="drawing-1"
+        theme="light"
+        widgetKind="markdown"
+      />,
+    );
+
+    expect(await screen.findByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "First page" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Second page" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Second page" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "First page" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+  });
+
+  it("only parses the current page of a pathological 500,000-row table", async () => {
+    const rows = "| cell |\n".repeat(500_000);
+    vi.mocked(getDocumentContent).mockResolvedValue(`| Value |\n| --- |\n${rows}`);
+    const started = performance.now();
+    const { container } = render(
+      <TextDocumentWidget
+        assetId="asset-1"
+        drawingId="drawing-1"
+        theme="light"
+        widgetKind="markdown"
+      />,
+    );
+
+    expect(await screen.findByText("Page 1 of 226")).toBeInTheDocument();
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(container.querySelectorAll("tbody tr").length).toBeLessThan(3_000);
+    expect(screen.getByRole("link", { name: "Download original document" })).toHaveAttribute(
+      "href",
+      "/api/drawings/drawing-1/assets/asset-1/original",
+    );
+  }, 10_000);
+});

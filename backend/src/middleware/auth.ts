@@ -12,6 +12,7 @@ import {
   parseApiKeyScopes,
   DRAWINGS_HISTORY_SCOPE,
   DRAWINGS_SHARE_SCOPE,
+  DRAWINGS_WRITE_SCOPE,
 } from "../auth/apiKeys";
 declare global {
   namespace Express {
@@ -140,22 +141,32 @@ const getApiKeyRouteResource = (req: Request): "drawings" | "collections" | null
   }
   return null;
 };
-const getRequiredApiKeyScope = (req: Request): string | null => {
+const getRequiredApiKeyScopes = (req: Request): string[] => {
   const segments = normalizeRequestPath(req).split("/").filter(Boolean);
   if (segments[0] === "drawings" && segments.length >= 3) {
-    return DRAWING_SUB_RESOURCE_SCOPES[segments[2]] ?? null;
+    if (segments[2] === "history") {
+      // Restoring is both: it writes the drawing, and it reads a snapshot to do
+      // it. Asking only for write would let a key without history access read
+      // historical content the long way round -- restore a known snapshot id,
+      // then read the drawing it just became.
+      return req.method === "GET" || req.method === "HEAD"
+        ? [DRAWINGS_HISTORY_SCOPE]
+        : [DRAWINGS_WRITE_SCOPE, DRAWINGS_HISTORY_SCOPE];
+    }
+    const scope = DRAWING_SUB_RESOURCE_SCOPES[segments[2]];
+    return scope ? [scope] : [];
   }
   const resource = getApiKeyRouteResource(req);
-  if (!resource) return null;
+  if (!resource) return [];
   const access = req.method === "GET" || req.method === "HEAD" ? "read" : "write";
-  return `${resource}:${access}`;
+  return [`${resource}:${access}`];
 };
 const authorizeApiKeyRequest = (req: Request, res: Response, scopes: string[]): boolean => {
   if (req.method === "GET" && SCOPE_FREE_API_KEY_PATHS.has(normalizeRequestPath(req))) {
     return true;
   }
-  const requiredScope = getRequiredApiKeyScope(req);
-  if (requiredScope && scopes.includes(requiredScope)) {
+  const requiredScopes = getRequiredApiKeyScopes(req);
+  if (requiredScopes.length > 0 && requiredScopes.every((scope) => scopes.includes(scope))) {
     return true;
   }
   res.status(403).json({ error: "Forbidden", message: "API key is not authorized for this route" });
@@ -380,8 +391,11 @@ export const createAuthMiddleware = ({ prisma, authModeService }: AuthMiddleware
       try {
         const result = await authenticateApiKey(extracted.token);
         if (result) {
-          const requiredScope = getRequiredApiKeyScope(req);
-          if (!requiredScope || !result.scopes.includes(requiredScope)) {
+          const requiredScopes = getRequiredApiKeyScopes(req);
+          if (
+            requiredScopes.length === 0 ||
+            !requiredScopes.every((scope) => result.scopes.includes(scope))
+          ) {
             req.authError = { code: "INVALID_ACCESS_TOKEN" };
             return next();
           }

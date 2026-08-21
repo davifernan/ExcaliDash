@@ -65,8 +65,26 @@ export const getPersistedAppState = (appState: Record<string, any> | null | unde
   };
   if (appState?.gridStep != null) base.gridStep = appState.gridStep;
   if (appState?.gridModeEnabled != null) base.gridModeEnabled = appState.gridModeEnabled;
+  if (appState?.objectsSnapModeEnabled != null)
+    base.objectsSnapModeEnabled = appState.objectsSnapModeEnabled;
   return base;
 };
+
+/**
+ * Decides whether a drawing opens with object snapping on.
+ *
+ * Excalidraw treats the grid and object snapping as mutually exclusive: each of
+ * its two toggles switches the other mode off. So a drawing that never stored a
+ * snapping preference gets snapping only when it is not using the grid —
+ * defaulting to "on" everywhere would silently take the grid away from the
+ * people who draw on it.
+ */
+export const resolveObjectsSnapMode = (
+  appState: Record<string, any> | null | undefined,
+): boolean =>
+  typeof appState?.objectsSnapModeEnabled === "boolean"
+    ? appState.objectsSnapModeEnabled
+    : !appState?.gridModeEnabled;
 
 export const buildRemoteSceneUpdate = ({
   collaborators,

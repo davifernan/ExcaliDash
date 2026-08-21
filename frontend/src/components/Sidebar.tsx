@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { LayoutGrid, Folder, Plus, Archive, FolderOpen, Shield } from "lucide-react";
+import { LayoutGrid, Folder, Plus, Archive, FolderOpen, Shield, Users } from "lucide-react";
 import type { Collection } from "../types";
 import clsx from "clsx";
 import { ConfirmModal } from "./ConfirmModal";
@@ -86,6 +86,71 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, type: "background" });
   };
+  const visibleCollections = collections.filter((c) => c.name !== "Trash");
+  // A collection stops being a folder and starts being a place the moment more
+  // than one person can reach it.
+  const isTeamCollection = (collection: Collection) =>
+    collection.isOwner === false || collection.isShared === true;
+  const teamCollections = visibleCollections.filter(isTeamCollection);
+  const personalCollections = visibleCollections.filter((c) => !isTeamCollection(c));
+  const renderCollection = (collection: Collection) => (
+    <SidebarItem
+      key={collection.id}
+      id={collection.id}
+      icon={
+        selectedCollectionId === collection.id ? <FolderOpen size={18} /> : <Folder size={18} />
+      }
+      label={collection.name}
+      isActive={selectedCollectionId === collection.id}
+      onClick={() => onSelectCollection(collection.id)}
+      onDoubleClick={() => {
+        setEditingId(collection.id);
+        setEditName(collection.name);
+      }}
+      onContextMenu={(e) => handleItemContextMenu(e, collection.id)}
+      isEditing={editingId === collection.id}
+      editValue={editName}
+      onEditChange={setEditName}
+      onEditSubmit={handleEditSubmit}
+      onEditBlur={() => {
+        if (pendingAction !== "rename") setEditingId(null);
+      }}
+      isEditPending={pendingAction === "rename"}
+      onDrop={onDrop}
+      extraAction={
+        <div className="flex items-center gap-1">
+          {/* Shared indicator — only for owned collections that have been shared */}
+          {collection.isOwner !== false && collection.isShared && (
+            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+              Shared
+            </span>
+          )}
+          {/* Role badge. Owning something you already shared is
+                          implied by the Shared badge; two of them only squeeze
+                          the name. */}
+          {!(collection.isOwner !== false && collection.isShared) && (
+            <span
+              className={clsx(
+                "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0",
+                collection.isOwner === false
+                  ? collection.sharedRole === "edit"
+                    ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+                    : "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+                  : "bg-slate-100 dark:bg-neutral-800 text-slate-400 dark:text-neutral-500 border-slate-200 dark:border-neutral-700",
+              )}
+            >
+              {collection.isOwner === false
+                ? collection.sharedRole === "edit"
+                  ? "Editor"
+                  : "Viewer"
+                : "Owner"}
+            </span>
+          )}
+        </div>
+      }
+    />
+  );
+
   return (
     <>
       <div className="w-full flex flex-col h-full bg-transparent">
@@ -193,65 +258,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </form>
             )}
-            {collections
-              .filter((c) => c.name !== "Trash")
-              .map((collection) => (
-                <SidebarItem
-                  key={collection.id}
-                  id={collection.id}
-                  icon={
-                    selectedCollectionId === collection.id ? (
-                      <FolderOpen size={18} />
-                    ) : (
-                      <Folder size={18} />
-                    )
-                  }
-                  label={collection.name}
-                  isActive={selectedCollectionId === collection.id}
-                  onClick={() => onSelectCollection(collection.id)}
-                  onDoubleClick={() => {
-                    setEditingId(collection.id);
-                    setEditName(collection.name);
-                  }}
-                  onContextMenu={(e) => handleItemContextMenu(e, collection.id)}
-                  isEditing={editingId === collection.id}
-                  editValue={editName}
-                  onEditChange={setEditName}
-                  onEditSubmit={handleEditSubmit}
-                  onEditBlur={() => {
-                    if (pendingAction !== "rename") setEditingId(null);
-                  }}
-                  isEditPending={pendingAction === "rename"}
-                  onDrop={onDrop}
-                  extraAction={
-                    <div className="flex items-center gap-1">
-                      {/* Shared indicator — only for owned collections that have been shared */}
-                      {collection.isOwner !== false && collection.isShared && (
-                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
-                          Shared
-                        </span>
-                      )}
-                      {/* Role badge */}
-                      <span
-                        className={clsx(
-                          "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0",
-                          collection.isOwner === false
-                            ? collection.sharedRole === "edit"
-                              ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-                              : "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800"
-                            : "bg-slate-100 dark:bg-neutral-800 text-slate-400 dark:text-neutral-500 border-slate-200 dark:border-neutral-700",
-                        )}
-                      >
-                        {collection.isOwner === false
-                          ? collection.sharedRole === "edit"
-                            ? "Editor"
-                            : "Viewer"
-                          : "Owner"}
-                      </span>
-                    </div>
-                  }
-                />
-              ))}
+            {personalCollections.map(renderCollection)}
+            {teamCollections.length > 0 && (
+              <div className="pt-3">
+                <div className="flex items-center gap-1.5 px-6 pb-2">
+                  <Users size={12} className="text-slate-400 dark:text-neutral-500" />
+                  <span className="text-[11px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-wider">
+                    Team
+                  </span>
+                </div>
+                {teamCollections.map(renderCollection)}
+              </div>
+            )}
           </div>
         </nav>
         <SidebarFooter

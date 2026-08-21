@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorDialogs } from "./EditorDialogs";
@@ -36,14 +36,14 @@ describe("history preview persistence guard", () => {
       serverState.version += 1;
       serverState.elements = [...elements];
     });
-    let canvasChange: ((elements: readonly any[], appState: any, files?: any) => void) | null = null;
-
     const Harness = () => {
+      const initialElements = [{ id: "current", type: "rectangle", version: 2 }];
+      const canvasChange = useRef<
+        ((elements: readonly any[], appState: any, files?: any) => void) | null
+      >(null);
       const isHistoryPreviewing = useRef(false);
       const previewBackup = useRef<any>(null);
-      const currentElements = useRef<readonly any[]>([
-        { id: "current", type: "rectangle", version: 2 },
-      ]);
+      const currentElements = useRef<readonly any[]>(initialElements);
       const api = useRef<any>({
         getSceneElementsIncludingDeleted: () => currentElements.current,
         getAppState: () => ({}),
@@ -51,7 +51,7 @@ describe("history preview persistence guard", () => {
         addFiles: vi.fn(),
         updateScene: ({ elements, appState }: any) => {
           currentElements.current = elements;
-          canvasChange?.(elements, appState, {});
+          canvasChange.current?.(elements, appState, {});
         },
       });
       const { handleCanvasChange } = useEditorCanvasHandlers({
@@ -64,14 +64,14 @@ describe("history preview persistence guard", () => {
           excalidrawAPI: api,
           hasHydratedInitialScene: useRef(true),
           hasSceneChangesSinceLoad: useRef(false),
-          initialSceneElements: useRef(currentElements.current),
+          initialSceneElements: useRef(initialElements),
           isBootstrappingScene: useRef(false),
           isHistoryPreviewing,
           isSyncing: useRef(false),
           isUnmounting: useRef(false),
           lastLocalChangeAt: useRef(0),
           latestAppState: useRef({}),
-          latestElements: useRef(currentElements.current),
+          latestElements: useRef(initialElements),
           latestFiles: useRef({}),
           debouncedSave: useRef(debouncedSave),
           suspiciousBlankLoad: useRef(false),
@@ -83,7 +83,9 @@ describe("history preview persistence guard", () => {
         }),
         broadcastChanges,
       });
-      canvasChange = handleCanvasChange;
+      useEffect(() => {
+        canvasChange.current = handleCanvasChange;
+      }, [handleCanvasChange]);
       return (
         <EditorDialogs
           drawingId="drawing-1"

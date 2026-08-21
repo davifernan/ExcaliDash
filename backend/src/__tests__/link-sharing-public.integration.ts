@@ -172,6 +172,29 @@ describe("Link Sharing - Secret Token", () => {
     expect(response.body?.accessLevel).toBe("view");
   });
 
+  it("does not hand the owner's account id to an anonymous visitor", async () => {
+    // The response deliberately drops createdByUserId and shows a name instead.
+    // The owner's own userId came through the spread anyway, which is the same
+    // thing by another route: an account id is a handle to a real row, and a
+    // visitor who collects it recognises that person on every board they are
+    // ever linked to.
+    const drawing = await createDrawing();
+    const share = await createLinkShare(drawing.id, "view");
+
+    const response = await request(app)
+      .get(`/drawings/${drawing.id}`)
+      .set("User-Agent", userAgent)
+      .set("x-share-token", share.body.token);
+
+    expect(response.status).toBe(200);
+    expect(response.body).not.toHaveProperty("userId");
+    expect(response.body).not.toHaveProperty("createdByUserId");
+    expect(JSON.stringify(response.body)).not.toContain(ownerUser.id);
+    // The board itself is still fully readable, which is the point of the link.
+    expect(response.body?.id).toBe(drawing.id);
+    expect(response.body?.accessLevel).toBe("view");
+  });
+
   it("still allows anonymous GET when only a refresh-token cookie is present", async () => {
     const drawing = await createDrawing();
     const share = await createLinkShare(drawing.id, "view");

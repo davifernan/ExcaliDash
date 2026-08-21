@@ -1,22 +1,28 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import { describe, expect, it, vi } from "vitest";
 import { generateApiKey, serializeApiKeyScopes } from "../auth/apiKeys";
 import { registerAccountApiKeyRoutes } from "../auth/accountApiKeyRoutes";
 import { registerAdminUserRoutes } from "../auth/adminUserRoutes";
 import { registerSocketHandlers } from "./socket";
 
-type Emission = { scope: string; event: string; payload: any };
+type Emission = { scope: string; event: string; payload: any; excluded: string[] };
 
 class FakeOperator {
   constructor(
     private emissions: Emission[],
     private scope: string,
+    private excluded: string[] = [],
   ) {}
   get volatile() {
     return this;
   }
+  except(socketIds: string | string[]) {
+    const additions = Array.isArray(socketIds) ? socketIds : [socketIds];
+    return new FakeOperator(this.emissions, this.scope, [...this.excluded, ...additions]);
+  }
   emit(event: string, payload: any) {
-    this.emissions.push({ scope: this.scope, event, payload });
+    this.emissions.push({ scope: this.scope, event, payload, excluded: this.excluded });
   }
 }
 
@@ -42,7 +48,7 @@ class FakeSocket {
     this.handlers.set(event, handler);
   }
   emit(event: string, payload: any) {
-    this.emissions.push({ scope: this.id, event, payload });
+    this.emissions.push({ scope: this.id, event, payload, excluded: [] });
   }
   to(scope: string) {
     return new FakeOperator(this.emissions, scope);
@@ -71,6 +77,14 @@ class FakeIo {
   to(scope: string) {
     return new FakeOperator(this.emissions, scope);
   }
+  wasDeliveredTo(socket: FakeSocket, event: string) {
+    return this.emissions.some(
+      (item) =>
+        item.event === event &&
+        (item.scope === socket.id || socket.rooms.has(item.scope)) &&
+        !item.excluded.includes(socket.id),
+    );
+  }
   async connect(id: string, token?: string) {
     const socket = new FakeSocket(id, this.emissions, token);
     await new Promise<void>((resolve, reject) => {
@@ -82,7 +96,7 @@ class FakeIo {
 }
 
 describe("socket API key authorization", () => {
-  it("accepts an MCP-style handshake token but denies writes without drawings:write", async () => {
+  it("lets a drawings:write API key join and broadcast an element update", async () => {
     const generated = generateApiKey();
     const io = new FakeIo();
     const prisma = {
@@ -91,7 +105,7 @@ describe("socket API key authorization", () => {
           id: "read-key",
           keyId: generated.keyId,
           tokenHash: generated.tokenHash,
-          scopes: serializeApiKeyScopes(["drawings:read"]),
+          scopes: serializeApiKeyScopes(["drawings:read", "drawings:write"]),
           revokedAt: null,
           user: { id: "key-owner", isActive: true },
         }),
@@ -122,58 +136,25 @@ describe("socket API key authorization", () => {
     );
     expect(joinAck).toMatchObject({
       ok: true,
-      presence: { presenceId: "mcp-socket", accountId: "key-owner", name: "MCP" },
+      presence: { presenceId: "mcp-socket", name: "MCP" },
     });
+    expect(joinAck.presence).not.toHaveProperty("accountId");
 
     io.emissions.length = 0;
     await mcp.trigger("element-update", {
       drawingId: "drawing-1",
-      elements: [{ id: "forbidden" }],
+      elements: [{ id: "agent-line" }],
     });
     expect(io.emissions).toContainEqual({
-      scope: "mcp-socket",
-      event: "error",
-      payload: { message: "Read-only access: cannot edit this drawing" },
+      scope: "drawing_drawing-1",
+      event: "element-update",
+      payload: {
+        elements: [{ id: "agent-line" }],
+        files: undefined,
+        elementOrder: undefined,
+      },
+      excluded: [],
     });
-    expect(io.emissions.some((item) => item.event === "element-update")).toBe(false);
-
-    const router = express.Router();
-    registerAccountApiKeyRoutes({
-      router,
-      prisma,
-      requireAuth: ((req: any, _res: any, next: any) => {
-        req.user = { id: "key-owner" };
-        next();
-      }) as any,
-      accountActionRateLimiter: ((_req: any, _res: any, next: any) => next()) as any,
-      ensureAuthEnabled: async () => true,
-      requireCsrf: () => true,
-      sanitizeText: (value: unknown) => String(value),
-      config: { enableAuditLogging: false },
-    } as any);
-    const layer = (router as any).stack.find(
-      (candidate: any) =>
-        candidate.route?.path === "/api-keys/:id" && candidate.route.methods.delete,
-    );
-    const req: any = { params: { id: "read-key" }, headers: {}, connection: {} };
-    const res: any = {
-      statusCode: 200,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      json(payload: unknown) {
-        this.payload = payload;
-        return this;
-      },
-    };
-    for (const handler of layer.route.stack) {
-      await handler.handle(req, res, () => undefined);
-    }
-
-    expect(res.statusCode).toBe(200);
-    expect(mcp.rooms.has("drawing_drawing-1")).toBe(false);
-    expect(mcp.disconnect).toHaveBeenCalledWith(true);
   });
 
   it("disconnects only sockets authenticated by the revoked key id", async () => {
@@ -223,20 +204,8 @@ describe("socket API key authorization", () => {
       revoked.trigger("join-room", { drawingId: "drawing-1", user: {} }),
       retained.trigger("join-room", { drawingId: "drawing-1", user: {} }),
     ]);
-    io.emissions.length = 0;
-    await retained.trigger("element-update", {
-      drawingId: "drawing-1",
-      elements: [{ id: "allowed" }],
-    });
-    expect(io.emissions).toContainEqual({
-      scope: "drawing_drawing-1",
-      event: "element-update",
-      payload: {
-        elements: [{ id: "allowed" }],
-        files: undefined,
-        elementOrder: undefined,
-      },
-    });
+    expect(revoked.rooms.has("drawing_drawing-1")).toBe(true);
+    expect(retained.rooms.has("drawing_drawing-1")).toBe(true);
 
     const router = express.Router();
     registerAdminUserRoutes({
@@ -275,7 +244,78 @@ describe("socket API key authorization", () => {
     expect(res.statusCode).toBe(200);
     expect(revoked.disconnect).toHaveBeenCalledOnce();
     expect(retained.disconnect).not.toHaveBeenCalled();
+    expect(revoked.rooms.has("drawing_drawing-1")).toBe(false);
     expect(retained.rooms.has("drawing_drawing-1")).toBe(true);
+
+    io.emissions.length = 0;
+    await revoked.trigger("element-update", {
+      drawingId: "drawing-1",
+      elements: [{ id: "after-revoke" }],
+    });
+    expect(io.emissions.some((item) => item.event === "element-update")).toBe(false);
+
+    await retained.trigger("element-update", {
+      drawingId: "drawing-1",
+      elements: [{ id: "retained-update" }],
+    });
+    expect(io.emissions.some((item) => item.event === "element-update")).toBe(true);
+    expect(io.wasDeliveredTo(revoked, "element-update")).toBe(false);
+  });
+
+  it("lets an API key draw without delivering presence updates to it", async () => {
+    const generated = generateApiKey();
+    const io = new FakeIo();
+    const prisma = {
+      apiKey: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "agent-key",
+          keyId: generated.keyId,
+          tokenHash: generated.tokenHash,
+          scopes: serializeApiKeyScopes(["drawings:read", "drawings:write"]),
+          revokedAt: null,
+          user: { id: "owner", isActive: true },
+        }),
+        findFirst: vi.fn().mockResolvedValue({ id: "agent-key", revokedAt: null }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: "owner", name: "Owner", isActive: true }),
+      },
+      drawing: {
+        findUnique: vi.fn().mockResolvedValue({ userId: "owner", collectionId: null }),
+      },
+      drawingLinkShare: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    registerSocketHandlers({
+      io: io as any,
+      prisma: prisma as any,
+      authModeService: { getAuthEnabled: async () => true } as any,
+      jwtSecret: "test-secret",
+    });
+    const agent = await io.connect("agent-socket", generated.token);
+    const humanToken = jwt.sign(
+      { userId: "owner", email: "owner@example.test", type: "access" },
+      "test-secret",
+    );
+    const human = await io.connect("human-socket", humanToken);
+    let agentJoin: any;
+    await agent.trigger("join-room", { drawingId: "drawing-1", user: {} }, (value: any) => {
+      agentJoin = value;
+    });
+    await human.trigger("join-room", { drawingId: "drawing-1", user: {} });
+    expect(agentJoin?.ok).toBe(true);
+
+    io.emissions.length = 0;
+    await agent.trigger("element-update", {
+      drawingId: "drawing-1",
+      elements: [{ id: "agent-shape" }],
+    });
+    expect(io.emissions.some((item) => item.event === "element-update")).toBe(true);
+
+    io.emissions.length = 0;
+    await human.trigger("user-activity", { drawingId: "drawing-1", isActive: false });
+    expect(io.wasDeliveredTo(human, "presence-update")).toBe(true);
+    expect(io.wasDeliveredTo(agent, "presence-update")).toBe(false);
   });
 
   it("cannot let a handshake finish after its API key was revoked", async () => {

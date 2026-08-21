@@ -24,8 +24,7 @@
  */
 import { execFile } from "node:child_process";
 import { mkdtemp, rename, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { BoundedTaskQueue, QueueCapacityError } from "../utils/boundedTaskQueue";
 
@@ -55,6 +54,8 @@ export type ShrinkOptions = {
   timeoutMs?: number;
   concurrency?: number;
   maxWaiting?: number;
+  /** Told when a rebuild could not be completed, so it is not silently lost. */
+  onFailure?: (error: unknown) => void;
   /** Test seam for the Ghostscript child process. */
   runCommand?: (
     file: string,
@@ -109,7 +110,14 @@ async function rebuildPdf(
   before: number,
   options: ShrinkOptions,
 ): Promise<ShrinkResult> {
-  const dir = await mkdtemp(join(tmpdir(), "pdfshrink-"));
+  // The rebuild is staged next to the file it will replace rather than in the
+  // system temp directory. In every container deployment the asset storage is
+  // a mounted volume and the temp directory is not, so renaming across them
+  // fails with EXDEV — and because the catch below treats any failure as "this
+  // document simply cannot be rebuilt", that turned the whole feature off in
+  // production without a word. Nothing walks the originals tree looking for
+  // strays, and the directory is removed either way.
+  const dir = await mkdtemp(join(dirname(path), ".pdfshrink-"));
   const rebuilt = join(dir, "out.pdf");
   try {
     await (options.runCommand ?? run)(
@@ -138,8 +146,11 @@ async function rebuildPdf(
 
     await rename(rebuilt, path);
     return { applied: true, originalBytes: before, finalBytes: after, reason: "smaller" };
-  } catch {
-    // A document Ghostscript cannot rebuild is still a perfectly good document.
+  } catch (error) {
+    // A document Ghostscript cannot rebuild is still a perfectly good document,
+    // so this is not an error for the person uploading. It is worth one line in
+    // the log all the same: silence here once hid a broken deployment.
+    options.onFailure?.(error);
     return { applied: false, originalBytes: before, finalBytes: before, reason: "failed" };
   } finally {
     await rm(dir, { recursive: true, force: true });

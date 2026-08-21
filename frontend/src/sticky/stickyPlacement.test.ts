@@ -53,12 +53,7 @@ describe("where the note goes in the element list", () => {
   it("goes immediately before its frame, where Excalidraw keeps members", () => {
     const note = { ...createStickyNote(0, 0), frameId: "f" };
     const before = [{ id: "a" }, { id: "f" }, { id: "z" }];
-    expect(withNoteInserted(before, note).map((e: any) => e.id)).toEqual([
-      "a",
-      note.id,
-      "f",
-      "z",
-    ]);
+    expect(withNoteInserted(before, note).map((e: any) => e.id)).toEqual(["a", note.id, "f", "z"]);
   });
 
   it("falls back to the end when the frame is not on the board", () => {

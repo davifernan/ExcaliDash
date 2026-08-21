@@ -6,6 +6,7 @@ import {
   isSuspiciousEmptySnapshot,
   isStaleEmptySnapshot,
   isStaleNonRenderableSnapshot,
+  resolveObjectsSnapMode,
 } from "./shared";
 
 describe("editor/shared scene guards", () => {
@@ -145,6 +146,7 @@ describe("editor/shared scene guards", () => {
         gridSize: 24,
         gridStep: 5,
         gridModeEnabled: true,
+        objectsSnapModeEnabled: false,
         cursorButton: "down",
         activeTool: { type: "hand", locked: false, lastActiveTool: null },
         selectedElementIds: { a: true },
@@ -159,6 +161,7 @@ describe("editor/shared scene guards", () => {
       gridSize: 24,
       gridStep: 5,
       gridModeEnabled: true,
+      objectsSnapModeEnabled: false,
     });
   });
 
@@ -172,5 +175,27 @@ describe("editor/shared scene guards", () => {
       viewBackgroundColor: "#ffffff",
       gridSize: null,
     });
+  });
+
+  it("carries the object snapping choice through a save and back", () => {
+    const snapping = getPersistedAppState({ gridModeEnabled: false, objectsSnapModeEnabled: true });
+    expect(snapping.objectsSnapModeEnabled).toBe(true);
+    expect(resolveObjectsSnapMode(snapping)).toBe(true);
+
+    const switchedOff = getPersistedAppState({ objectsSnapModeEnabled: false });
+    expect(switchedOff.objectsSnapModeEnabled).toBe(false);
+    expect(resolveObjectsSnapMode(switchedOff)).toBe(false);
+  });
+
+  it("starts a drawing with snapping unless it is one that draws on the grid", () => {
+    // Excalidraw's own toggles switch grid and snapping off for each other, so
+    // a default of "always on" would take the grid away from grid users.
+    expect(resolveObjectsSnapMode(getPersistedAppState({}))).toBe(true);
+    expect(resolveObjectsSnapMode(getPersistedAppState(undefined))).toBe(true);
+    expect(resolveObjectsSnapMode(getPersistedAppState({ gridModeEnabled: false }))).toBe(true);
+    expect(resolveObjectsSnapMode(getPersistedAppState({ gridModeEnabled: true }))).toBe(false);
+    expect(resolveObjectsSnapMode({ gridModeEnabled: true, objectsSnapModeEnabled: "yes" })).toBe(
+      false,
+    );
   });
 });

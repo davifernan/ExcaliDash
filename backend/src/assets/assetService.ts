@@ -17,11 +17,14 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import {
   AssetTooLargeError,
+  inspectStoredFile,
   originalKey,
   removeStored,
+  resolveStoragePath,
   shouldCompress,
   storeStream,
 } from "./assetStorage";
+import type { StoredFile } from "./assetStorage";
 
 export type AssetKind = "PDF" | "MARKDOWN" | "TEXT";
 
@@ -62,16 +65,35 @@ export async function storeBlob(
     limitBytes: number;
     compress?: boolean;
     purpose?: "ASSET" | "LINK_PREVIEW";
+    prepareStored?: (
+      stored: Readonly<StoredFile & { path: string }>,
+    ) => Promise<{ note: string | null }>;
   },
 ) {
   const provisionalId = randomUUID();
-  const stored = await storeStream(
+  let stored = await storeStream(
     deps.storageDir,
     originalKey(provisionalId),
     input.source,
     input.limitBytes,
     { compress: input.compress },
   );
+
+  let preparation: { note: string | null } | undefined;
+  if (input.prepareStored) {
+    try {
+      preparation = await input.prepareStored({
+        ...stored,
+        path: resolveStoragePath(deps.storageDir, stored.storageKey),
+      });
+      // Preparation is allowed to replace the file. Never trust its reported
+      // size or the pre-preparation hash for content-addressed deduplication.
+      stored = await inspectStoredFile(deps.storageDir, stored);
+    } catch (error) {
+      await removeStored(deps.storageDir, stored.storageKey);
+      throw error;
+    }
+  }
 
   let blob = await deps.prisma.storedBlob.findUnique({ where: { sha256: stored.sha256 } });
   if (blob) {
@@ -107,7 +129,7 @@ export async function storeBlob(
       if (!blob) throw err;
     }
   }
-  return { blob, stored };
+  return { blob, stored, preparation };
 }
 
 const ownerUploadTails = new Map<string, Promise<void>>();
@@ -158,6 +180,13 @@ export type CreateAssetInput = {
   originalName: string;
   mimeType: string;
   source: Readable;
+  /**
+   * Optionally rebuild the provisional bytes before content-addressed
+   * deduplication. Metadata is always re-derived by this service afterwards.
+   */
+  prepareStored?: (
+    stored: Readonly<StoredFile & { path: string }>,
+  ) => Promise<{ note: string | null }>;
 };
 
 /**
@@ -183,10 +212,11 @@ async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
   // The file is written before its hash is known, so it lands under a
   // provisional id. If those exact bytes turn out to be on disk already, the
   // provisional copy is thrown away and the existing one reused.
-  const { blob, stored } = await storeBlob(deps, {
+  const { blob, stored, preparation } = await storeBlob(deps, {
     source: input.source,
     limitBytes: Math.min(deps.maxUploadBytes, deps.maxPerUserBytes - used),
     compress: shouldCompress(input.mimeType),
+    prepareStored: input.prepareStored,
   });
 
   const asset = await deps.prisma.asset.create({
@@ -210,7 +240,13 @@ async function createAssetAdmitted(deps: Deps, input: CreateAssetInput) {
     },
   });
 
-  return { asset, blob, sizeBytes: stored.sizeBytes, storedBytes: stored.storedBytes };
+  return {
+    asset,
+    blob,
+    sizeBytes: stored.sizeBytes,
+    storedBytes: stored.storedBytes,
+    note: preparation?.note ?? null,
+  };
 }
 
 /**

@@ -216,11 +216,10 @@ test.describe("Drawing Version History", () => {
       timeout: 15000,
     });
 
-    // Trigger header visibility (may be auto-hidden)
-    await page.mouse.move(640, 10);
-    await page.waitForTimeout(500);
-
-    const historyButton = page.locator('button[title="Version History"]');
-    await expect(historyButton).toBeAttached();
+    // Version history moved into the main menu once the timer and the invite
+    // button wanted room in the top-right island: that column is narrow and the
+    // collaborator avatars are what lose when it is crowded.
+    await page.getByTestId("main-menu-trigger").click();
+    await expect(page.getByText("Version history")).toBeVisible();
   });
 });

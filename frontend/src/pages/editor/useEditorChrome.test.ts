@@ -1,29 +1,16 @@
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useEditorChrome } from "./useEditorChrome";
-
-vi.mock("lodash/throttle", () => ({
-  default: (fn: (...args: unknown[]) => unknown) => fn,
-}));
 
 describe("useEditorChrome", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     document.title = "Original Title";
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
+    window.localStorage.clear();
   });
 
   it("updates document title and restores app title on unmount", () => {
     const { rerender, unmount } = renderHook(
-      ({ drawingName }) =>
-        useEditorChrome({
-          drawingName,
-          autoHideEnabled: false,
-          isRenaming: false,
-        }),
+      ({ drawingName }) => useEditorChrome({ drawingName }),
       { initialProps: { drawingName: "Roadmap" } },
     );
 
@@ -36,68 +23,33 @@ describe("useEditorChrome", () => {
     expect(document.title).toBe("ExcaliDash");
   });
 
-  it("keeps header visible when auto-hide is disabled", () => {
-    const { result } = renderHook(() =>
-      useEditorChrome({
-        drawingName: "Test",
-        autoHideEnabled: false,
-        isRenaming: false,
-      }),
-    );
+  it("clears the abandoned auto-hide preference, once", () => {
+    window.localStorage.setItem("excalidash:editor:abc:autoHideEnabled", "0");
+    window.localStorage.setItem("excalidash:editor:def:autoHideEnabled", "1");
+    window.localStorage.setItem("excalidash:editor:abc:somethingElse", "keep me");
 
-    act(() => {
-      vi.advanceTimersByTime(10_000);
-    });
+    renderHook(() => useEditorChrome({ drawingName: "Roadmap" }));
 
-    expect(result.current.isHeaderVisible).toBe(true);
+    expect(window.localStorage.getItem("excalidash:editor:abc:autoHideEnabled")).toBeNull();
+    expect(window.localStorage.getItem("excalidash:editor:def:autoHideEnabled")).toBeNull();
+    expect(window.localStorage.getItem("excalidash:editor:abc:somethingElse")).toBe("keep me");
+
+    // A later write under the old key belongs to whoever wrote it; the cleanup
+    // is a one-off migration, not a standing rule that keeps deleting things.
+    window.localStorage.setItem("excalidash:editor:ghi:autoHideEnabled", "1");
+    renderHook(() => useEditorChrome({ drawingName: "Roadmap" }));
+    expect(window.localStorage.getItem("excalidash:editor:ghi:autoHideEnabled")).toBe("1");
   });
 
-  it("auto-hides header after inactivity timeout", () => {
-    const { result } = renderHook(() =>
-      useEditorChrome({
-        drawingName: "Test",
-        autoHideEnabled: true,
-        isRenaming: false,
-      }),
-    );
+  it("survives storage being blocked outright", () => {
+    const getItem = window.localStorage.getItem;
+    window.localStorage.getItem = () => {
+      throw new Error("blocked");
+    };
 
-    expect(result.current.isHeaderVisible).toBe(true);
+    expect(() => renderHook(() => useEditorChrome({ drawingName: "Roadmap" }))).not.toThrow();
+    expect(document.title).toBe("Roadmap - ExcaliDash");
 
-    act(() => {
-      vi.advanceTimersByTime(3001);
-    });
-
-    expect(result.current.isHeaderVisible).toBe(false);
-  });
-
-  it("shows header in trigger zone and hides it again after leaving", () => {
-    const { result } = renderHook(() =>
-      useEditorChrome({
-        drawingName: "Test",
-        autoHideEnabled: true,
-        isRenaming: false,
-      }),
-    );
-
-    act(() => {
-      vi.advanceTimersByTime(3001);
-    });
-    expect(result.current.isHeaderVisible).toBe(false);
-
-    act(() => {
-      window.dispatchEvent(new MouseEvent("mousemove", { clientY: 0 }));
-    });
-    expect(result.current.isHeaderVisible).toBe(true);
-
-    act(() => {
-      window.dispatchEvent(new MouseEvent("mousemove", { clientY: 40 }));
-      vi.advanceTimersByTime(1999);
-    });
-    expect(result.current.isHeaderVisible).toBe(true);
-
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(result.current.isHeaderVisible).toBe(false);
+    window.localStorage.getItem = getItem;
   });
 });

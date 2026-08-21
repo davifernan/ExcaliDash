@@ -7,7 +7,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -15,6 +16,8 @@ import type { PrismaClient } from "../generated/client";
 import { getTestPrisma, setupTestDb, cleanupTestDb, createTestUser } from "../__tests__/testUtils";
 import { createAsset } from "./assetService";
 import { contentDisposition, registerAssetRoutes } from "./assetRoutes";
+import type { AssetRouteDeps } from "./assetRoutes";
+import { resolveStoragePath } from "./assetStorage";
 import { buildShareLinkToken, hashShareLinkToken } from "../authz/sharing";
 
 describe("document routes", () => {
@@ -27,6 +30,7 @@ describe("document routes", () => {
   let drawingId: string;
   let assetId: string;
   let actAs: string | null;
+  let optimizeUpload: AssetRouteDeps["optimizeUpload"];
 
   const asyncHandler = (fn: any) => (req: any, res: any, next: any) =>
     Promise.resolve(fn(req, res, next)).catch(next);
@@ -61,6 +65,7 @@ describe("document routes", () => {
       data: { name: "Board", elements: "[]", appState: "{}", userId: owner.id },
     });
     drawingId = drawing.id;
+    optimizeUpload = undefined;
 
     const created = await createAsset(
       { prisma, storageDir, maxUploadBytes: 1_000_000, maxPerUserBytes: 10_000_000 },
@@ -76,6 +81,10 @@ describe("document routes", () => {
     );
     assetId = created.asset.id;
     await prisma.asset.update({ where: { id: assetId }, data: { pageCount: 3 } });
+    await prisma.drawingAsset.update({
+      where: { drawingId_assetId: { drawingId, assetId } },
+      data: { state: "ACTIVE", expiresAt: null },
+    });
 
     app = express();
     // Stands in for the real auth middleware: the tests care about what the
@@ -95,7 +104,7 @@ describe("document routes", () => {
       optionalAuth: attach,
       asyncHandler,
       storageDir,
-      maxUploadBytes: 1_000_000,
+      maxUploadBytes: 10_000_000,
       maxPerUserBytes: 10_000_000,
       getPage: async (_asset: any, page: number) => ({
         body: Buffer.from(`<svg>page ${page}</svg>`),
@@ -110,6 +119,7 @@ describe("document routes", () => {
         }
         return { pageCount: 7 };
       },
+      optimizeUpload: async (stored) => (optimizeUpload ? optimizeUpload(stored) : { note: null }),
     });
   });
 
@@ -244,9 +254,9 @@ describe("document routes", () => {
   });
 
   describe("uploading", () => {
-    const upload = (body: Buffer | string, type = "application/pdf") =>
+    const upload = (body: Buffer | string, type = "application/pdf", name = "neu.pdf") =>
       request(app)
-        .post(`/drawings/${drawingId}/assets?name=neu.pdf`)
+        .post(`/drawings/${drawingId}/assets?name=${encodeURIComponent(name)}`)
         .set("Content-Type", type)
         .send(body as any);
 
@@ -256,9 +266,70 @@ describe("document routes", () => {
       expect(res.body.name).toBe("neu.pdf");
     });
 
-    it("refuses anything that is not a PDF", async () => {
+    it("stores the optimized hash and bytes returned by the upload pipeline", async () => {
+      const original = Buffer.from("%PDF-1.4 original payload with removable bytes");
+      const optimized = Buffer.from("%PDF-1.4 optimized");
+      optimizeUpload = async ({ path }) => {
+        await writeFile(path, optimized);
+        return { note: "smaller" };
+      };
+
+      const res = await upload(original).expect(201);
+      const asset = await prisma.asset.findUnique({
+        where: { id: res.body.id },
+        include: { blob: true },
+      });
+
+      expect(res.body.sizeBytes).toBe(optimized.length);
+      expect(res.body.note).toBe("smaller");
+      expect(asset?.blob.sha256).toBe(createHash("sha256").update(optimized).digest("hex"));
+      expect(asset?.blob.sizeBytes).toBe(optimized.length);
+      expect(await readFile(resolveStoragePath(storageDir, asset!.blob.storageKey))).toEqual(
+        optimized,
+      );
+    });
+
+    it("refuses unsupported media types", async () => {
       const res = await upload("<html>hi</html>", "text/html").expect(415);
       expect(res.body.message).toContain("text/html");
+    });
+
+    it("accepts Markdown as UTF-8 text without rendering pages", async () => {
+      const markdown = "# Grüße\n\n- eins\n- zwei";
+      const res = await upload(markdown, "text/markdown", "notes.md").expect(201);
+
+      expect(res.body).toMatchObject({ kind: "MARKDOWN", name: "notes.md", pageCount: null });
+      const stored = await prisma.asset.findUnique({ where: { id: res.body.id } });
+      expect(stored?.mimeType).toBe("text/markdown; charset=utf-8");
+      expect(stored?.pageCount).toBeNull();
+    });
+
+    it("uses the text media type as a presentation preference, not content detection", async () => {
+      const markdownPreference = await upload(
+        "ordinary prose without Markdown syntax",
+        "text/markdown",
+        "prose.txt",
+      ).expect(201);
+      const textPreference = await upload(
+        "# syntax that could be rendered",
+        "text/plain",
+        "source.md",
+      ).expect(201);
+
+      expect(markdownPreference.body.kind).toBe("MARKDOWN");
+      expect(textPreference.body.kind).toBe("TEXT");
+    });
+
+    it("rejects a binary file that claims to be Markdown", async () => {
+      const binary = Buffer.from([0x23, 0x20, 0x6f, 0x6b, 0, 0xff]);
+      const res = await upload(binary, "text/markdown", "malware.md").expect(422);
+      expect(res.body.error).toBe("Invalid text document");
+    });
+
+    it("limits text uploads independently of the PDF limit", async () => {
+      const tooLarge = Buffer.alloc(2 * 1024 * 1024 + 1, 0x61);
+      const res = await upload(tooLarge, "text/plain", "large.txt").expect(413);
+      expect(res.body.message).toContain("2 MB");
     });
 
     it("refuses someone with only view access", async () => {
@@ -295,6 +366,44 @@ describe("document routes", () => {
       const asset = await prisma.asset.findUnique({ where: { id: res.body.id } });
       expect(asset?.ownerUserId).toBe(owner.id);
       expect(asset?.uploadedByUserId).toBe(viewer.id);
+    });
+  });
+
+  describe("browser-rendered text", () => {
+    const uploadMarkdown = async () => {
+      const upload = await request(app)
+        .post(`/drawings/${drawingId}/assets?name=readme.md`)
+        .set("Content-Type", "text/markdown")
+        .send("# Safe heading\n\n<script>alert(1)</script>")
+        .expect(201);
+      return `/drawings/${drawingId}/assets/${upload.body.id}/content`;
+    };
+
+    it("serves the original text inline with inert, private response headers", async () => {
+      const contentUrl = await uploadMarkdown();
+      const res = await request(app).get(contentUrl).expect(200);
+
+      expect(res.text).toContain("<script>alert(1)</script>");
+      expect(res.headers["content-type"]).toContain("text/markdown");
+      expect(res.headers["content-disposition"]).toMatch(/^inline;/);
+      expect(res.headers["x-content-type-options"]).toBe("nosniff");
+      expect(res.headers["content-security-policy"]).toContain("default-src 'none'");
+      expect(res.headers["cache-control"]).toContain("private");
+      expect(res.headers["vary"]).toContain("Cookie");
+    });
+
+    it("applies both board-access and board-ownership checks", async () => {
+      const contentUrl = await uploadMarkdown();
+      actAs = stranger.id;
+      await request(app).get(contentUrl).expect(404);
+
+      actAs = owner.id;
+      const otherBoard = await prisma.drawing.create({
+        data: { name: "Other", elements: "[]", appState: "{}", userId: owner.id },
+      });
+      const assetPath = contentUrl.split("/");
+      const contentForOtherBoard = `/drawings/${otherBoard.id}/assets/${assetPath[4]}/content`;
+      await request(app).get(contentForOtherBoard).expect(404);
     });
   });
 });

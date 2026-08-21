@@ -6,9 +6,9 @@ describe("ActiveAccountCache", () => {
     const load = vi.fn(async () => true);
     const cache = new ActiveAccountCache(load, 250);
 
-    await expect(Promise.all(Array.from({ length: 190 }, () => cache.get("user-1")))).resolves.toEqual(
-      Array(190).fill(true),
-    );
+    await expect(
+      Promise.all(Array.from({ length: 190 }, () => cache.get("user-1"))),
+    ).resolves.toEqual(Array(190).fill(true));
     expect(load).toHaveBeenCalledTimes(1);
   });
 

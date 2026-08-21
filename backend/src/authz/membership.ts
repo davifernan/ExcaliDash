@@ -133,3 +133,18 @@ export const getDrawingMembership = async (params: {
 
 export const canManageSharing = (membership: DrawingMembership | null): boolean =>
   membership?.level === "owner";
+
+/**
+ * Who may hand this board to someone else.
+ *
+ * Not the same as `Drawing.userId`: a board created inside a shared collection
+ * belongs to whoever drew it, while the collection's owner already has owner
+ * access to it. Checking only the row's own userId made the editor offer a share
+ * button that answered 404 -- the same word, "owner", meaning two things one
+ * route apart.
+ */
+export const controlsDrawing = async (params: {
+  prisma: PrismaClient;
+  userId: string;
+  drawingId: string;
+}): Promise<boolean> => canManageSharing(await getDrawingMembership(params));

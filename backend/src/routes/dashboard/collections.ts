@@ -61,21 +61,28 @@ export const registerCollectionRoutes = (app: express.Express, deps: DashboardRo
               },
         );
 
-      // Collections shared with this user by others
+      // Collections shared with this user by others.
+      // Projected field by field: spreading the row handed every grantee the
+      // owner's email address, which navigation never needed.
       const sharedEntries = await prisma.collectionShare.findMany({
         where: { granteeUserId: req.user.id },
         include: {
           collection: {
             include: {
-              user: { select: { id: true, name: true, email: true } },
+              user: { select: { name: true } },
             },
           },
         },
       });
       const sharedCollections = sharedEntries.map((s) => ({
-        ...s.collection,
+        id: s.collection.id,
+        name: s.collection.name,
+        createdAt: s.collection.createdAt,
+        updatedAt: s.collection.updatedAt,
+        ownerName: s.collection.user?.name ?? null,
         sharedRole: s.role,
         isOwner: false,
+        isShared: true,
       }));
 
       return res.json([...ownedCollections, ...sharedCollections]);
@@ -232,13 +239,16 @@ export const registerCollectionRoutes = (app: express.Express, deps: DashboardRo
     asyncHandler(async (req, res) => {
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const { id } = req.params;
-      const { identifier, role } = req.body as {
-        identifier: string;
+      const { identifier, granteeUserId, role } = req.body as {
+        identifier?: string;
+        granteeUserId?: string;
         role: string;
       };
 
-      if (!identifier || !["view", "edit"].includes(role)) {
-        return res.status(400).json({ error: "identifier and role (view|edit) are required" });
+      if ((!identifier && !granteeUserId) || !["view", "edit"].includes(role)) {
+        return res
+          .status(400)
+          .json({ error: "granteeUserId or identifier, and role (view|edit), are required" });
       }
 
       const collection = await prisma.collection.findFirst({
@@ -246,14 +256,22 @@ export const registerCollectionRoutes = (app: express.Express, deps: DashboardRo
       });
       if (!collection) return res.status(404).json({ error: "Collection not found" });
 
-      // Resolve user by email or username
-      const grantee = await prisma.user.findFirst({
-        where: {
-          isActive: true,
-          OR: [{ email: identifier.toLowerCase() }, { username: identifier }, { name: identifier }],
-        },
-        select: { id: true, name: true, email: true },
-      });
+      // Resolve by account id, or by a value that is unique by definition.
+      // Display names are neither unique nor stable, and findFirst quietly
+      // picked one of them: two colleagues called Alex meant handing a whole
+      // collection to whichever row came back first.
+      const grantee = granteeUserId
+        ? await prisma.user.findFirst({
+            where: { id: granteeUserId, isActive: true },
+            select: { id: true, name: true, email: true },
+          })
+        : await prisma.user.findFirst({
+            where: {
+              isActive: true,
+              OR: [{ email: (identifier || "").toLowerCase() }, { username: identifier }],
+            },
+            select: { id: true, name: true, email: true },
+          });
       if (!grantee) return res.status(404).json({ error: "User not found" });
       if (grantee.id === req.user.id)
         return res.status(400).json({ error: "Cannot share with yourself" });

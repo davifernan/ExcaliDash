@@ -21,6 +21,8 @@ export interface Collection {
   sharedRole?: "view" | "edit" | null;
   isOwner?: boolean;
   isShared?: boolean;
+  /** Only sent for collections someone else shared with you. */
+  ownerName?: string | null;
 }
 
 export type CollectionShareRole = "view" | "edit";

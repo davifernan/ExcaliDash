@@ -62,12 +62,12 @@ export const resolveCollectionShareUsers = async (
 
 export const addCollectionShare = async (
   collectionId: string,
-  identifier: string,
+  grantee: { id: string; email?: string },
   role: CollectionShareRole,
 ): Promise<{ share: CollectionShareRow }> => {
   const response = await api.post<{ share: CollectionShareRow }>(
     `/collections/${collectionId}/shares`,
-    { identifier, role },
+    { granteeUserId: grantee.id, role },
   );
   return response.data;
 };

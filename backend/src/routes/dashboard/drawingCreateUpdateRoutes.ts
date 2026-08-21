@@ -38,6 +38,7 @@ export const registerDrawingCreateUpdateRoutes = (
     parseJsonField,
     getRequestPrincipal,
     respondWithAuthErrorIfPresent,
+    collaborationAccess,
   } = context;
   app.post(
     "/drawings",
@@ -311,6 +312,12 @@ export const registerDrawingCreateUpdateRoutes = (
         return res.status(404).json({ error: "Drawing not found" });
       }
       invalidateDrawingsCache();
+      // Moving a board out of a shared collection revokes everyone who reached it
+      // that way. HTTP notices immediately; a socket that is only listening would
+      // otherwise keep receiving the board until the periodic sweep caught up.
+      if (payload.collectionId !== undefined) {
+        await collaborationAccess.recheckDrawingAccess(id);
+      }
 
       return res.json({
         ...updatedDrawing,

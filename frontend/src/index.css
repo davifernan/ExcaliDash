@@ -62,9 +62,13 @@ html.dark body {
   margin-block-start: 3rem;
 }
 
-/* On a short window that offset costs more than the overlap would. */
-@media (max-height: 600px) {
-  .excalidraw .App-menu_top__left {
-    margin-block-start: 0;
-  }
-}
+/*
+ * The offset holds at every height.
+ *
+ * It used to be dropped below 600px, on the theory that the vertical room
+ * mattered more than the overlap. Measured at 800x550 the overlap is total:
+ * our island and Excalidraw's hamburger both sit at (16,16), one on top of the
+ * other. Excalidraw already caps its properties panel at the window height
+ * minus 166px, so it copes with the offset; a menu button hidden underneath an
+ * island does not cope with anything.
+ */

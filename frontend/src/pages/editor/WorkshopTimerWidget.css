@@ -46,7 +46,11 @@
 
 .workshop-timer__panel {
   position: absolute;
-  top: calc(100% + 8px);
+  /* Upward, not downward. The widget is anchored to the bottom of the editor,
+     and the editor root clips: opening below put Start, Pause and Stop off the
+     screen entirely in a short window -- measured at 420px, where Start sat at
+     455. There is always room above, because that is where the canvas is. */
+  bottom: calc(100% + 8px);
   right: 0;
   width: 270px;
   padding: 10px;

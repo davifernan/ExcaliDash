@@ -205,7 +205,9 @@ describe("where the rebuild is staged", () => {
         target,
         opts({
           runCommand: async (_file: string, args: string[]) => {
-            outputPath = args.find((a) => a.startsWith("-sOutputFile="))!.slice("-sOutputFile=".length);
+            outputPath = args
+              .find((a) => a.startsWith("-sOutputFile="))!
+              .slice("-sOutputFile=".length);
             await writeFile(outputPath, Buffer.alloc(1_000, 2));
             return {};
           },

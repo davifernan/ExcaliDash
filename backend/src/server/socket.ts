@@ -30,14 +30,10 @@ import {
   toPresenceName,
 } from "./socketPresence";
 import { PresenceRegistry, type PresenceEntry, type PresenceKind } from "./presenceRegistry";
-import {
-  createRateLimiter,
-  parseCursorPayload,
-  parseDrawingId,
-  parseElementUpdatePayload,
-  SOCKET_QUEUE_LIMITS,
-} from "./socketProtocol";
+import { createRateLimiter, parseDrawingId, SOCKET_QUEUE_LIMITS } from "./socketProtocol";
 import { ActiveAccountCache } from "./activeAccountCache";
+import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
+import { registerSelectionRoomEvent } from "./socketSelection";
 
 type RegisterSocketHandlersDeps = {
   io: Server;
@@ -174,12 +170,18 @@ export const registerSocketHandlers = ({
     let joinQueue = Promise.resolve();
     let pendingJoins = 0;
     const allowJoin = createRateLimiter(10, 60_000);
-    const allowCursor = createRateLimiter(40, 1_000);
-    const allowElements = createRateLimiter(120, 1_000);
-    const allowActivity = createRateLimiter(20, 10_000);
     const allowFollow = createRateLimiter(12, 60_000);
     const allowViewport = createRateLimiter(30, 1_000);
     followManager.registerHandlers(socket, allowFollow, allowViewport);
+    registerCoreRoomEvents({
+      socket,
+      getPresence,
+      requireAccess,
+      setActive: (drawingId, presenceId, active) =>
+        presences.setActive(drawingId, presenceId, active),
+      emitPresence,
+    });
+    registerSelectionRoomEvent({ socket, presences, requireAccess });
 
     socket.on("join-room", (data: unknown, ack?: (value: unknown) => void) => {
       const rejectJoin = (code: string, message: string) => {
@@ -285,6 +287,7 @@ export const registerSocketHandlers = ({
           color,
           kind,
           isActive: true,
+          selectedElementIds: {},
         };
         drawingBySocket.set(socket.id, drawingId);
         if (shareToken) shareTokenBySocket.set(socket.id, shareToken);
@@ -304,49 +307,6 @@ export const registerSocketHandlers = ({
         },
       );
       return result;
-    });
-
-    socket.on("cursor-move", async (data: unknown) => {
-      if (!allowCursor()) return;
-      const payload = parseCursorPayload(data);
-      if (!payload || !(await requireAccess(socket, payload.drawingId))) return;
-      const self = getPresence(socket.id);
-      if (!self) return;
-      socket.volatile.to(roomName(payload.drawingId)).emit("cursor-move", {
-        drawingId: payload.drawingId,
-        presenceId: socket.id,
-        pointer: payload.pointer,
-        button: payload.button,
-        username: self.name,
-        color: self.color,
-      });
-    });
-
-    socket.on("element-update", async (data: unknown) => {
-      if (!allowElements()) return;
-      const payload = parseElementUpdatePayload(data);
-      if (!payload || !(await requireAccess(socket, payload.drawingId, true))) return;
-      socket.to(roomName(payload.drawingId)).emit("element-update", {
-        elements: payload.elements,
-        files: payload.files,
-        elementOrder: payload.elementOrder,
-      });
-    });
-
-    socket.on("user-activity", async (data: unknown) => {
-      if (!allowActivity() || !data || typeof data !== "object") return;
-      const payload = data as Record<string, unknown>;
-      const drawingId = parseDrawingId(payload.drawingId);
-      if (
-        !drawingId ||
-        typeof payload.isActive !== "boolean" ||
-        !(await requireAccess(socket, drawingId))
-      ) {
-        return;
-      }
-      if (presences.setActive(drawingId, socket.id, payload.isActive)) {
-        emitPresence(drawingId);
-      }
     });
 
     socket.on("leave-room", async (data: unknown) => {

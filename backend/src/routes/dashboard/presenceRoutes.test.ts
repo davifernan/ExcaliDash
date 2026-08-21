@@ -11,6 +11,7 @@ const entry = (overrides: Partial<PresenceEntry>): PresenceEntry => ({
   color: "#3b82f6",
   kind: "member",
   isActive: true,
+  selectedElementIds: {},
   ...overrides,
 });
 

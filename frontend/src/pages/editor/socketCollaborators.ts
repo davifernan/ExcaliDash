@@ -1,0 +1,124 @@
+import type { Socket } from "socket.io-client";
+import { buildRemoteSceneUpdate } from "./shared";
+import { parseRemoteSelectedElementIds } from "./remoteSelection";
+
+export interface Peer {
+  presenceId: string;
+  accountId: string | null;
+  name: string;
+  initials: string;
+  color: string;
+  isActive: boolean;
+  selectedElementIds?: Record<string, true>;
+}
+
+type ExcalidrawApi = {
+  getAppState: () => any;
+  updateScene: (scene: any) => void;
+};
+
+export const bindSocketCollaborators = ({
+  socket,
+  api,
+  onPeersChange,
+}: {
+  socket: Socket;
+  api: ExcalidrawApi;
+  onPeersChange: (peers: Peer[]) => void;
+}) => {
+  let selfPresenceId: string | null = null;
+  let lastPresenceUsers: Peer[] | null = null;
+  let knownPresenceIds = new Set<string>();
+  const cursorBuffer = new Map<string, any>();
+  let animationFrameId = 0;
+
+  const updateCollaborators = (collaborators: Map<string, any>) => {
+    const { sceneUpdate } = buildRemoteSceneUpdate({ collaborators });
+    if (sceneUpdate) api.updateScene(sceneUpdate);
+  };
+
+  const renderCursors = () => {
+    if (cursorBuffer.size > 0) {
+      const collaborators = new Map<string, any>(api.getAppState().collaborators || []);
+      cursorBuffer.forEach((data, presenceId) => {
+        collaborators.set(presenceId, {
+          ...(collaborators.get(presenceId) || {}),
+          ...data,
+        });
+      });
+      cursorBuffer.clear();
+      updateCollaborators(collaborators);
+    }
+    animationFrameId = requestAnimationFrame(renderCursors);
+  };
+
+  const onPresence = (users: Peer[]) => {
+    if (!Array.isArray(users)) return;
+    lastPresenceUsers = users;
+    const selfId = selfPresenceId || socket.id;
+    onPeersChange(users.filter((user) => user.presenceId !== selfId));
+    const collaborators = new Map<string, any>(api.getAppState().collaborators || []);
+    const nextPresenceIds = new Set(
+      users.filter((user) => user.presenceId !== selfId).map((user) => user.presenceId),
+    );
+    knownPresenceIds.forEach((presenceId) => {
+      if (!nextPresenceIds.has(presenceId)) collaborators.delete(presenceId);
+    });
+    users.forEach((user) => {
+      if (user.presenceId === selfId) return;
+      if (!user.isActive) {
+        collaborators.delete(user.presenceId);
+        return;
+      }
+      const existing = collaborators.get(user.presenceId) || {};
+      const selectedElementIds = parseRemoteSelectedElementIds(user.selectedElementIds);
+      collaborators.set(user.presenceId, {
+        ...existing,
+        id: user.presenceId,
+        username: user.name,
+        color: { background: user.color, stroke: user.color },
+        isCurrentUser: false,
+        selectedElementIds: selectedElementIds || existing.selectedElementIds || {},
+      });
+    });
+    knownPresenceIds = nextPresenceIds;
+    updateCollaborators(collaborators);
+  };
+
+  const onCursor = (data: any) => {
+    if (typeof data?.presenceId !== "string") return;
+    cursorBuffer.set(data.presenceId, {
+      pointer: data.pointer,
+      button: data.button || "up",
+      username: data.username,
+      color: { background: data.color, stroke: data.color },
+      id: data.presenceId,
+    });
+  };
+
+  socket.on("presence-update", onPresence);
+  socket.on("cursor-move", onCursor);
+  renderCursors();
+
+  const reset = () => {
+    selfPresenceId = null;
+    lastPresenceUsers = null;
+    knownPresenceIds.clear();
+    cursorBuffer.clear();
+    onPeersChange([]);
+    updateCollaborators(new Map());
+  };
+
+  return {
+    setSelfPresenceId(presenceId: string) {
+      selfPresenceId = presenceId;
+      if (lastPresenceUsers) onPresence(lastPresenceUsers);
+    },
+    reset,
+    dispose() {
+      socket.off("presence-update", onPresence);
+      socket.off("cursor-move", onCursor);
+      cancelAnimationFrame(animationFrameId);
+    },
+  };
+};

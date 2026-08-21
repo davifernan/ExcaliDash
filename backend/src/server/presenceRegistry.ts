@@ -16,6 +16,7 @@ export type PresenceEntry = {
   color: string;
   kind: PresenceKind;
   isActive: boolean;
+  selectedElementIds: Record<string, true>;
 };
 
 export type PresenceSummaryMember = {
@@ -55,6 +56,13 @@ export class PresenceRegistry {
     const entry = this.byDrawing.get(drawingId)?.get(presenceId);
     if (!entry || entry.isActive === isActive) return false;
     entry.isActive = isActive;
+    return true;
+  }
+
+  setSelection(drawingId: string, presenceId: string, elementIds: string[]): boolean {
+    const entry = this.byDrawing.get(drawingId)?.get(presenceId);
+    if (!entry) return false;
+    entry.selectedElementIds = Object.fromEntries(elementIds.map((id) => [id, true]));
     return true;
   }
 

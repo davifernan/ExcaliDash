@@ -230,4 +230,19 @@ describe("element-update transport limits", () => {
     // Refused means refused: nobody else saw the change either.
     expect(io.emissions.filter((item) => item.event === "element-update")).toHaveLength(0);
   });
+  it("refuses an ordering that names the same element more than once", () => {
+    // Defence in depth for the receiver, which now also places each element
+    // once. On its own the ordering is tiny -- a few hundred short ids -- and
+    // it used to expand into one scene entry per mention on every client.
+    const elements = [fullRectangle(0), fullRectangle(1)];
+    const ids = elements.map((element) => element.id);
+    expect(parseElementUpdatePayload({ drawingId, elements, elementOrder: ids })).not.toBeNull();
+    expect(
+      parseElementUpdatePayload({
+        drawingId,
+        elements,
+        elementOrder: [ids[0], ids[1], ids[0]],
+      }),
+    ).toBeNull();
+  });
 });

@@ -48,6 +48,7 @@ import {
 import { ActiveAccountCache } from "./activeAccountCache";
 import { getDrawingMembership } from "../authz/membership";
 import { ipKeyGenerator } from "express-rate-limit";
+import { resolveSocketClientAddress, type TrustProxySetting } from "./socketClientAddress";
 import { registerCoreRoomEvents } from "./socketCoreRoomEvents";
 import { registerSelectionRoomEvent, SELECTION_LIMITS } from "./socketSelection";
 import { CURSOR_CHAT_LIMITS, registerCursorChatRoomEvent } from "./socketCursorChat";
@@ -63,6 +64,11 @@ type RegisterSocketHandlersDeps = {
   /** Shared with the HTTP side so the dashboard can read presence too. */
   presences?: PresenceRegistry;
   elementUpdateTrafficLimits?: ElementUpdateTrafficLimits;
+  /**
+   * The same setting the HTTP side uses. Without it every socket behind a
+   * reverse proxy shares one address -- and therefore one budget.
+   */
+  trustProxy?: TrustProxySetting;
 };
 
 const roomName = (drawingId: string) => `drawing_${drawingId}`;
@@ -75,6 +81,7 @@ export const registerSocketHandlers = ({
   accessRecheckIntervalMs = 5_000,
   presences = new PresenceRegistry(),
   elementUpdateTrafficLimits = ELEMENT_UPDATE_TRAFFIC_LIMITS,
+  trustProxy = false,
 }: RegisterSocketHandlersDeps): CollaborationAccessController => {
   const principals = new Map<string, DrawingPrincipal>();
   const connectedSockets = new Map<string, Socket>();
@@ -234,7 +241,7 @@ export const registerSocketHandlers = ({
       return principal && !principal.allowInactive
         ? { key: `account:${principal.userId}`, isAccount: true }
         : {
-            key: `address:${ipKeyGenerator(socket.handshake.address || "") || "unknown"}`,
+            key: `address:${ipKeyGenerator(resolveSocketClientAddress(socket.handshake, trustProxy)) || "unknown"}`,
             isAccount: false,
           };
     };

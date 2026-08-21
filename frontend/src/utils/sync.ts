@@ -167,6 +167,10 @@ export const applyElementOrder = (
   const seen = new Set<string>();
 
   for (const id of elementOrder) {
+    // Once each. An ordering that names the same element twice is malformed,
+    // and honouring it turned a small payload into a huge scene: 20,000 short
+    // ids all pointing at one element became 20,000 entries here.
+    if (seen.has(id)) continue;
     const el = byId.get(id);
     if (!el) continue;
     ordered.push(el);

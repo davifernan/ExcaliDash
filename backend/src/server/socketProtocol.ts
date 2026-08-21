@@ -251,7 +251,12 @@ export const parseElementUpdatePayload = (value: unknown): ElementUpdatePayload 
     if (
       !Array.isArray(value.elementOrder) ||
       value.elementOrder.length > SOCKET_LIMITS.elementOrderLength ||
-      !value.elementOrder.every((id) => typeof id === "string" && id.length > 0 && id.length <= 200)
+      !value.elementOrder.every(
+        (id) => typeof id === "string" && id.length > 0 && id.length <= 200,
+      ) ||
+      // No element belongs in an ordering twice. Allowing it let a small
+      // payload expand into a huge scene on every receiver.
+      new Set(value.elementOrder).size !== value.elementOrder.length
     ) {
       return null;
     }

@@ -467,6 +467,9 @@ const collaborationAccess = registerSocketHandlers({
   authModeService,
   jwtSecret: config.jwtSecret,
   presences,
+  // The same setting Express uses. Sockets behind a proxy would otherwise all
+  // report the proxy's address and share a single anonymous budget.
+  trustProxy: trustProxyValue,
 });
 app.get("/health", async (_req, res) => {
   try {

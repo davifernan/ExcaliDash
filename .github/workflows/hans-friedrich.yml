@@ -1,0 +1,77 @@
+# Asks Hans-Friedrich for a review when a pull request opens.
+#
+# The workflow itself does no reviewing. It pokes a Multica autopilot, which
+# starts an agent on our own daemon; that agent reads the diff and posts the
+# review as the-hans-friedrich[bot]. Keeping the work off the runner means the
+# agent has the repository, the CLI, and the Multica issue tracker at hand —
+# none of which a runner has.
+#
+# Only on `opened`, not on every push: a review per force-push costs tokens and
+# repeats itself. To ask again, fire the autopilot webhook by hand.
+name: Hans-Friedrich
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  request-review:
+    # Drafts are not finished work; reviewing them wastes a run.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask Multica for a review
+        env:
+          # Repository secret. The token in the URL is the calling credential —
+          # rotate it in Multica (Autopilot -> Trigger -> Rotate URL) and update
+          # the secret if it ever leaks.
+          WEBHOOK: ${{ secrets.MULTICA_REVIEW_WEBHOOK }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${WEBHOOK}" ]; then
+            echo "::error::MULTICA_REVIEW_WEBHOOK is not set. Add it under Settings -> Secrets -> Actions."
+            exit 1
+          fi
+
+          # Keyed on the head commit, so a retried delivery cannot start a
+          # second review of the same code.
+          body=$(printf '{"event":"pull_request","action":"opened","repo":"%s","pr":%s}' "$REPO" "$PR")
+
+          # `|| true` on purpose: under `set -e` a transport failure would kill
+          # the step before it could say what went wrong. Catch it, report it.
+          code=$(curl -sS -o response.json -w '%{http_code}' -X POST "$WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -H "Idempotency-Key: ${REPO}#${PR}@${HEAD_SHA}" \
+            --max-time 30 --retry 2 --retry-connrefused \
+            -d "$body" || true)
+
+          if [ -z "$code" ] || [ "$code" = "000" ]; then
+            echo "::error::Could not reach Multica at all — is agents.nilo.live up?"
+            exit 1
+          fi
+
+          status=$(python3 -c 'import json,sys;print(json.load(open("response.json")).get("status","?"))' 2>/dev/null || echo '?')
+          echo "HTTP ${code}, status ${status}"
+
+          case "$code" in
+            2*) ;;
+            *)  echo "::error::Multica refused the trigger (HTTP ${code})"; cat response.json; exit 1 ;;
+          esac
+
+          # Multica answers 200 for business-level refusals too, so read the
+          # status rather than trusting the code. None of these is a failure of
+          # this workflow — say so and finish green.
+          case "$status" in
+            accepted)  echo "Review started." ;;
+            duplicate) echo "::notice::Already reviewed at this commit." ;;
+            skipped)   echo "::warning::Multica skipped the run — the agent runtime is probably offline." ;;
+            ignored)   echo "::warning::Multica ignored the trigger — autopilot paused, or the event was filtered." ;;
+            *)         echo "::warning::Unexpected status '${status}'." ;;
+          esac

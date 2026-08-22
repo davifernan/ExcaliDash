@@ -25,7 +25,7 @@ function checkPrAdmission({ body, draft = false, authorType = "User" }) {
 
   const text = body || "";
   const primaryIssues = [
-    ...text.matchAll(/^Multica-Issue:\s*(NIL-[0-9]+)\s*$/gim),
+    ...text.matchAll(/^Multica-Issue:\s*(NIL-[1-9][0-9]*)\s*$/gim),
   ].map((match) => match[1].toUpperCase());
 
   if (primaryIssues.length !== 1) {

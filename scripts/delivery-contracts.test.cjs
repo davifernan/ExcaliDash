@@ -64,6 +64,10 @@ test("rejects an incomplete or ambiguous PR before spending review tokens", () =
     checkPrAdmission({ body: "Multica-Issue: NIL-385" }).code,
     "ready-gate",
   );
+  assert.equal(
+    checkPrAdmission({ body: readyBody().replace("NIL-385", "NIL-000") }).code,
+    "primary-issue",
+  );
 });
 
 test("admits only exact Nilo-authored commits with the required trailer", () => {

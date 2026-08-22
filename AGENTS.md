@@ -7,6 +7,142 @@ This file helps two kinds of agents work on ExcaliDash.
 ExcaliDash is a self-hosted dashboard and organizer for Excalidraw drawings, with persistent storage and live collaboration.
 Core user-facing features include organizing drawings into collections, search, export/import for backup, and configurable authentication (local and optional OIDC).
 
+## ExcaliDash fork execution protocol
+
+The Multica project `ExcaliDash Fork` is the operational source of truth for roadmap work.
+Long-lived product and architecture decisions live under `docs/product/` and
+`docs/architecture/`; issue status, dependencies, active findings, and handoffs belong in
+Multica.
+
+### Greenfield rule for the current product phase
+
+- Build the clean target architecture directly. Do not preserve internal legacy APIs,
+  components, schema shapes, or behavior for unknown third-party instances.
+- Do not introduce permanent old/new paths, compatibility shims, or transitional feature
+  flags. Once a slice is migrated, remove its old path in the same issue.
+- Existing development data may be migrated once or deliberately rebuilt. This does not
+  justify a permanent legacy read/write path.
+- Small commits are still required for reviewability; "no transition layer" does not mean
+  "one giant change".
+
+### Claiming a Multica issue
+
+Before changing files, an implementation agent must:
+
+1. Read the parent epic, all earlier-stage dependencies, and linked architecture documents.
+2. Confirm that dependencies are done and no other active session owns the same issue or
+   overlapping files.
+3. Set the issue to `in_progress`.
+4. Add a Multica comment containing the real session ID, agent/runtime, branch, worktree,
+   intended scope, likely files, and dependencies. Never invent a session ID.
+
+Use this comment shape:
+
+```text
+CLAIM
+Session: <real-session-id>
+Agent/runtime: <agent and runtime>
+Branch: <branch>
+Worktree: <absolute path>
+Scope: <what this session will change>
+Likely files: <paths or subsystems>
+Dependencies checked: <issue IDs>
+Coordination: contact this session before changing the same contract or files
+```
+
+The session ID is the coordination address. If another agent depends on the work or finds an
+overlap, it comments on the issue and messages that session directly when the runtime supports
+peer messaging.
+
+### While working
+
+- One implementation issue has one owning session. Split independent work into child issues
+  instead of letting several agents silently edit the same scope.
+- Work in an issue-specific Git worktree and branch (`feat/nil-NNN-slug` or
+  `fix/nil-NNN-slug`).
+- Record scope changes, newly discovered dependencies, contract changes, and blockers as
+  issue comments immediately.
+- A blocked issue must state the exact missing decision or dependency. Use `blocked`; use a
+  custom waiting status only when the named person/action is genuinely the sole next step.
+- Multica does not protect custom-status deletion: an issue keeps the deleted key as a ghost
+  status. Before deleting any custom status, list and reassign every issue using it, verify the
+  usage count is zero, and only then delete the status definition.
+- Agents must not expand a shared adapter or protocol contract without coordinating with the
+  parent epic/integration session.
+- If a finding is real but out of scope, create or link a child/follow-up issue; do not hide it
+  in a final summary.
+
+### Handoff and review
+
+Before moving an issue to `in_review`, add a handoff comment:
+
+```text
+HANDOFF
+Session: <real-session-id>
+Branch/commit: <branch and commit IDs>
+Outcome: <observable result>
+Files/contracts changed: <paths and APIs>
+Verification: <exact commands and results>
+Deliberately triggered failures: <evidence>
+Remaining risks/non-goals: <explicit list>
+Review focus: <what an independent reviewer should attack>
+```
+
+- The implementer's own tests are not the independent review.
+- Risky collaboration, security, data, migration, or Excalidraw-seam work receives an
+  adversarial review from a different session.
+- UI behavior receives real browser coverage and visual inspection at the relevant viewport;
+  unit tests alone do not close it.
+- The issue reaches `done` only after acceptance criteria, independent review, and required
+  integration tests pass. Context epics reach `done` only when every required child and exit
+  criterion is complete.
+
+### Pull request delivery protocol
+
+- GitHub `main` is the single integration base. Create issue branches from its current local
+  remote-tracking ref; do not create a parallel integration history.
+- Open work-in-progress pull requests as drafts. Before marking a PR ready, post the Multica
+  `HANDOFF`, finish local verification, and complete the PR template's ready gate.
+- A ready PR freezes its intended scope. Hans-Friedrich performs exactly one general review of
+  that ready head. Do not push while that review is running.
+- Hans-Friedrich is the only default code reviewer. The PR Overseer coordinates state and
+  merge order; it does not perform a second code review.
+- Finding fixes stay on the same PR branch. They receive objective red/green evidence or a
+  narrow independent verification of only the Hans-reviewed-SHA-to-fix-SHA delta.
+- Browser and adversarial verification are risk-gated acceptance evidence, not duplicate
+  general reviews. Integration review alone means a combined test merge, not another agent.
+- A push unrelated to documented review findings invalidates the one-shot review contract and
+  requires explicit re-admission. It may not inherit the earlier review.
+- Only the PR Overseer integrates. It tests one merge at a time, creates the merge commit
+  locally as `Nilo <127136134+davifernan@users.noreply.github.com>`, pushes `main`, and records
+  `INTEGRATED` in Multica.
+- Detailed findings live on GitHub. Multica receives the exact PR/head, result, finding links,
+  owner, next action, and final integration SHA.
+
+### Integration ownership
+
+- Every active Multica stage has one integration session responsible for contract coherence
+  and merge order.
+- Feature agents do not merge directly into the shared integration branch unless that role is
+  explicitly assigned in the issue.
+- Conflicting agents coordinate through their claim comments and session IDs before either
+  side rewrites the shared contract.
+
+### Git identity on this server
+
+- Every commit and merge commit must be authored and committed as
+  `Nilo <127136134+davifernan@users.noreply.github.com>` so GitHub attributes it to Davi's
+  account and contribution graph.
+- Before each commit or merge, run `git var GIT_AUTHOR_IDENT` and
+  `git var GIT_COMMITTER_IDENT`.
+- Every commit message ends with `Generated by Nilo` and contains no `Co-Authored-By` trailer
+  for Davi, Claude, or Codex.
+- After each commit or merge, run
+  `git show -s --format='author=%an <%ae>%ncommitter=%cn <%ce>' HEAD`.
+- Do not add repository-local `user.name` or `user.email` overrides; the server-global Git
+  identity is authoritative.
+- Do not use a GitHub squash merge that attributes the resulting commit to another account.
+
 ## Helpers (Operations)
 
 - Official supported deployment flow (production): `docker-compose.prod.yml`

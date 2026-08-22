@@ -8,6 +8,19 @@
 
 A self-hosted dashboard and organizer for [Excalidraw](https://github.com/excalidraw/excalidraw) with live collaboration features.
 
+> **Modified downstream distribution.** This repository is based on
+> [ExcaliDash](https://github.com/ZimengXiong/ExcaliDash) by
+> [ZimengXiong](https://github.com/ZimengXiong) and has been modified since
+> August 2026 — collaboration budgets and reconnect handling, board settings
+> that persist, snapshot compression for version history, transactional email
+> for password resets, a graph layout operation, login UX, and an end-to-end
+> test suite.
+>
+> It is distributed under the **AGPL-3.0**, the same licence as upstream. This
+> repository is the complete corresponding source for the instance running at
+> `draw.nilo.live`. Fixes meant for upstream are sent as pull requests from
+> [davifernan/excalidash-prs](https://github.com/davifernan/excalidash-prs).
+
 ![](readme-assets/demo.gif)
 
 ## Table of Contents
@@ -307,7 +320,7 @@ Common flags:
 </details>
 
 # Credits
-If you find ExcaliDash useful, please consider [sponsoring](https://github.com/sponsors/ZimengXiong)
+- Original work: [ExcaliDash](https://github.com/ZimengXiong/ExcaliDash) by ZimengXiong — please consider [sponsoring](https://github.com/sponsors/ZimengXiong)
 - Example designs from:
   - <https://github.com/Prakash-sa/system-design-ultimatum/tree/main>
   - <https://github.com/kitsteam/excalidraw-examples/tree/main>

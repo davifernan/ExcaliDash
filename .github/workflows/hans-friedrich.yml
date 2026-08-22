@@ -18,8 +18,11 @@ permissions: {}
 
 jobs:
   request-review:
-    # Drafts are not finished work; reviewing them wastes a run.
-    if: github.event.pull_request.draft == false
+    # Drafts are not finished work, and a bot's dependency bump is not worth an
+    # agent. Both are cheap to rule out before a runner even starts.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -33,6 +36,13 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          # OWNER, MEMBER or COLLABORATOR — GitHub's own answer to "does this
+          # person have write access here".
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          # Anyone outside the association check who should still get reviews.
+          # Space-separated logins; empty is fine.
+          EXTRA_TRUSTED: ""
         run: |
           set -euo pipefail
 
@@ -41,6 +51,27 @@ jobs:
           # one and send the reader to the Secrets menu for nothing.
           if [ "${HEAD_REPO}" != "${REPO}" ]; then
             echo "::notice::Fork pull request (${HEAD_REPO}) — GitHub withholds secrets here, so no review was requested. Trigger the autopilot by hand if this one needs a look."
+            exit 0
+          fi
+
+          # This repository is public, and a review costs real tokens. Only
+          # people who can already write here get one automatically.
+          #
+          # On a public repo a same-repo pull request implies write access
+          # anyway, so this is a second lock on the same door — deliberately.
+          # It keeps holding if someone later switches the trigger to
+          # `pull_request_target`, which is exactly the change that would
+          # quietly open the first one.
+          trusted=false
+          case "${ASSOCIATION}" in
+            OWNER|MEMBER|COLLABORATOR) trusted=true ;;
+          esac
+          for login in ${EXTRA_TRUSTED}; do
+            [ "${login}" = "${AUTHOR}" ] && trusted=true
+          done
+
+          if [ "${trusted}" != "true" ]; then
+            echo "::notice::${AUTHOR} is ${ASSOCIATION} — no automatic review. Add the login to EXTRA_TRUSTED in this workflow, or fire the autopilot by hand."
             exit 0
           fi
 

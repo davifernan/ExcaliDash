@@ -18,6 +18,13 @@ const snapChecked = async (page: import("@playwright/test").Page) => {
  * Object snapping is Excalidraw's own feature; all we do is switch it on and
  * remember the answer. The remembering is the part that can break, and it can
  * only break in the round trip through the backend, which no unit test sees.
+ *
+ * This test guards more than its name says, so do not remove it as a detail.
+ * Snapping is one of the five things `getPersistedAppState` keeps -- background
+ * colour, grid size, grid step, grid mode, snapping -- and all five travel the
+ * same way. When that way broke, all five stopped being saved; only this one
+ * had a test, so only this one turned red. The grid and the canvas colour were
+ * lost just as silently on every board.
  */
 test("object snapping starts on and survives a reload", async ({ page, request }) => {
   const d = await createDrawing(request, { name: "Snap Roundtrip" });

@@ -6,13 +6,19 @@
 # agent has the repository, the CLI, and the Multica issue tracker at hand —
 # none of which a runner has.
 #
-# Only on `opened`, not on every push: a review per force-push costs tokens and
-# repeats itself. To ask again, fire the autopilot webhook by hand.
+# Only when a pull request becomes ready, not on every push: a review per
+# force-push costs tokens and repeats itself. To ask again, fire the autopilot
+# webhook by hand.
+#
+# Both event types are needed. `opened` covers a pull request that starts ready;
+# `ready_for_review` covers one that starts as a draft and is finished later —
+# GitHub does not re-send `opened` for that transition, so the draft guard below
+# would otherwise be the end of it.
 name: Hans-Friedrich
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, ready_for_review]
 
 permissions: {}
 

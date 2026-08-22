@@ -1,0 +1,134 @@
+# Upstream Maintenance
+
+Status: verbindlicher Wartungsablauf fuer den Fork
+Operative Roadmap: Multica-Context-Epic `NIL-327`
+Adaptervertrag: [EXCALIDRAW_ADAPTER.md](./EXCALIDRAW_ADAPTER.md)
+
+## Zwei getrennte Upstreams
+
+ExcaliDash hat zwei unabhaengige Aktualisierungskanaele:
+
+1. **ExcaliDash-Anwendungsupstream**: `ZimengXiong/ExcaliDash` als Git-Remote `origin`.
+2. **Excalidraw-Editorupstream**: `@excalidraw/excalidraw` als npm-Abhaengigkeit.
+
+Ein Git-Merge und ein Paketupgrade sind zwei verschiedene Arbeiten und duerfen nicht im selben
+ungegliederten Change vermischt werden.
+
+## Greenfield- und Kompatibilitaetsregel
+
+Der Fork wird fuer das definierte Teamziel gebaut. Es gibt keine Pflicht, interne APIs,
+Konfigurationen oder Datenformen fuer unbekannte fremde Installationen kompatibel zu halten.
+
+- Upstream-Aenderungen werden in die Zielarchitektur uebersetzt, nicht mit dauerhaften Shims
+  umgangen.
+- Wenn eine bessere Upstream-Loesung die lokale ersetzt, wird die lokale entfernt.
+- Daten werden einmalig migriert oder Entwicklungsinstanzen neu aufgebaut; alte Lese- und
+  Schreibpfade bleiben nicht dauerhaft bestehen.
+- Kompatibilitaetsentscheidungen sind Produktentscheidungen und keine automatische Vorgabe.
+
+## Branch-Modell
+
+- `origin/main`: unveraenderte Referenz auf ExcaliDash-Upstream
+- `fork/main`: veroeffentlichter Fork-Stand
+- `nilo/live`: Integrationsbranch, solange dieser Workflow bewusst verwendet wird
+- `upstream-sync/YYYY-MM-DD`: kurzlebiger Branch fuer ExcaliDash-Merge
+- `upgrade/excalidraw-X.Y.Z`: kurzlebiger Branch fuer Paketupgrade
+- `feat/nil-NNN-slug`, `fix/nil-NNN-slug`: isolierte Issue-Branches
+
+Viele Agenten arbeiten in getrennten Git-Worktrees. Pro Issue existiert genau ein
+Implementierungsworktree. Ein Integrationsagent besitzt die Merge-Reihenfolge.
+
+## ExcaliDash-Upstream synchronisieren
+
+1. Remotes fetchen und Commitbereich dokumentieren.
+2. `upstream-sync/YYYY-MM-DD` vom aktuellen Integrationsstand erstellen.
+3. `origin/main` als echten Merge integrieren; veroeffentlichte Forkhistorie nicht rebasen.
+4. Konflikte fachlich loesen, nicht mit pauschaler `ours`-/`theirs`-Strategie.
+5. `git range-diff` beziehungsweise Diff vor/nach Merge pruefen.
+6. Build, Unit, Security, Contract und E2E ausfuehren.
+7. Unabhaengige Review der Konfliktloesungen.
+8. Lokale Patches entfernen, die Upstream nun sauber ersetzt.
+
+Empfohlene lokale Git-Einstellungen fuer wiederkehrende Konflikte:
+
+```bash
+git config rerere.enabled true
+git config merge.conflictstyle zdiff3
+git config fetch.prune true
+```
+
+Diese Einstellungen werden einmal bewusst eingefuehrt und dokumentiert, nicht ungeprueft in
+laufenden Worktrees veraendert.
+
+## Excalidraw-Paket upgraden
+
+1. Zielversion als exakte Version waehlen; keine unbemerkte Minor-/Patch-Bewegung.
+2. Upgrade-Branch erstellen.
+3. Lockfile aktualisieren.
+4. Adapter-Contract-Tests ausfuehren.
+5. Compatibility-Diagnostics auf neue oder fehlende Capabilities pruefen.
+6. kritische Browserpfade in Chromium, Firefox, WebKit und Mobile ausfuehren.
+7. notwendige Anpassungen ausschliesslich in der Integrationsschicht vornehmen, sofern kein
+   echter Produktvertrag geaendert wird.
+8. Produktverhaltensaenderungen als eigenes Issue behandeln.
+9. unabhaengige Adapterreview.
+
+## Upstream-Beitraege
+
+Ein Change ist Upstream-Kandidat, wenn er:
+
+- nicht von ExcaliDash-spezifischen Produktmodellen abhaengt,
+- einen allgemeinen Fehler oder fehlenden oeffentlichen Hook behebt,
+- isoliert getestet und erklaert werden kann,
+- keine internen Teamannahmen offenlegt.
+
+Produktfeatures wie Kommentare, Team Home oder Activity bleiben im Fork. Generische
+Synchronisationsfixes, sichere Sanitizer und fehlende oeffentliche Excalidraw-Hooks werden
+upstream angeboten.
+
+Wird ein lokaler Change upstream uebernommen, wird sein lokaler Sonderpfad beim naechsten
+Sync entfernt. Es bleiben keine doppelten Implementierungen "zur Sicherheit" bestehen.
+
+## Konflikt- und Integrationsprotokoll
+
+Bei einem Konflikt dokumentiert der bearbeitende Agent im Multica-Issue:
+
+- betroffene Dateien
+- Upstream-Absicht
+- Fork-Absicht
+- gewaehlter Zielzustand
+- Tests, die genau diese Aufloesung beweisen
+- Session-ID und Branch/Worktree
+
+Abhaengige Agenten werden ueber die kommentierte Session-ID kontaktiert, bevor beide Seiten
+denselben Vertrag unabhaengig veraendern.
+
+## Verifikation
+
+Ein Upstream-Change ist erst integriert, wenn:
+
+- beide Builds gruen sind
+- Unit-, Security- und E2E-Suites gruen sind
+- Adapter-Contracts gruen sind
+- Fehlerpfade absichtlich ausgeloest wurden
+- keine verbotenen Runtime-Imports oder DOM-Seams hinzugekommen sind
+- Diff und Konfliktentscheidungen unabhaengig reviewt wurden
+- Multica-Issue und relevante Dokumentation aktualisiert sind
+
+## Git-Identitaet
+
+Vor jedem Commit oder Merge:
+
+```bash
+git var GIT_AUTHOR_IDENT
+git var GIT_COMMITTER_IDENT
+```
+
+Beide muessen `Nilo <me@nilo.live>` ergeben. Jede Commit-Nachricht endet mit
+`Generated by Nilo`. Nach jedem Commit oder Merge:
+
+```bash
+git show -s --format='author=%an <%ae>%ncommitter=%cn <%ce>' HEAD
+```
+
+GitHub-Squash-Merges, die eine andere Urheberschaft erzeugen, werden nicht verwendet.

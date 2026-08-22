@@ -32,8 +32,17 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
+
+          # A `pull_request` run from a fork gets no repository secrets. Say
+          # that, rather than letting the empty secret below report a missing
+          # one and send the reader to the Secrets menu for nothing.
+          if [ "${HEAD_REPO}" != "${REPO}" ]; then
+            echo "::notice::Fork pull request (${HEAD_REPO}) — GitHub withholds secrets here, so no review was requested. Trigger the autopilot by hand if this one needs a look."
+            exit 0
+          fi
 
           if [ -z "${WEBHOOK}" ]; then
             echo "::error::MULTICA_REVIEW_WEBHOOK is not set. Add it under Settings -> Secrets -> Actions."

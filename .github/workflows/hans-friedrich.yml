@@ -7,8 +7,8 @@
 # none of which a runner has.
 #
 # Only when a pull request becomes ready, not on every push: a review per
-# force-push costs tokens and repeats itself. To ask again, fire the autopilot
-# webhook by hand.
+# force-push costs tokens and repeats itself. Finding fixes are checked by the
+# narrow delta verifier, not by running Hans over the whole PR again.
 #
 # Both event types are needed. `opened` covers a pull request that starts ready;
 # `ready_for_review` covers one that starts as a draft and is finished later —
@@ -20,7 +20,8 @@ on:
   pull_request:
     types: [opened, ready_for_review]
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   request-review:
@@ -32,6 +33,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check review admission
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+        run: node scripts/delivery-contracts.cjs admission
+
+      - name: Check commit identity and trailer
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/delivery-contracts.cjs commits
+
       - name: Ask Multica for a review
         env:
           # Repository secret. The token in the URL is the calling credential —
@@ -91,7 +109,7 @@ jobs:
 
           # Keyed on the head commit, so a retried delivery cannot start a
           # second review of the same code.
-          body=$(printf '{"event":"pull_request","action":"%s","repo":"%s","pr":%s}' "$ACTION" "$REPO" "$PR")
+          body=$(printf '{"event":"pull_request","action":"%s","repo":"%s","pr":%s,"head_sha":"%s"}' "$ACTION" "$REPO" "$PR" "$HEAD_SHA")
 
           # `|| true` on purpose: under `set -e` a transport failure would kill
           # the step before it could say what went wrong. Catch it, report it.

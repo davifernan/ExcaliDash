@@ -97,6 +97,27 @@ Review focus: <what an independent reviewer should attack>
   integration tests pass. Context epics reach `done` only when every required child and exit
   criterion is complete.
 
+### Pull request delivery protocol
+
+- GitHub `main` is the single integration base. Create issue branches from its current local
+  remote-tracking ref; do not create a parallel integration history.
+- Open work-in-progress pull requests as drafts. Before marking a PR ready, post the Multica
+  `HANDOFF`, finish local verification, and complete the PR template's ready gate.
+- A ready PR freezes its intended scope. Hans-Friedrich performs exactly one general review of
+  that ready head. Do not push while that review is running.
+- Hans-Friedrich is the only default code reviewer. The PR Overseer coordinates state and
+  merge order; it does not perform a second code review.
+- Finding fixes stay on the same PR branch. They receive objective red/green evidence or a
+  narrow independent verification of only the Hans-reviewed-SHA-to-fix-SHA delta.
+- Browser and adversarial verification are risk-gated acceptance evidence, not duplicate
+  general reviews. Integration review alone means a combined test merge, not another agent.
+- A push unrelated to documented review findings invalidates the one-shot review contract and
+  requires explicit re-admission. It may not inherit the earlier review.
+- Only the PR Overseer integrates. It tests one merge at a time, creates the merge commit
+  locally as `Nilo <me@nilo.live>`, pushes `main`, and records `INTEGRATED` in Multica.
+- Detailed findings live on GitHub. Multica receives the exact PR/head, result, finding links,
+  owner, next action, and final integration SHA.
+
 ### Integration ownership
 
 - Every active Multica stage has one integration session responsible for contract coherence

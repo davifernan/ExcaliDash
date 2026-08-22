@@ -1,0 +1,351 @@
+#!/usr/bin/env node
+
+"use strict";
+
+const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
+
+const REVIEW_MARKER = /<!-- excalidash-review:v1\s*([\s\S]*?)\s*-->/m;
+const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const REVIEW_RESULTS = new Set([
+  "clean",
+  "findings",
+  "needs_answer",
+  "inconclusive",
+]);
+
+function checkPrAdmission({ body, draft = false, authorType = "User" }) {
+  if (draft) {
+    return { ok: false, code: "draft", message: "Draft PRs are not review-ready." };
+  }
+  if (authorType === "Bot") {
+    return { ok: false, code: "bot", message: "Bot PRs are not reviewed automatically." };
+  }
+
+  const text = body || "";
+  const primaryIssues = [
+    ...text.matchAll(/^Multica-Issue:\s*(NIL-[0-9]+)\s*$/gim),
+  ].map((match) => match[1].toUpperCase());
+
+  if (primaryIssues.length !== 1) {
+    return {
+      ok: false,
+      code: "primary-issue",
+      message: "PR body must contain exactly one `Multica-Issue: NIL-NNN` line.",
+    };
+  }
+
+  const requiredChecks = [
+    "Multica HANDOFF posted",
+    "Local verification complete",
+    "Ready for Hans-Friedrich",
+  ];
+  const missingChecks = requiredChecks.filter(
+    (label) => !new RegExp(`^- \\[x\\] ${escapeRegExp(label)}\\s*$`, "im").test(text),
+  );
+
+  if (missingChecks.length > 0) {
+    return {
+      ok: false,
+      code: "ready-gate",
+      message: `Review admission is missing: ${missingChecks.join(", ")}.`,
+    };
+  }
+
+  return { ok: true, code: "ready", primaryIssue: primaryIssues[0] };
+}
+
+function parseReviewMarker(body) {
+  const match = REVIEW_MARKER.exec(body || "");
+  if (!match) {
+    throw new Error("Hans review is missing the excalidash-review:v1 marker.");
+  }
+
+  let marker;
+  try {
+    marker = JSON.parse(match[1]);
+  } catch (error) {
+    throw new Error(`Hans review marker is not valid JSON: ${error.message}`);
+  }
+
+  const requiredCounts = ["high", "medium", "low", "questions"];
+  if (
+    marker.schema !== 1 ||
+    marker.reviewer !== "hans-friedrich" ||
+    !SHA_PATTERN.test(marker.reviewed_head_sha || "") ||
+    !REVIEW_RESULTS.has(marker.result) ||
+    !marker.counts ||
+    requiredCounts.some(
+      (key) => !Number.isInteger(marker.counts[key]) || marker.counts[key] < 0,
+    ) ||
+    !Number.isInteger(marker.inline_comments) ||
+    marker.inline_comments < 0
+  ) {
+    throw new Error("Hans review marker does not satisfy schema version 1.");
+  }
+
+  const findingCount = marker.counts.high + marker.counts.medium + marker.counts.low;
+  const totalCount = findingCount + marker.counts.questions;
+  if (marker.result === "clean" && totalCount !== 0) {
+    throw new Error("A clean Hans marker cannot contain findings or questions.");
+  }
+  if (marker.result === "findings" && findingCount === 0) {
+    throw new Error("A findings Hans marker must contain at least one finding.");
+  }
+  if (marker.result === "needs_answer" && marker.counts.questions === 0) {
+    throw new Error("A needs_answer Hans marker must contain a question.");
+  }
+
+  return marker;
+}
+
+function validateHansReview({ expectedHeadSha, review, comments = [] }) {
+  if (!SHA_PATTERN.test(expectedHeadSha || "")) {
+    throw new Error("Expected PR head SHA is missing or invalid.");
+  }
+  if (!review || review.state !== "COMMENTED") {
+    throw new Error("Hans review must be a COMMENTED GitHub review.");
+  }
+  if (review.user?.login !== "the-hans-friedrich[bot]") {
+    throw new Error("Review author is not the Hans-Friedrich GitHub App.");
+  }
+
+  const marker = parseReviewMarker(review.body);
+  if (review.commit_id !== marker.reviewed_head_sha) {
+    throw new Error("GitHub review commit and Hans marker SHA differ.");
+  }
+  if (expectedHeadSha !== marker.reviewed_head_sha) {
+    throw new Error("Hans reviewed a stale PR head SHA.");
+  }
+
+  const reviewComments = comments.filter(
+    (comment) => comment.pull_request_review_id === review.id,
+  );
+  if (reviewComments.length !== marker.inline_comments) {
+    throw new Error("Hans marker and GitHub inline comment count differ.");
+  }
+
+  const inlineCounts = countInlineMarkers(reviewComments);
+  for (const key of Object.keys(inlineCounts)) {
+    if (inlineCounts[key] > marker.counts[key]) {
+      throw new Error(`Inline ${key} count exceeds the Hans marker total.`);
+    }
+  }
+
+  return {
+    ok: true,
+    state: marker.result,
+    reviewedHeadSha: marker.reviewed_head_sha,
+    counts: marker.counts,
+    inlineComments: marker.inline_comments,
+  };
+}
+
+function checkCommitContracts(commits) {
+  if (!Array.isArray(commits) || commits.length === 0) {
+    throw new Error("The pull request has no commits to admit.");
+  }
+
+  const violations = [];
+  for (const commit of commits) {
+    const shortSha = (commit.sha || "unknown").slice(0, 12);
+    if (commit.author !== "Nilo <me@nilo.live>") {
+      violations.push(`${shortSha}: author is ${commit.author || "missing"}`);
+    }
+    if (commit.committer !== "Nilo <me@nilo.live>") {
+      violations.push(`${shortSha}: committer is ${commit.committer || "missing"}`);
+    }
+    if (!(commit.message || "").trimEnd().endsWith("Generated by Nilo")) {
+      violations.push(`${shortSha}: commit message lacks the Generated by Nilo trailer`);
+    }
+  }
+
+  if (violations.length > 0) {
+    throw new Error(`Commit admission failed:\n${violations.join("\n")}`);
+  }
+
+  return { ok: true, commits: commits.length };
+}
+
+function readCommitRange(baseSha, headSha) {
+  if (!SHA_PATTERN.test(baseSha || "") || !SHA_PATTERN.test(headSha || "")) {
+    throw new Error("Commit admission requires valid base and head SHAs.");
+  }
+
+  const shas = execFileSync("git", ["rev-list", "--reverse", `${baseSha}..${headSha}`], {
+    encoding: "utf8",
+  }).trim().split("\n").filter(Boolean);
+
+  return shas.map((sha) => {
+    const fields = execFileSync(
+      "git",
+      ["show", "-s", "--format=%an <%ae>%x00%cn <%ce>%x00%B", sha],
+      { encoding: "utf8" },
+    ).split("\0");
+    return {
+      sha,
+      author: fields[0],
+      committer: fields[1],
+      message: fields.slice(2).join("\0"),
+    };
+  });
+}
+
+function countInlineMarkers(comments) {
+  const counts = { high: 0, medium: 0, low: 0, questions: 0 };
+  for (const comment of comments) {
+    const body = comment.body || "";
+    if (/^🔴 \*\*High\*\*/u.test(body)) counts.high += 1;
+    else if (/^🟡 \*\*Medium\*\*/u.test(body)) counts.medium += 1;
+    else if (/^🔵 \*\*Low\*\*/u.test(body)) counts.low += 1;
+    else if (/^⚪ \*\*Frage\*\*/u.test(body)) counts.questions += 1;
+  }
+  return counts;
+}
+
+function buildDeliveryEvent({ eventName, payload, repository }) {
+  let event;
+
+  if (eventName === "pull_request") {
+    event = {
+      event: "pull_request",
+      action: payload.action,
+      repo: repository,
+      pr: payload.pull_request?.number,
+      head_sha: payload.pull_request?.head?.sha,
+      base_sha: payload.pull_request?.base?.sha,
+      draft: Boolean(payload.pull_request?.draft),
+      merged: Boolean(payload.pull_request?.merged),
+      merge_commit_sha: payload.pull_request?.merge_commit_sha || null,
+    };
+  } else if (eventName === "pull_request_review") {
+    event = {
+      event: "pull_request_review",
+      action: payload.action,
+      repo: repository,
+      pr: payload.pull_request?.number,
+      head_sha: payload.pull_request?.head?.sha,
+      reviewed_sha: payload.review?.commit_id,
+      review_id: payload.review?.id,
+      reviewer: payload.review?.user?.login,
+    };
+  } else if (eventName === "issue_comment" && payload.issue?.pull_request) {
+    if (/Generated by PR Overseer/i.test(payload.comment?.body || "")) {
+      return { skip: true, reason: "pr-overseer-self-comment" };
+    }
+    event = {
+      event: "pull_request_comment",
+      action: payload.action,
+      repo: repository,
+      pr: payload.issue.number,
+      comment_id: payload.comment?.id,
+      author: payload.comment?.user?.login,
+      updated_at: payload.comment?.updated_at,
+    };
+  } else if (eventName === "workflow_run") {
+    const pullRequest = payload.workflow_run?.pull_requests?.[0];
+    if (!pullRequest) return { skip: true, reason: "workflow-run-without-pr" };
+    event = {
+      event: "workflow_run",
+      action: payload.action,
+      repo: repository,
+      pr: pullRequest.number,
+      head_sha: payload.workflow_run?.head_sha,
+      workflow: payload.workflow_run?.name,
+      conclusion: payload.workflow_run?.conclusion,
+      workflow_run_id: payload.workflow_run?.id,
+    };
+  } else {
+    return { skip: true, reason: `unsupported-${eventName}` };
+  }
+
+  if (!Number.isInteger(event.pr)) {
+    return { skip: true, reason: "event-without-pr" };
+  }
+
+  if (eventName === "pull_request") {
+    event.delivery_event_id = `${eventName}:${event.pr}:${event.action}:${event.head_sha}`;
+  } else if (eventName === "pull_request_review") {
+    event.delivery_event_id = `${eventName}:${event.review_id}`;
+  } else if (eventName === "issue_comment") {
+    event.delivery_event_id = `${eventName}:${event.comment_id}:${event.action}:${event.updated_at}`;
+  } else {
+    event.delivery_event_id = `${eventName}:${event.workflow_run_id}`;
+  }
+  return {
+    skip: false,
+    event,
+    idempotencyKey: `${repository}#${event.pr}:${event.delivery_event_id}`,
+  };
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function main() {
+  const command = process.argv[2];
+  if (command === "admission") {
+    const result = checkPrAdmission({
+      body: process.env.PR_BODY,
+      draft: process.env.PR_DRAFT === "true",
+      authorType: process.env.PR_AUTHOR_TYPE,
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "review") {
+    const input = JSON.parse(await readStdin());
+    process.stdout.write(`${JSON.stringify(validateHansReview(input))}\n`);
+    return;
+  }
+
+  if (command === "commits") {
+    const commits = readCommitRange(process.env.PR_BASE_SHA, process.env.PR_HEAD_SHA);
+    process.stdout.write(`${JSON.stringify(checkCommitContracts(commits))}\n`);
+    return;
+  }
+
+  if (command === "event") {
+    const payload = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+    const result = buildDeliveryEvent({
+      eventName: process.env.GITHUB_EVENT_NAME,
+      payload,
+      repository: process.env.GITHUB_REPOSITORY,
+      runId: process.env.GITHUB_RUN_ID,
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
+
+  throw new Error("Usage: delivery-contracts.cjs admission|commits|review|event");
+}
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      input += chunk;
+    });
+    process.stdin.on("end", () => resolve(input));
+    process.stdin.on("error", reject);
+  });
+}
+
+module.exports = {
+  buildDeliveryEvent,
+  checkPrAdmission,
+  checkCommitContracts,
+  parseReviewMarker,
+  validateHansReview,
+};
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

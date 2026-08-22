@@ -29,14 +29,14 @@ Konfigurationen oder Datenformen fuer unbekannte fremde Installationen kompatibe
 ## Branch-Modell
 
 - `origin/main`: unveraenderte Referenz auf ExcaliDash-Upstream
-- `fork/main`: veroeffentlichter Fork-Stand
-- `nilo/live`: Integrationsbranch, solange dieser Workflow bewusst verwendet wird
+- `fork/main`: kanonischer, veroeffentlichter Integrationsstand und Basis aller Issue-Branches
 - `upstream-sync/YYYY-MM-DD`: kurzlebiger Branch fuer ExcaliDash-Merge
 - `upgrade/excalidraw-X.Y.Z`: kurzlebiger Branch fuer Paketupgrade
 - `feat/nil-NNN-slug`, `fix/nil-NNN-slug`: isolierte Issue-Branches
 
 Viele Agenten arbeiten in getrennten Git-Worktrees. Pro Issue existiert genau ein
-Implementierungsworktree. Ein Integrationsagent besitzt die Merge-Reihenfolge.
+Implementierungsworktree. Der PR Overseer besitzt die Merge-Reihenfolge und integriert lokal
+in `fork/main`; es existiert kein zweiter dauerhafter Integrationsbranch.
 
 ## ExcaliDash-Upstream synchronisieren
 

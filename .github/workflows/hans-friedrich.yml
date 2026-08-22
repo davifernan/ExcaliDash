@@ -41,6 +41,9 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The real event, not a fixed "opened": Multica trigger filters can
+          # match on it, and a draft finished later is not a pull request opened.
+          ACTION: ${{ github.event.action }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
           # OWNER, MEMBER or COLLABORATOR — GitHub's own answer to "does this
@@ -88,7 +91,7 @@ jobs:
 
           # Keyed on the head commit, so a retried delivery cannot start a
           # second review of the same code.
-          body=$(printf '{"event":"pull_request","action":"opened","repo":"%s","pr":%s}' "$REPO" "$PR")
+          body=$(printf '{"event":"pull_request","action":"%s","repo":"%s","pr":%s}' "$ACTION" "$REPO" "$PR")
 
           # `|| true` on purpose: under `set -e` a transport failure would kill
           # the step before it could say what went wrong. Catch it, report it.
